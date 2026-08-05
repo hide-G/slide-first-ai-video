@@ -19,7 +19,7 @@ new MainStack(app, `${productSlug}-${env}`, {
     account: process.env["CDK_DEFAULT_ACCOUNT"],
     region: process.env["CDK_DEFAULT_REGION"],
   },
-  environment: env,
+  envName: env,
 });
 
 app.synth();

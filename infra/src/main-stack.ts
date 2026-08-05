@@ -1,27 +1,119 @@
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
+import { StorageConstruct } from "../lib/storage-construct.js";
+import { AuthConstruct } from "../lib/auth-construct.js";
+import { MarpLambdaConstruct } from "../lib/marp-lambda-construct.js";
+import { PollyWorkerConstruct } from "../lib/polly-worker-construct.js";
+import { CompositionBuilderConstruct } from "../lib/composition-builder-construct.js";
+import { RenderStateMachineConstruct } from "../lib/render-state-machine-construct.js";
+import { ContentStateMachineConstruct } from "../lib/content-state-machine-construct.js";
+import { ApiConstruct } from "../lib/api-construct.js";
+import { DeliveryConstruct } from "../lib/delivery-construct.js";
 
 export interface MainStackProps extends cdk.StackProps {
   productSlug: string;
-  environment: string;
+  envName: string;
 }
 
 /**
  * Main CDK stack for the slide-first AI video application.
- * Placeholder: concrete resources will be added in subsequent features.
+ * Composes all infrastructure constructs.
  */
 export class MainStack extends cdk.Stack {
   public readonly productSlug: string;
-  public readonly environment: string;
+  public readonly envName: string;
 
   constructor(scope: Construct, id: string, props: MainStackProps) {
     super(scope, id, props);
 
     this.productSlug = props.productSlug;
-    this.environment = props.environment;
+    this.envName = props.envName;
 
     // Tag all resources with product slug and environment
     cdk.Tags.of(this).add("Product", props.productSlug);
-    cdk.Tags.of(this).add("Environment", props.environment);
+    cdk.Tags.of(this).add("Environment", props.envName);
+
+    // Storage: S3 bucket and DynamoDB tables
+    const storage = new StorageConstruct(this, "Storage", {
+      productSlug: props.productSlug,
+      environment: props.envName,
+    });
+
+    // Auth: Cognito User Pool
+    const auth = new AuthConstruct(this, "Auth", {
+      productSlug: props.productSlug,
+      environment: props.envName,
+    });
+
+    // Marp Lambda: DockerImageFunction for rendering
+    const marpLambda = new MarpLambdaConstruct(this, "MarpLambda", {
+      productSlug: props.productSlug,
+      environment: props.envName,
+      projectBucket: storage.projectBucket,
+    });
+
+    // Polly Worker Lambda
+    const pollyWorker = new PollyWorkerConstruct(this, "PollyWorker", {
+      productSlug: props.productSlug,
+      environment: props.envName,
+      projectBucket: storage.projectBucket,
+    });
+
+    // Composition Builder Lambda
+    const compositionBuilder = new CompositionBuilderConstruct(
+      this,
+      "CompositionBuilder",
+      {
+        productSlug: props.productSlug,
+        environment: props.envName,
+        projectBucket: storage.projectBucket,
+      },
+    );
+
+    // Render State Machine (must be created before Content SM)
+    const renderStateMachine = new RenderStateMachineConstruct(
+      this,
+      "RenderSM",
+      {
+        productSlug: props.productSlug,
+        environment: props.envName,
+        projectBucket: storage.projectBucket,
+      },
+    );
+
+    // Content State Machine
+    const contentStateMachine = new ContentStateMachineConstruct(
+      this,
+      "ContentSM",
+      {
+        productSlug: props.productSlug,
+        environment: props.envName,
+        marpLambda: marpLambda.handler,
+        pollyWorkerLambda: pollyWorker.handler,
+        compositionBuilderLambda: compositionBuilder.handler,
+        renderStateMachine: renderStateMachine.stateMachine,
+      },
+    );
+
+    // API: API Gateway with Cognito authorizer and Lambda
+    new ApiConstruct(this, "Api", {
+      productSlug: props.productSlug,
+      environment: props.envName,
+      userPool: auth.userPool,
+      projectsTable: storage.projectsTable,
+      versionsTable: storage.versionsTable,
+      jobsTable: storage.jobsTable,
+      idempotencyTable: storage.idempotencyTable,
+      projectBucket: storage.projectBucket,
+      contentStateMachine: contentStateMachine.stateMachine,
+      renderStateMachine: renderStateMachine.stateMachine,
+    });
+
+    // Delivery: CloudFront distribution
+    new DeliveryConstruct(this, "Delivery", {
+      productSlug: props.productSlug,
+      environment: props.envName,
+      projectBucket: storage.projectBucket,
+    });
   }
 }

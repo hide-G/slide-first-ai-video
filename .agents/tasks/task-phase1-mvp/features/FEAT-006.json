@@ -2,7 +2,7 @@
   "id": "FEAT-006",
   "type": "feat",
   "description": "CDK infrastructure: DynamoDB tables, S3 buckets, Lambda functions, API Gateway, Cognito, Step Functions state machines (content generation with parallel Marp+Polly, and render pipeline), and Hyperframes CDK Construct integration",
-  "status": "pending",
+  "status": "in_progress",
   "steps": [
     "In infra/lib/storage-stack.ts, define: S3 project bucket ({productSlug}-projects-{env}-{accountId}-{region}) with Block Public Access, AES256 encryption, lifecycle rules (7 days for intermediate chunks, retain approved content). DynamoDB tables: Projects (PK: userId, SK: projectId), Versions (PK: projectId, SK: version), Jobs (PK: jobId), Idempotency (PK: idempotencyKey, TTL: 24h).",
     "In infra/lib/auth-stack.ts, define: Cognito User Pool with email sign-in, User Pool Client for web app, configure JWT token generation.",

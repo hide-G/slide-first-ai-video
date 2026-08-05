@@ -3,18 +3,29 @@
   "version": "0.1.0",
   "private": true,
   "description": "API Lambda function",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "lint": "eslint src/",
-    "test": "echo 'No tests yet'"
+    "test": "vitest run"
   },
   "dependencies": {
     "@slide-first/shared-types": "workspace:*",
-    "@slide-first/core": "workspace:*"
+    "@slide-first/core": "workspace:*",
+    "@aws-sdk/client-dynamodb": "^3.600.0",
+    "@aws-sdk/lib-dynamodb": "^3.600.0",
+    "@aws-sdk/client-s3": "^3.600.0",
+    "@aws-sdk/s3-request-presigner": "^3.600.0",
+    "@aws-sdk/client-sfn": "^3.600.0",
+    "ulid": "^2.3.0",
+    "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
     "@types/node": "22.15.21",
     "typescript": "5.8.3",
+    "vitest": "3.1.4",
     "eslint": "9.28.0",
     "@eslint/js": "9.28.0",
     "typescript-eslint": "8.33.0"

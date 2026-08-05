@@ -2,7 +2,7 @@
   "id": "FEAT-005",
   "type": "feat",
   "description": "API Lambda handlers: Project CRUD, slide generation trigger, version retrieval, approval, video generation trigger, job status, and deliverables listing with Idempotency-Key support",
-  "status": "pending",
+  "status": "in_progress",
   "steps": [
     "In lambdas/api/src/handlers/projects.ts, implement POST /v1/projects handler: validates request body (title, theme, audience, duration, urls[]), generates projectId (ULID), creates DynamoDB item with userId (from Cognito sub in event.requestContext.authorizer), status DRAFT, createdAt. Returns 201 with projectId.",
     "In lambdas/api/src/handlers/slides.ts, implement POST /v1/projects/{id}/slides handler: validates project ownership, checks Idempotency-Key header, starts Content State Machine execution (Step Functions) with input {projectId, userId, theme, audience, duration, urls}. Creates Job record in DynamoDB. Returns 202 with jobId.",

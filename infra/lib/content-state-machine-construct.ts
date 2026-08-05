@@ -94,8 +94,18 @@ export class ContentStateMachineConstruct extends Construct {
 
     // Step 4: Parallel branches
     // Branch A: Invoke Marp Lambda for PDF/PPTX/PNG
+    // Payload transforms the state into the MarpRenderEvent shape the Lambda expects
     const invokeMarp = new tasks.LambdaInvoke(this, "InvokeMarpLambda", {
       lambdaFunction: props.marpLambda,
+      payload: sfn.TaskInput.fromObject({
+        "projectId.$": "$.projectId",
+        "userId.$": "$.userId",
+        "version.$": "$.versionNumber",
+        "deckMarkdown.$": "$.bedrockResult.Payload.rawMarkdown",
+        "s3Bucket.$": "$.s3Bucket",
+        "s3Prefix.$": "$.s3Prefix",
+        outputs: ["pdf", "pptx", "png"],
+      }),
       resultPath: "$.marpResult",
       retryOnServiceExceptions: true,
     });
@@ -107,8 +117,21 @@ export class ContentStateMachineConstruct extends Construct {
     });
 
     // Branch B: Map over slides -> Invoke Polly Worker Lambda for each slide
+    // Each iteration item is transformed into a PollyWorkerEvent
     const invokePolly = new tasks.LambdaInvoke(this, "InvokePollyWorker", {
       lambdaFunction: props.pollyWorkerLambda,
+      payload: sfn.TaskInput.fromObject({
+        "projectId.$": "$.projectId",
+        "userId.$": "$.userId",
+        "version.$": "$.versionNumber",
+        "slideNumber.$": "$$.Map.Item.Value.slideNumber",
+        "presenterNote.$": "$$.Map.Item.Value.presenterNote",
+        "voiceId.$": "$.voiceId",
+        "engine.$": "$.engine",
+        "sampleRate.$": "$.sampleRate",
+        "s3Bucket.$": "$.s3Bucket",
+        "s3Prefix.$": "$.s3Prefix",
+      }),
       resultPath: "$.pollyItemResult",
       retryOnServiceExceptions: true,
     });
@@ -120,7 +143,7 @@ export class ContentStateMachineConstruct extends Construct {
     });
 
     const pollyMapState = new sfn.Map(this, "PollyMapOverSlides", {
-      itemsPath: "$.slides",
+      itemsPath: "$.bedrockResult.Payload.slides",
       resultPath: "$.pollyResults",
       maxConcurrency: 5,
     });

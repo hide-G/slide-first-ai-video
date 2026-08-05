@@ -2,7 +2,7 @@
   "id": "FEAT-001",
   "type": "chore",
   "description": "Project scaffolding: pnpm workspace monorepo, TypeScript config, CDK app shell, shared types package, linting, and build tooling",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Initialize pnpm workspace at repo root with pnpm-workspace.yaml listing packages: packages/*, infra, lambdas/*",
     "Create root package.json with workspace scripts: build, test, lint, format. Use vitest for testing, eslint + prettier for linting.",
@@ -29,5 +29,5 @@
     "Run pnpm install && pnpm build && pnpm lint to confirm compilation and linting pass"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "Node.js 22.23.2 and pnpm 10.28.1 confirmed available. NODE_OPTIONS env var causes a proxy-bootstrap error in sandbox - must unset before running pnpm/node commands. esbuild build scripts are ignored by pnpm (warning only, does not block). aws-cdk-lib 2.189.0 installs successfully. All 22 unit tests pass (s3-keys, duration, idempotency). ESLint 9 flat config works with typescript-eslint 8.33.0."
 }

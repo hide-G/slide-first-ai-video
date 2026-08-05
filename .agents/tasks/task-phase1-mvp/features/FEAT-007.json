@@ -2,7 +2,7 @@
   "id": "FEAT-007",
   "type": "feat",
   "description": "Bedrock slide generation Lambda: uses Converse API to generate Marp Markdown with presenter notes and keyPoints, slide validation, and content state machine integration",
-  "status": "pending",
+  "status": "in_progress",
   "steps": [
     "In lambdas/slide-generator/src/index.ts, implement Lambda handler that: receives event with {projectId, userId, version, theme, audience, durationMinutes, urls[], s3Bucket, s3Prefix}. Calls Bedrock Converse API to generate Marp Markdown with presenter notes and keyPoints for each slide. Saves deck.md to S3. Returns slide metadata.",
     "In lambdas/slide-generator/src/prompts.ts, implement prompt templates for Bedrock: system prompt defining the Marp slide generation task (16:9, 1 point per slide, presenter notes in natural speaking voice, keyPoints array for each slide, importance rating, teaserNote). User prompt incorporating theme, audience, duration, and reference URLs content.",

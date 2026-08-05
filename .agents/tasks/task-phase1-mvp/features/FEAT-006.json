@@ -2,7 +2,7 @@
   "id": "FEAT-006",
   "type": "feat",
   "description": "CDK infrastructure: DynamoDB tables, S3 buckets, Lambda functions, API Gateway, Cognito, Step Functions state machines (content generation with parallel Marp+Polly, and render pipeline), and Hyperframes CDK Construct integration",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "In infra/lib/storage-stack.ts, define: S3 project bucket ({productSlug}-projects-{env}-{accountId}-{region}) with Block Public Access, AES256 encryption, lifecycle rules (7 days for intermediate chunks, retain approved content). DynamoDB tables: Projects (PK: userId, SK: projectId), Versions (PK: projectId, SK: version), Jobs (PK: jobId), Idempotency (PK: idempotencyKey, TTL: 24h).",
     "In infra/lib/auth-stack.ts, define: Cognito User Pool with email sign-in, User Pool Client for web app, configure JWT token generation.",
@@ -34,5 +34,5 @@
     "Run npx cdk synth --context productSlug=testapp --context env=dev in infra/ to confirm CloudFormation template generation succeeds"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "1. CDK Stack class has a built-in 'environment' property (returns aws://account/region string), so custom props must use a different name (envName) to avoid collision. 2. cdk.json updated to use compiled dist output (node dist/bin/app.js) instead of ts-node for reliability. 3. Added type:module to infra/package.json for ESM support. 4. vitest.config.ts must exclude cdk.out/ directory since CDK synth copies Lambda assets there which may contain test files. 5. CDK synth validates successfully, confirming all CloudFormation resources are well-formed. 6. All 209 tests pass across the workspace (27 CDK assertion tests added)."
 }

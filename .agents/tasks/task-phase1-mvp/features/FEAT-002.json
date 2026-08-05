@@ -2,7 +2,7 @@
   "id": "FEAT-002",
   "type": "feat",
   "description": "Core domain logic: Polly speech marks to captions conversion, VTT/SRT generation, audio duration measurement from PCM, and video manifest builder with timing resolution",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "In packages/core/src/captions/, implement speech marks parser: parse Polly JSON lines format (one JSON object per line with time, type, start, end, value fields) into structured SpeechMark[] array",
     "In packages/core/src/captions/, implement caption builder: group word-level speech marks into caption segments following rules from section 10.6 - max 20 chars per line, max 2 lines, min 1200ms display time, merge short segments, avoid splitting at particles (Japanese linguistic rules), highlight keyPoints words",
@@ -28,5 +28,5 @@
     "Run pnpm build to confirm type-checking passes"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "All 86 tests pass in packages/core. Build succeeds. Tests are co-located with source files using *.test.ts pattern. The existing duration.ts already had similar timing calculations but the new timing-resolver and manifest-builder modules provide the full integration needed for manifest construction. Caption builder enforces min-duration by merging segments rather than padding."
 }

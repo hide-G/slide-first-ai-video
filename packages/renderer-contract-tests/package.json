@@ -1,0 +1,33 @@
+{
+  "name": "@slide-first/renderer-contract-tests",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared contract test suite for VideoRenderer implementations",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint src/",
+    "test": "echo 'Tests are run in implementation packages'"
+  },
+  "dependencies": {
+    "@slide-first/shared-types": "workspace:*",
+    "@slide-first/renderer-port": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "5.8.3",
+    "vitest": "3.1.4",
+    "eslint": "9.28.0",
+    "@eslint/js": "9.28.0",
+    "typescript-eslint": "8.33.0"
+  },
+  "peerDependencies": {
+    "vitest": ">=3.0.0"
+  }
+}

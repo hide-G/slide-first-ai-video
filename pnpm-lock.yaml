@@ -201,6 +201,112 @@ importers:
         specifier: 3.1.4
         version: 3.1.4(@types/node@22.15.21)
 
+  packages/renderer-contract-tests:
+    dependencies:
+      '@slide-first/renderer-port':
+        specifier: workspace:*
+        version: link:../renderer-port
+      '@slide-first/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+    devDependencies:
+      '@eslint/js':
+        specifier: 9.28.0
+        version: 9.28.0
+      eslint:
+        specifier: 9.28.0
+        version: 9.28.0
+      typescript:
+        specifier: 5.8.3
+        version: 5.8.3
+      typescript-eslint:
+        specifier: 8.33.0
+        version: 8.33.0(eslint@9.28.0)(typescript@5.8.3)
+      vitest:
+        specifier: 3.1.4
+        version: 3.1.4(@types/node@22.15.21)
+
+  packages/renderer-ffmpeg:
+    dependencies:
+      '@slide-first/renderer-port':
+        specifier: workspace:*
+        version: link:../renderer-port
+      '@slide-first/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+    devDependencies:
+      '@eslint/js':
+        specifier: 9.28.0
+        version: 9.28.0
+      '@slide-first/renderer-contract-tests':
+        specifier: workspace:*
+        version: link:../renderer-contract-tests
+      '@types/node':
+        specifier: 22.15.21
+        version: 22.15.21
+      eslint:
+        specifier: 9.28.0
+        version: 9.28.0
+      typescript:
+        specifier: 5.8.3
+        version: 5.8.3
+      typescript-eslint:
+        specifier: 8.33.0
+        version: 8.33.0(eslint@9.28.0)(typescript@5.8.3)
+      vitest:
+        specifier: 3.1.4
+        version: 3.1.4(@types/node@22.15.21)
+
+  packages/renderer-hyperframes:
+    dependencies:
+      '@slide-first/renderer-port':
+        specifier: workspace:*
+        version: link:../renderer-port
+      '@slide-first/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+    devDependencies:
+      '@eslint/js':
+        specifier: 9.28.0
+        version: 9.28.0
+      '@slide-first/renderer-contract-tests':
+        specifier: workspace:*
+        version: link:../renderer-contract-tests
+      '@types/node':
+        specifier: 22.15.21
+        version: 22.15.21
+      eslint:
+        specifier: 9.28.0
+        version: 9.28.0
+      typescript:
+        specifier: 5.8.3
+        version: 5.8.3
+      typescript-eslint:
+        specifier: 8.33.0
+        version: 8.33.0(eslint@9.28.0)(typescript@5.8.3)
+      vitest:
+        specifier: 3.1.4
+        version: 3.1.4(@types/node@22.15.21)
+
+  packages/renderer-port:
+    dependencies:
+      '@slide-first/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+    devDependencies:
+      '@eslint/js':
+        specifier: 9.28.0
+        version: 9.28.0
+      eslint:
+        specifier: 9.28.0
+        version: 9.28.0
+      typescript:
+        specifier: 5.8.3
+        version: 5.8.3
+      typescript-eslint:
+        specifier: 8.33.0
+        version: 8.33.0(eslint@9.28.0)(typescript@5.8.3)
+
   packages/shared-types:
     devDependencies:
       '@eslint/js':

@@ -33,7 +33,7 @@ export class MainStack extends cdk.Stack {
     cdk.Tags.of(this).add("Product", props.productSlug);
     cdk.Tags.of(this).add("Environment", props.envName);
 
-    // Storage: S3 bucket and DynamoDB tables
+    // Storage: S3 bucket and DynamoDB single table
     const storage = new StorageConstruct(this, "Storage", {
       productSlug: props.productSlug,
       environment: props.envName,
@@ -92,6 +92,7 @@ export class MainStack extends cdk.Stack {
         pollyWorkerLambda: pollyWorker.handler,
         compositionBuilderLambda: compositionBuilder.handler,
         renderStateMachine: renderStateMachine.stateMachine,
+        table: storage.table,
       },
     );
 
@@ -100,10 +101,7 @@ export class MainStack extends cdk.Stack {
       productSlug: props.productSlug,
       environment: props.envName,
       userPool: auth.userPool,
-      projectsTable: storage.projectsTable,
-      versionsTable: storage.versionsTable,
-      jobsTable: storage.jobsTable,
-      idempotencyTable: storage.idempotencyTable,
+      table: storage.table,
       projectBucket: storage.projectBucket,
       contentStateMachine: contentStateMachine.stateMachine,
       renderStateMachine: renderStateMachine.stateMachine,

@@ -33,7 +33,7 @@ export class CompositionBuilderConstruct extends Construct {
       memorySize: 512,
       timeout: cdk.Duration.seconds(60),
       environment: {
-        PROJECT_BUCKET: props.projectBucket.bucketName,
+        BUCKET_NAME: props.projectBucket.bucketName,
       },
     });
 

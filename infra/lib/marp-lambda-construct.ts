@@ -28,14 +28,11 @@ export class MarpLambdaConstruct extends Construct {
       ephemeralStorageSize: cdk.Size.mebibytes(2048),
       timeout: cdk.Duration.minutes(5),
       environment: {
-        PROJECT_BUCKET: props.projectBucket.bucketName,
+        BUCKET_NAME: props.projectBucket.bucketName,
       },
     });
 
-    // Grant S3 write to slides/ and versions/ prefixes
-    props.projectBucket.grantWrite(this.handler, "slides/*");
-    props.projectBucket.grantWrite(this.handler, "versions/*");
-    // Also grant read for input markdown
-    props.projectBucket.grantRead(this.handler);
+    // Grant S3 read/write to all keys (actual keys are userId/projectId/versions/vNNNN/slides/...)
+    props.projectBucket.grantReadWrite(this.handler, "*");
   }
 }

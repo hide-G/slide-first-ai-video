@@ -2,6 +2,8 @@ import * as cdk from "aws-cdk-lib";
 import * as sfn from "aws-cdk-lib/aws-stepfunctions";
 import * as tasks from "aws-cdk-lib/aws-stepfunctions-tasks";
 import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as sqs from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
 
 export interface ContentStateMachineConstructProps {
@@ -11,15 +13,22 @@ export interface ContentStateMachineConstructProps {
   pollyWorkerLambda: lambda.IFunction;
   compositionBuilderLambda: lambda.IFunction;
   renderStateMachine: sfn.StateMachine;
+  table: dynamodb.Table;
 }
 
 /**
  * Content State Machine: Step Functions Standard state machine for content generation.
- * Flow: Bedrock generation -> Save to S3 -> Parallel (Marp + Polly) ->
- *   Timing Resolver -> Caption Generator -> Composition Builder -> Start Render.
+ * Flow: Bedrock generation -> Save to S3 -> WaitForApproval (callback token) ->
+ *   Parallel (Marp + Polly) -> Timing Resolver -> Caption Generator ->
+ *   Composition Builder -> Start Render.
+ *
+ * The WaitForApproval step uses a callback token pattern: the state machine pauses
+ * and stores the task token. When the user calls POST /approve, the API sends
+ * SendTaskSuccess with the stored token to resume execution.
  */
 export class ContentStateMachineConstruct extends Construct {
   public readonly stateMachine: sfn.StateMachine;
+  public readonly approvalQueue: sqs.Queue;
 
   constructor(
     scope: Construct,
@@ -29,6 +38,13 @@ export class ContentStateMachineConstruct extends Construct {
     super(scope, id);
 
     const { productSlug, environment } = props;
+
+    // SQS queue for approval callback tokens
+    this.approvalQueue = new sqs.Queue(this, "ApprovalQueue", {
+      queueName: `${productSlug}-${environment}-approval-queue`,
+      visibilityTimeout: cdk.Duration.seconds(30),
+      retentionPeriod: cdk.Duration.days(14),
+    });
 
     // Step 1: Invoke Bedrock for Marp generation (placeholder Task state)
     const generateContent = new sfn.Pass(this, "GenerateContent", {
@@ -42,11 +58,26 @@ export class ContentStateMachineConstruct extends Construct {
       resultPath: "$.saveDeckResult",
     });
 
-    // Step 3: Wait for approval (callback pattern or separate trigger)
-    const waitForApproval = new sfn.Pass(this, "WaitForApproval", {
-      comment: "Wait for approval via callback or external trigger",
-      resultPath: "$.approvalResult",
-    });
+    // Step 3: Wait for approval via SQS callback token pattern
+    // The task token is sent to SQS. The API reads it and calls SendTaskSuccess
+    // when the user approves the version.
+    const waitForApproval = new tasks.SqsSendMessage(
+      this,
+      "WaitForApproval",
+      {
+        queue: this.approvalQueue,
+        messageBody: sfn.TaskInput.fromObject({
+          "taskToken": sfn.JsonPath.taskToken,
+          "projectId.$": "$.projectId",
+          "userId.$": "$.userId",
+          "versionNumber.$": "$.versionNumber",
+        }),
+        integrationPattern: sfn.IntegrationPattern.WAIT_FOR_TASK_TOKEN,
+        resultPath: "$.approvalResult",
+        comment:
+          "Pause execution until user approves slides. Task token stored in SQS for the approve API to retrieve.",
+      },
+    );
 
     // Step 4: Parallel branches
     // Branch A: Invoke Marp Lambda for PDF/PPTX/PNG

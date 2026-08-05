@@ -9,14 +9,16 @@ export interface StorageConstructProps {
 }
 
 /**
- * Storage construct: S3 project bucket and DynamoDB tables.
+ * Storage construct: S3 project bucket and DynamoDB single table.
+ *
+ * Uses single-table design with composite keys:
+ *   PK (string) - partition key (e.g., PROJECT#id, JOB#id, IDEMPOTENCY#key)
+ *   SK (string) - sort key (e.g., META, VERSION#0001)
+ *   GSI1PK/GSI1SK - for access patterns like user's projects, project's jobs
  */
 export class StorageConstruct extends Construct {
   public readonly projectBucket: s3.Bucket;
-  public readonly projectsTable: dynamodb.Table;
-  public readonly versionsTable: dynamodb.Table;
-  public readonly jobsTable: dynamodb.Table;
-  public readonly idempotencyTable: dynamodb.Table;
+  public readonly table: dynamodb.Table;
 
   constructor(scope: Construct, id: string, props: StorageConstructProps) {
     super(scope, id);
@@ -38,42 +40,22 @@ export class StorageConstruct extends Construct {
       ],
     });
 
-    // DynamoDB: Projects table (PK: userId, SK: projectId)
-    this.projectsTable = new dynamodb.Table(this, "ProjectsTable", {
-      tableName: `${productSlug}-${environment}-projects`,
-      partitionKey: { name: "userId", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "projectId", type: dynamodb.AttributeType.STRING },
+    // DynamoDB: Single table design (PK: string, SK: string)
+    this.table = new dynamodb.Table(this, "Table", {
+      tableName: `${productSlug}-${environment}-table`,
+      partitionKey: { name: "PK", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "SK", type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
-    });
-
-    // DynamoDB: Versions table (PK: projectId, SK: version)
-    this.versionsTable = new dynamodb.Table(this, "VersionsTable", {
-      tableName: `${productSlug}-${environment}-versions`,
-      partitionKey: { name: "projectId", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "version", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-    });
-
-    // DynamoDB: Jobs table (PK: jobId)
-    this.jobsTable = new dynamodb.Table(this, "JobsTable", {
-      tableName: `${productSlug}-${environment}-jobs`,
-      partitionKey: { name: "jobId", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-    });
-
-    // DynamoDB: Idempotency table (PK: idempotencyKey, TTL: 24h)
-    this.idempotencyTable = new dynamodb.Table(this, "IdempotencyTable", {
-      tableName: `${productSlug}-${environment}-idempotency`,
-      partitionKey: {
-        name: "idempotencyKey",
-        type: dynamodb.AttributeType.STRING,
-      },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
       timeToLiveAttribute: "ttl",
+    });
+
+    // GSI for access patterns: user's projects, project's jobs
+    this.table.addGlobalSecondaryIndex({
+      indexName: "GSI1",
+      partitionKey: { name: "GSI1PK", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "GSI1SK", type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
     });
   }
 }

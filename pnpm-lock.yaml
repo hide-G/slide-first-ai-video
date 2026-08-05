@@ -233,6 +233,43 @@ importers:
         specifier: 3.1.4
         version: 3.1.4(@types/node@22.15.21)
 
+  lambdas/render-worker:
+    dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.600.0
+        version: 3.1103.0
+      '@slide-first/renderer-ffmpeg':
+        specifier: workspace:*
+        version: link:../../packages/renderer-ffmpeg
+      '@slide-first/renderer-port':
+        specifier: workspace:*
+        version: link:../../packages/renderer-port
+      '@slide-first/shared-types':
+        specifier: workspace:*
+        version: link:../../packages/shared-types
+    devDependencies:
+      '@eslint/js':
+        specifier: 9.28.0
+        version: 9.28.0
+      '@types/aws-lambda':
+        specifier: ^8.10.145
+        version: 8.10.162
+      '@types/node':
+        specifier: 22.15.21
+        version: 22.15.21
+      eslint:
+        specifier: 9.28.0
+        version: 9.28.0
+      typescript:
+        specifier: 5.8.3
+        version: 5.8.3
+      typescript-eslint:
+        specifier: 8.33.0
+        version: 8.33.0(eslint@9.28.0)(typescript@5.8.3)
+      vitest:
+        specifier: 3.1.4
+        version: 3.1.4(@types/node@22.15.21)
+
   lambdas/slide-generator:
     dependencies:
       '@aws-sdk/client-bedrock-runtime':

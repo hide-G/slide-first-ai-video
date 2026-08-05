@@ -12,7 +12,7 @@ export interface PollyWorkerConstructProps {
 
 /**
  * Polly Worker construct: Lambda function for speech synthesis.
- * Memory 512MB, timeout 60s. IAM: polly:SynthesizeSpeech, S3 write to audio/ prefix.
+ * Memory 512MB, timeout 60s. IAM: polly:SynthesizeSpeech, S3 write to all keys.
  */
 export class PollyWorkerConstruct extends Construct {
   public readonly handler: lambda.Function;
@@ -30,7 +30,7 @@ export class PollyWorkerConstruct extends Construct {
       memorySize: 512,
       timeout: cdk.Duration.seconds(60),
       environment: {
-        PROJECT_BUCKET: props.projectBucket.bucketName,
+        BUCKET_NAME: props.projectBucket.bucketName,
       },
     });
 
@@ -43,8 +43,8 @@ export class PollyWorkerConstruct extends Construct {
       }),
     );
 
-    // Grant S3 write to audio/ prefix
-    props.projectBucket.grantWrite(this.handler, "audio/*");
+    // Grant S3 write to all keys (actual keys are userId/projectId/versions/vNNNN/audio/...)
+    props.projectBucket.grantWrite(this.handler, "*");
     // Grant S3 read for input text
     props.projectBucket.grantRead(this.handler);
   }

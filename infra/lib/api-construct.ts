@@ -11,10 +11,7 @@ export interface ApiConstructProps {
   productSlug: string;
   environment: string;
   userPool: cognito.UserPool;
-  projectsTable: dynamodb.Table;
-  versionsTable: dynamodb.Table;
-  jobsTable: dynamodb.Table;
-  idempotencyTable: dynamodb.Table;
+  table: dynamodb.Table;
   projectBucket: s3.Bucket;
   contentStateMachine: sfn.StateMachine;
   renderStateMachine: sfn.StateMachine;
@@ -41,21 +38,15 @@ export class ApiConstruct extends Construct {
       memorySize: 512,
       timeout: cdk.Duration.seconds(30),
       environment: {
-        PROJECTS_TABLE: props.projectsTable.tableName,
-        VERSIONS_TABLE: props.versionsTable.tableName,
-        JOBS_TABLE: props.jobsTable.tableName,
-        IDEMPOTENCY_TABLE: props.idempotencyTable.tableName,
-        PROJECT_BUCKET: props.projectBucket.bucketName,
+        TABLE_NAME: props.table.tableName,
+        BUCKET_NAME: props.projectBucket.bucketName,
         CONTENT_STATE_MACHINE_ARN: props.contentStateMachine.stateMachineArn,
-        RENDER_STATE_MACHINE_ARN: props.renderStateMachine.stateMachineArn,
+        VIDEO_STATE_MACHINE_ARN: props.renderStateMachine.stateMachineArn,
       },
     });
 
     // Grant DynamoDB access
-    props.projectsTable.grantReadWriteData(this.apiHandler);
-    props.versionsTable.grantReadWriteData(this.apiHandler);
-    props.jobsTable.grantReadWriteData(this.apiHandler);
-    props.idempotencyTable.grantReadWriteData(this.apiHandler);
+    props.table.grantReadWriteData(this.apiHandler);
 
     // Grant S3 read access
     props.projectBucket.grantRead(this.apiHandler);

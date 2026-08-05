@@ -62,45 +62,40 @@ describe("MainStack - Storage", () => {
     });
   });
 
-  it("creates Projects DynamoDB table with correct keys", () => {
+  it("creates single DynamoDB table with PK/SK keys", () => {
     const template = createTestStack();
 
     template.hasResourceProperties("AWS::DynamoDB::Table", {
-      TableName: "testapp-dev-projects",
+      TableName: "testapp-dev-table",
       KeySchema: [
-        { AttributeName: "userId", KeyType: "HASH" },
-        { AttributeName: "projectId", KeyType: "RANGE" },
+        { AttributeName: "PK", KeyType: "HASH" },
+        { AttributeName: "SK", KeyType: "RANGE" },
       ],
     });
   });
 
-  it("creates Versions DynamoDB table with correct keys", () => {
+  it("creates DynamoDB table with GSI1 for access patterns", () => {
     const template = createTestStack();
 
     template.hasResourceProperties("AWS::DynamoDB::Table", {
-      TableName: "testapp-dev-versions",
-      KeySchema: [
-        { AttributeName: "projectId", KeyType: "HASH" },
-        { AttributeName: "version", KeyType: "RANGE" },
-      ],
+      TableName: "testapp-dev-table",
+      GlobalSecondaryIndexes: Match.arrayWith([
+        Match.objectLike({
+          IndexName: "GSI1",
+          KeySchema: [
+            { AttributeName: "GSI1PK", KeyType: "HASH" },
+            { AttributeName: "GSI1SK", KeyType: "RANGE" },
+          ],
+        }),
+      ]),
     });
   });
 
-  it("creates Jobs DynamoDB table with correct key", () => {
+  it("creates DynamoDB table with TTL enabled", () => {
     const template = createTestStack();
 
     template.hasResourceProperties("AWS::DynamoDB::Table", {
-      TableName: "testapp-dev-jobs",
-      KeySchema: [{ AttributeName: "jobId", KeyType: "HASH" }],
-    });
-  });
-
-  it("creates Idempotency DynamoDB table with TTL", () => {
-    const template = createTestStack();
-
-    template.hasResourceProperties("AWS::DynamoDB::Table", {
-      TableName: "testapp-dev-idempotency",
-      KeySchema: [{ AttributeName: "idempotencyKey", KeyType: "HASH" }],
+      TableName: "testapp-dev-table",
       TimeToLiveSpecification: {
         AttributeName: "ttl",
         Enabled: true,
@@ -108,9 +103,9 @@ describe("MainStack - Storage", () => {
     });
   });
 
-  it("creates 4 DynamoDB tables total", () => {
+  it("creates 1 DynamoDB table (single-table design)", () => {
     const template = createTestStack();
-    template.resourceCountIs("AWS::DynamoDB::Table", 4);
+    template.resourceCountIs("AWS::DynamoDB::Table", 1);
   });
 });
 
@@ -287,6 +282,30 @@ describe("MainStack - Step Functions", () => {
     expect(definitionStr).toContain("Parallel");
   });
 
+  it("content state machine has callback-token approval step", () => {
+    const template = createTestStack();
+
+    const stateMachines = template.findResources(
+      "AWS::StepFunctions::StateMachine",
+      {
+        Properties: {
+          StateMachineName: "testapp-dev-content-generation",
+        },
+      },
+    );
+
+    const smKeys = Object.keys(stateMachines);
+    expect(smKeys.length).toBe(1);
+
+    const definition =
+      stateMachines[smKeys[0]].Properties.DefinitionString["Fn::Join"][1];
+    const definitionStr = definition.join("");
+
+    // Verify the approval step uses waitForTaskToken pattern (SQS send)
+    expect(definitionStr).toContain("WaitForApproval");
+    expect(definitionStr).toContain(".waitForTaskToken");
+  });
+
   it("render state machine has Map state for parallel chunk rendering", () => {
     const template = createTestStack();
 
@@ -311,6 +330,16 @@ describe("MainStack - Step Functions", () => {
   });
 });
 
+describe("MainStack - SQS", () => {
+  it("creates approval queue for callback token pattern", () => {
+    const template = createTestStack();
+
+    template.hasResourceProperties("AWS::SQS::Queue", {
+      QueueName: "testapp-dev-approval-queue",
+    });
+  });
+});
+
 describe("MainStack - CloudFront", () => {
   it("creates CloudFront distribution", () => {
     const template = createTestStack();
@@ -330,5 +359,72 @@ describe("MainStack - CloudFront", () => {
       "AWS::CloudFront::OriginAccessControl",
       1,
     );
+  });
+});
+
+describe("MainStack - Environment Variables", () => {
+  it("API Lambda has TABLE_NAME env var", () => {
+    const template = createTestStack();
+
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      FunctionName: "testapp-dev-api",
+      Environment: {
+        Variables: Match.objectLike({
+          TABLE_NAME: Match.anyValue(),
+        }),
+      },
+    });
+  });
+
+  it("API Lambda has BUCKET_NAME env var", () => {
+    const template = createTestStack();
+
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      FunctionName: "testapp-dev-api",
+      Environment: {
+        Variables: Match.objectLike({
+          BUCKET_NAME: Match.anyValue(),
+        }),
+      },
+    });
+  });
+
+  it("API Lambda has VIDEO_STATE_MACHINE_ARN env var", () => {
+    const template = createTestStack();
+
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      FunctionName: "testapp-dev-api",
+      Environment: {
+        Variables: Match.objectLike({
+          VIDEO_STATE_MACHINE_ARN: Match.anyValue(),
+        }),
+      },
+    });
+  });
+
+  it("Render Lambda has BUCKET_NAME env var", () => {
+    const template = createTestStack();
+
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      FunctionName: "testapp-dev-renderer",
+      Environment: {
+        Variables: Match.objectLike({
+          BUCKET_NAME: Match.anyValue(),
+        }),
+      },
+    });
+  });
+
+  it("Polly Worker has BUCKET_NAME env var", () => {
+    const template = createTestStack();
+
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      FunctionName: "testapp-dev-polly-worker",
+      Environment: {
+        Variables: Match.objectLike({
+          BUCKET_NAME: Match.anyValue(),
+        }),
+      },
+    });
   });
 });

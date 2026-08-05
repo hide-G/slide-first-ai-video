@@ -1,0 +1,32 @@
+{
+  "id": "FEAT-007",
+  "type": "feat",
+  "description": "Bedrock slide generation Lambda: uses Converse API to generate Marp Markdown with presenter notes and keyPoints, slide validation, and content state machine integration",
+  "status": "completed",
+  "steps": [
+    "In lambdas/slide-generator/src/index.ts, implement Lambda handler that: receives event with {projectId, userId, version, theme, audience, durationMinutes, urls[], s3Bucket, s3Prefix}. Calls Bedrock Converse API to generate Marp Markdown with presenter notes and keyPoints for each slide. Saves deck.md to S3. Returns slide metadata.",
+    "In lambdas/slide-generator/src/prompts.ts, implement prompt templates for Bedrock: system prompt defining the Marp slide generation task (16:9, 1 point per slide, presenter notes in natural speaking voice, keyPoints array for each slide, importance rating, teaserNote). User prompt incorporating theme, audience, duration, and reference URLs content.",
+    "In lambdas/slide-generator/src/bedrock-client.ts, implement Bedrock Converse API wrapper using @aws-sdk/client-bedrock-runtime: ConverseCommand with modelId from config (not hardcoded), maxTokens set appropriately (8000 for slide generation), system/user message structure. Parse response to extract generated Marp markdown.",
+    "In lambdas/slide-generator/src/parser.ts, implement Marp output parser: extract individual slides (split on ---), extract presenter notes (<!-- ... --> blocks after each slide), extract keyPoints from structured output, validate Marp frontmatter (marp: true, theme, paginate).",
+    "In lambdas/slide-generator/src/validator.ts, implement slide validation from design section 19.1: check slide count reasonable for duration (roughly 1 slide per 15-20 seconds), verify all slides have presenter notes, verify all slides have keyPoints array, verify presenter notes <= 3000 chars per slide (Polly limit), check no oversized text that would overflow slides, validate Marp frontmatter is present.",
+    "In lambdas/slide-generator/src/notes-extractor.ts, implement presenter notes extraction: parse Marpit-format notes (HTML comments after slide separator), return structured array [{slideNumber, presenterNote, keyPoints, importance, teaserNote}]",
+    "Write unit tests: test prompt construction with various inputs, test Marp parsing with multi-slide documents, test validation rules (character limits, required fields), test notes extraction with real Marp format examples"
+  ],
+  "acceptance_criteria": [
+    "Bedrock Converse API is called with modelId from config, not hardcoded",
+    "maxTokens is explicitly set on all Bedrock calls",
+    "Generated Marp markdown includes frontmatter with marp: true",
+    "Presenter notes are extracted correctly from Marpit HTML comment format",
+    "Each slide has keyPoints, importance, and teaserNote in output",
+    "Validation rejects slides with presenter notes > 3000 chars",
+    "Validation rejects slides without presenter notes or keyPoints",
+    "Parser handles edge cases (code blocks with ---, nested comments)",
+    "Unit tests pass for all components"
+  ],
+  "verification": [
+    "Run pnpm test to confirm slide generator tests pass",
+    "Run pnpm build to confirm compilation succeeds"
+  ],
+  "blocked_reason": null,
+  "findings": "50 tests added (259 total project tests now pass). Lambda follows same pattern as polly-worker. pnpm-workspace.yaml already covers lambdas/* glob so no change needed. The slide-generator uses BEDROCK_MODEL_ID and BEDROCK_MAX_TOKENS env vars for config. Parser handles code blocks with --- correctly via code-fence tracking state machine."
+}

@@ -1,0 +1,36 @@
+{
+  "id": "FEAT-008",
+  "type": "feat",
+  "description": "Golden set evaluation framework: define 10 representative LT themes as fixtures, implement quality evaluation checks (URL reachability, structure scoring, note completeness, character limits), and CI integration script",
+  "status": "completed",
+  "steps": [
+    "In packages/evaluation/src/golden-set/, create fixture files for 10 representative LT themes as specified in design section 21.1. Each fixture has: {id, theme, audience, duration, urls[], expectedStructure (problem/solution/evidence/summary), prohibitedExpressions[], expectedSlideCountRange}. Themes should cover: technical explanation, new feature intro, case study, comparison, tutorial, architecture overview, best practices, migration guide, tool introduction, performance optimization.",
+    "In packages/evaluation/src/checks/url-reachability.ts, implement check that extracts all URLs from generated markdown and verifies they resolve (HEAD request). Returns {totalUrls, reachableCount, unreachableUrls[]}. Note: this check requires network access and should be marked as integration-only.",
+    "In packages/evaluation/src/checks/structure-scoring.ts, implement check that evaluates slide deck structure: presence of problem statement, proposed solution, supporting evidence, summary/conclusion. Use simple heuristic matching (keyword detection in slide titles and content) rather than LLM for CI speed. Returns score 1-5.",
+    "In packages/evaluation/src/checks/note-completeness.ts, implement check that verifies: every slide has presenterNote (non-empty), every slide has keyPoints array with at least 1 item, no presenterNote exceeds 3000 chars. Returns {totalSlides, slidesWithNotes, slidesWithKeyPoints, oversizedNotes[]}.",
+    "In packages/evaluation/src/checks/character-limits.ts, implement check that verifies per-slide text constraints: title line count, body text density, code block size. Returns violations array.",
+    "In packages/evaluation/src/checks/prohibited-expressions.ts, implement check for forbidden patterns: exaggerated claims, unqualified absolutes, marketing language without evidence. Configurable pattern list per fixture.",
+    "In packages/evaluation/src/runner.ts, implement evaluation runner: takes generated markdown + fixture definition, runs all applicable checks, produces evaluation report with pass/fail per check and overall verdict based on thresholds from design section 21.2.",
+    "In packages/evaluation/src/cli.ts, create CLI entry point that can be called from CI: reads golden set fixtures, for each fixture generates expected evaluation inputs (mock or previously generated deck.md samples as baselines), runs evaluation checks, exits with non-zero if any threshold is breached.",
+    "Add evaluation script to root package.json: 'eval' script that runs the golden set evaluation. Add to CI pipeline definition.",
+    "Write unit tests for each check module with known-good and known-bad markdown inputs"
+  ],
+  "acceptance_criteria": [
+    "10 golden set fixtures are defined covering diverse LT themes",
+    "URL reachability check correctly identifies unreachable URLs",
+    "Structure scoring check gives 4+ to well-structured decks and <4 to poorly structured ones",
+    "Note completeness check detects missing notes and oversized notes",
+    "Character limit check detects text overflow violations",
+    "Prohibited expression check catches exaggerated language",
+    "Evaluation runner produces structured report with pass/fail per check",
+    "CLI exits with non-zero when thresholds are breached",
+    "All evaluation unit tests pass with pnpm test"
+  ],
+  "verification": [
+    "Run pnpm test to confirm evaluation framework tests pass",
+    "Run pnpm build to confirm compilation",
+    "Run pnpm eval (or equivalent) with sample fixture to confirm runner executes checks"
+  ],
+  "blocked_reason": null,
+  "findings": "All 50 evaluation tests pass. pnpm build and pnpm test pass for the full workspace. pnpm eval runs successfully with 3 baselines passing. The Marp front-matter section is detected and skipped by the note-completeness check. URL reachability check uses a dependency-injected fetch function for testability without network access. Structure scoring uses keyword heuristics (score 1-5 with bonus for complete narrative). The __dirname approach was used instead of import.meta for CJS/Node16 module compatibility."
+}

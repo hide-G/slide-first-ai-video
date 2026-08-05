@@ -1,0 +1,33 @@
+{
+  "id": "FEAT-001",
+  "type": "chore",
+  "description": "Project scaffolding: pnpm workspace monorepo, TypeScript config, CDK app shell, shared types package, linting, and build tooling",
+  "status": "completed",
+  "steps": [
+    "Initialize pnpm workspace at repo root with pnpm-workspace.yaml listing packages: packages/*, infra, lambdas/*",
+    "Create root package.json with workspace scripts: build, test, lint, format. Use vitest for testing, eslint + prettier for linting.",
+    "Create root tsconfig.json with strict mode, ES2022 target, Node22 module resolution. Create tsconfig.build.json extending it.",
+    "Create packages/shared-types/ package with TypeScript interfaces from the design doc: VideoRenderer port (plan/renderChunk/assemble), RenderInput, RenderPlan, ChunkResult, RenderOutput, VideoManifest (schemaVersion, deckId, deckVersion, locale, voice, outputs, captions, slides array with all fields from section 9), Project, Version, Job state types, API request/response types",
+    "Create packages/core/ package for shared business logic: S3 key builders following the S3 structure from section 16 ({productSlug}-{purpose}-{env}-{accountId}-{region}/{userId}/{projectId}/versions/v{NNNN}/...), duration calculation (measuredAudioMs + leadInMs + leadOutMs = durationMs, cumulative startMs), idempotency utilities",
+    "Create infra/ directory with CDK app entry point (bin/app.ts) and a placeholder main stack. Use productSlug from CDK context. Configure cdk.json with context defaults.",
+    "Create lambdas/ directory structure with placeholder directories: lambdas/marp-render/, lambdas/polly-worker/, lambdas/composition-builder/, lambdas/api/",
+    "Create config/ directory with parameter.ts for environment-specific config (dev/stg/prd) including productSlug, AWS region, model IDs, voice settings",
+    "Add .gitignore, .nvmrc (22), and a root README.md referencing the design document",
+    "Verify: run pnpm install, pnpm build, pnpm lint, pnpm test (no tests yet but should not error)"
+  ],
+  "acceptance_criteria": [
+    "pnpm install succeeds with no errors",
+    "pnpm build compiles all TypeScript packages without errors",
+    "pnpm lint runs without errors on the scaffolded code",
+    "packages/shared-types exports VideoRenderer interface with plan/renderChunk/assemble methods",
+    "packages/shared-types exports VideoManifest type matching section 9 of design doc",
+    "packages/core exports S3 key builder functions",
+    "infra/bin/app.ts reads productSlug from CDK context",
+    "config/parameter.ts exports environment configs for dev/stg/prd"
+  ],
+  "verification": [
+    "Run pnpm install && pnpm build && pnpm lint to confirm compilation and linting pass"
+  ],
+  "blocked_reason": null,
+  "findings": "Node.js 22.23.2 and pnpm 10.28.1 confirmed available. NODE_OPTIONS env var causes a proxy-bootstrap error in sandbox - must unset before running pnpm/node commands. esbuild build scripts are ignored by pnpm (warning only, does not block). aws-cdk-lib 2.189.0 installs successfully. All 22 unit tests pass (s3-keys, duration, idempotency). ESLint 9 flat config works with typescript-eslint 8.33.0."
+}

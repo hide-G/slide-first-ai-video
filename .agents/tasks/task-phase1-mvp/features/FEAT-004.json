@@ -1,0 +1,32 @@
+{
+  "id": "FEAT-004",
+  "type": "feat",
+  "description": "Lambda function implementations: Polly worker (audio + speech marks), Marp render handler (PDF/PPTX/PNG generation logic), and Composition builder (Hyperframes index.html generation)",
+  "status": "completed",
+  "steps": [
+    "In lambdas/polly-worker/src/index.ts, implement Lambda handler that: receives event with {projectId, userId, version, slideNumber, presenterNote, voiceId, engine, sampleRate, s3Bucket, s3Prefix}. Makes two Polly SynthesizeSpeech calls via AWS SDK v3 @aws-sdk/client-polly: (1) OutputFormat pcm with the text, (2) OutputFormat json with SpeechMarkTypes [word, sentence]. Validates text length <= 3000 billable chars. Uploads PCM to audio/slide-{NNN}.pcm and marks to audio/slide-{NNN}-marks.json in S3. Calculates measuredAudioMs from PCM file size. Returns {slideNumber, voiceKey, speechMarksKey, measuredAudioMs}.",
+    "In lambdas/polly-worker/src/ssml.ts, implement SSML builder: wraps presenter note text in <speak> tags, adds prosody rate if specified, handles Japanese phoneme corrections for AWS service names via lexicon references",
+    "In lambdas/marp-render/src/index.ts, implement Lambda handler that: receives event with {projectId, userId, version, deckMarkdown, s3Bucket, s3Prefix, outputs: ['pdf', 'pptx', 'png']}. Note: this Lambda will run as container image with Marp CLI + Chromium. Handler writes deck.md to /tmp, executes marp CLI commands via child_process for each output format. Uploads results to S3 following the key structure: versions/v{NNNN}/deck.pdf, deck.pptx, slides/deck.{NNN}.png. Returns {pdfKey, pptxKey, slideImageKeys: string[]}.",
+    "In lambdas/marp-render/src/marp-commands.ts, implement command builders: marp --pdf deck.md, marp --pptx deck.md, marp --images png --image-scale 2 deck.md. Handle stdout/stderr for error detection.",
+    "In lambdas/marp-render/Dockerfile, create container image definition: FROM public.ecr.aws/lambda/nodejs:22, install chromium, marp-cli, noto-sans-cjk fonts. Set Lambda handler entry point.",
+    "In lambdas/composition-builder/src/index.ts, implement Lambda handler that: receives event with {manifest: VideoManifest, s3Bucket, s3Prefix, assetsPrefix}. Generates Hyperframes-compatible index.html with: <div> stage element with data-composition-id, data-width, data-height, data-fps. For each slide: <img> with data-start (seconds), data-duration (seconds), src pointing to PNG. <audio> with matching timing and src pointing to audio file. Caption overlay divs with timing. Returns {compositionKey, assetsManifest}.",
+    "In lambdas/composition-builder/src/html-builder.ts, implement the HTML composition template generation following design section 11.1: stage div with composition metadata attributes, slide images as clips with timing, audio elements with timing, caption overlay with synchronized text",
+    "Write unit tests for each Lambda: test Polly worker with mocked @aws-sdk/client-polly (verify correct API params, PCM size calculation), test Marp render with mocked child_process (verify command construction), test composition builder with sample manifest (verify HTML structure and timing calculations)"
+  ],
+  "acceptance_criteria": [
+    "Polly worker handler validates 3000 char limit and returns error for oversized text",
+    "Polly worker makes two separate SynthesizeSpeech calls (pcm + json speech marks)",
+    "Polly worker calculates measuredAudioMs from PCM byte count (bytes / 2 / 24000 * 1000)",
+    "Marp render handler constructs correct marp CLI commands for pdf, pptx, and png outputs",
+    "Marp render Dockerfile installs chromium, marp-cli, and Noto Sans CJK fonts",
+    "Composition builder generates valid HTML with correct timing attributes from manifest",
+    "All Lambda unit tests pass with pnpm test",
+    "pnpm build compiles all lambda packages"
+  ],
+  "verification": [
+    "Run pnpm test to confirm all Lambda unit tests pass",
+    "Run pnpm build to confirm TypeScript compilation succeeds"
+  ],
+  "blocked_reason": null,
+  "findings": "All 38 new Lambda tests pass (17 polly-worker, 9 marp-render, 12 composition-builder). Total project tests: 155 passing. AWS SDK v3 requires casting voiceId and engine strings to VoiceId/Engine types. The Polly SpeechMarkTypes requires array literal ['word', 'sentence']. The util.promisify pattern is used for child_process.execFile in marp-commands."
+}

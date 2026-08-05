@@ -1,0 +1,36 @@
+{
+  "id": "FEAT-005",
+  "type": "feat",
+  "description": "API Lambda handlers: Project CRUD, slide generation trigger, version retrieval, approval, video generation trigger, job status, and deliverables listing with Idempotency-Key support",
+  "status": "completed",
+  "steps": [
+    "In lambdas/api/src/handlers/projects.ts, implement POST /v1/projects handler: validates request body (title, theme, audience, duration, urls[]), generates projectId (ULID), creates DynamoDB item with userId (from Cognito sub in event.requestContext.authorizer), status DRAFT, createdAt. Returns 201 with projectId.",
+    "In lambdas/api/src/handlers/slides.ts, implement POST /v1/projects/{id}/slides handler: validates project ownership, checks Idempotency-Key header, starts Content State Machine execution (Step Functions) with input {projectId, userId, theme, audience, duration, urls}. Creates Job record in DynamoDB. Returns 202 with jobId.",
+    "In lambdas/api/src/handlers/versions.ts, implement GET /v1/projects/{id}/versions/{version} handler: validates ownership, reads deck.md from S3 (versions/v{NNNN}/deck.md), returns markdown content and metadata (status, slideCount, createdAt).",
+    "In lambdas/api/src/handlers/approve.ts, implement POST /v1/projects/{id}/versions/{version}/approve handler: validates ownership, validates version is in SLIDE_READY state, transitions to SLIDE_APPROVED in DynamoDB, returns 200.",
+    "In lambdas/api/src/handlers/videos.ts, implement POST /v1/projects/{id}/videos handler: validates project ownership, validates version is SLIDE_APPROVED, checks Idempotency-Key, starts video generation Step Functions execution. Creates Job record. Returns 202 with jobId.",
+    "In lambdas/api/src/handlers/jobs.ts, implement GET /v1/jobs/{jobId} handler: reads Job from DynamoDB, returns {jobId, projectId, status, progress (stage-specific message from design section 14 state mapping), error, createdAt, updatedAt}.",
+    "In lambdas/api/src/handlers/deliverables.ts, implement GET /v1/projects/{id}/deliverables handler: validates ownership, queries S3 for available artifacts in the version prefix, generates presigned URLs (15 min expiry) for each deliverable. Returns array of {type: 'pdf'|'pptx'|'mp4'|'vtt'|'srt', filename, url, size, createdAt}.",
+    "In lambdas/api/src/middleware/, implement shared middleware: Cognito auth extraction (userId from sub claim), Idempotency-Key check against DynamoDB (conditional put with key as partition key), request validation with zod schemas, error response formatting (4xx/5xx with structured error body).",
+    "In lambdas/api/src/db/, implement DynamoDB operations: ProjectRepository (create, get, updateStatus), VersionRepository (create, get, approve), JobRepository (create, get, updateProgress), IdempotencyRepository (putIfAbsent, get). Use @aws-sdk/client-dynamodb and @aws-sdk/lib-dynamodb.",
+    "Write unit tests for each handler with mocked DynamoDB and S3 clients: test authorization checks, idempotency behavior, state transition validation, error responses"
+  ],
+  "acceptance_criteria": [
+    "POST /v1/projects creates a project and returns 201 with projectId",
+    "POST /v1/projects/{id}/slides returns 202 and creates a Job record",
+    "GET /v1/projects/{id}/versions/{version} returns deck markdown and metadata",
+    "POST /v1/projects/{id}/versions/{version}/approve transitions state to SLIDE_APPROVED",
+    "POST /v1/projects/{id}/videos validates SLIDE_APPROVED state before starting",
+    "GET /v1/jobs/{jobId} returns progress with stage-specific messages",
+    "GET /v1/projects/{id}/deliverables returns presigned URLs for available artifacts",
+    "Idempotency-Key prevents duplicate job creation (same key returns same response)",
+    "Unauthorized access (wrong userId) returns 403",
+    "All API handler unit tests pass"
+  ],
+  "verification": [
+    "Run pnpm test to confirm all API handler tests pass",
+    "Run pnpm build to confirm TypeScript compilation succeeds"
+  ],
+  "blocked_reason": null,
+  "findings": "Added zod, ulid, @aws-sdk/client-sfn, @aws-sdk/s3-request-presigner as dependencies. Used path-based regex routing in single Lambda. ConditionalCheckFailedException instanceof check requires the mock to instantiate from the mocked class (not plain Error with name set). All 27 API tests pass alongside existing 155 tests (182 total)."
+}

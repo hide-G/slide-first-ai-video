@@ -1,0 +1,32 @@
+{
+  "id": "FEAT-002",
+  "type": "feat",
+  "description": "Core domain logic: Polly speech marks to captions conversion, VTT/SRT generation, audio duration measurement from PCM, and video manifest builder with timing resolution",
+  "status": "completed",
+  "steps": [
+    "In packages/core/src/captions/, implement speech marks parser: parse Polly JSON lines format (one JSON object per line with time, type, start, end, value fields) into structured SpeechMark[] array",
+    "In packages/core/src/captions/, implement caption builder: group word-level speech marks into caption segments following rules from section 10.6 - max 20 chars per line, max 2 lines, min 1200ms display time, merge short segments, avoid splitting at particles (Japanese linguistic rules), highlight keyPoints words",
+    "In packages/core/src/captions/, implement captions.json generator: output array of {text, startMs, endMs, highlight[]} objects for the renderer",
+    "In packages/core/src/captions/, implement VTT generator: WebVTT format with proper timestamps (HH:MM:SS.mmm --> HH:MM:SS.mmm), sequential cue numbering",
+    "In packages/core/src/captions/, implement SRT generator: SubRip format with proper timestamps (HH:MM:SS,mmm --> HH:MM:SS,mmm), sequential numbering",
+    "In packages/core/src/audio/, implement PCM duration measurement: calculate duration from PCM file size, sample rate (24000 from manifest voice config), and sample format (16-bit signed integers = 2 bytes per sample). Formula: durationMs = (fileSize / bytesPerSample) / sampleRate * 1000",
+    "In packages/core/src/manifest/, implement timing resolver: given array of slide data with measuredAudioMs, leadInMs (default 120), leadOutMs (default 400), calculate durationMs for each slide and cumulative startMs. Validate that no gaps or overlaps exist.",
+    "In packages/core/src/manifest/, implement manifest builder: construct full VideoManifest from slide generation results, audio results, and timing data. Populate all fields from section 9 schema.",
+    "Write comprehensive unit tests in packages/core/tests/: test captions with real Polly speech mark samples, test VTT/SRT format correctness, test PCM duration calculation with known file sizes, test timing resolver cumulative math, test edge cases (single slide, empty notes, max character boundaries)"
+  ],
+  "acceptance_criteria": [
+    "Speech marks parser correctly handles Polly JSON lines format",
+    "Caption builder respects 20-char line limit, 2-line max, 1200ms minimum duration",
+    "VTT output matches WebVTT specification format",
+    "SRT output matches SubRip specification format",
+    "PCM duration calculation: 24000 Hz, 16-bit = 48000 bytes/sec. A 288000 byte file = 6000ms",
+    "Timing resolver produces correct cumulative startMs values (slide N startMs = sum of all previous durationMs)",
+    "All unit tests pass with pnpm test"
+  ],
+  "verification": [
+    "Run pnpm test -- packages/core/tests/ and confirm all tests pass",
+    "Run pnpm build to confirm type-checking passes"
+  ],
+  "blocked_reason": null,
+  "findings": "All 86 tests pass in packages/core. Build succeeds. Tests are co-located with source files using *.test.ts pattern. The existing duration.ts already had similar timing calculations but the new timing-resolver and manifest-builder modules provide the full integration needed for manifest construction. Caption builder enforces min-duration by merging segments rather than padding."
+}

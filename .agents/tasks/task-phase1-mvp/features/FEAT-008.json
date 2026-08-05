@@ -2,7 +2,7 @@
   "id": "FEAT-008",
   "type": "feat",
   "description": "Golden set evaluation framework: define 10 representative LT themes as fixtures, implement quality evaluation checks (URL reachability, structure scoring, note completeness, character limits), and CI integration script",
-  "status": "pending",
+  "status": "in_progress",
   "steps": [
     "In packages/evaluation/src/golden-set/, create fixture files for 10 representative LT themes as specified in design section 21.1. Each fixture has: {id, theme, audience, duration, urls[], expectedStructure (problem/solution/evidence/summary), prohibitedExpressions[], expectedSlideCountRange}. Themes should cover: technical explanation, new feature intro, case study, comparison, tutorial, architecture overview, best practices, migration guide, tool introduction, performance optimization.",
     "In packages/evaluation/src/checks/url-reachability.ts, implement check that extracts all URLs from generated markdown and verifies they resolve (HEAD request). Returns {totalUrls, reachableCount, unreachableUrls[]}. Note: this check requires network access and should be marked as integration-only.",

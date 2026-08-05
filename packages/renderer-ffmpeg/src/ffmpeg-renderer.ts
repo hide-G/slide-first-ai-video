@@ -253,13 +253,10 @@ export class FfmpegRenderer implements VideoRenderer {
     outputKey: string,
   ): string[] {
     const args: string[] = ["-y"];
-    let inputIndex = 0;
-
     // Add each chunk as input
     for (const chunk of chunks) {
       const chunkPath = this.resolveS3Path(plan.input.bucket, chunk.artifactKey);
       args.push("-i", chunkPath);
-      inputIndex++;
     }
 
     // Build filter for concatenation

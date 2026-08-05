@@ -5,7 +5,7 @@ import type { VideoManifest } from "@slide-first/shared-types";
 
 // Mock child_process.execFile
 vi.mock("node:child_process", () => ({
-  execFile: vi.fn((_cmd: string, _args: string[], callback: Function) => {
+  execFile: vi.fn((_cmd: string, _args: string[], callback: (...args: unknown[]) => void) => {
     callback(null, "", "");
   }),
 }));

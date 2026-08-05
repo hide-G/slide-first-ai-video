@@ -2,7 +2,7 @@
   "id": "FEAT-004",
   "type": "feat",
   "description": "Lambda function implementations: Polly worker (audio + speech marks), Marp render handler (PDF/PPTX/PNG generation logic), and Composition builder (Hyperframes index.html generation)",
-  "status": "pending",
+  "status": "in_progress",
   "steps": [
     "In lambdas/polly-worker/src/index.ts, implement Lambda handler that: receives event with {projectId, userId, version, slideNumber, presenterNote, voiceId, engine, sampleRate, s3Bucket, s3Prefix}. Makes two Polly SynthesizeSpeech calls via AWS SDK v3 @aws-sdk/client-polly: (1) OutputFormat pcm with the text, (2) OutputFormat json with SpeechMarkTypes [word, sentence]. Validates text length <= 3000 billable chars. Uploads PCM to audio/slide-{NNN}.pcm and marks to audio/slide-{NNN}-marks.json in S3. Calculates measuredAudioMs from PCM file size. Returns {slideNumber, voiceKey, speechMarksKey, measuredAudioMs}.",
     "In lambdas/polly-worker/src/ssml.ts, implement SSML builder: wraps presenter note text in <speak> tags, adds prosody rate if specified, handles Japanese phoneme corrections for AWS service names via lexicon references",

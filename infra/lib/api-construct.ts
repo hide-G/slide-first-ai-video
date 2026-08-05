@@ -4,7 +4,9 @@ import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as s3 from "aws-cdk-lib/aws-s3";
+import * as sqs from "aws-cdk-lib/aws-sqs";
 import * as sfn from "aws-cdk-lib/aws-stepfunctions";
+import * as iam from "aws-cdk-lib/aws-iam";
 import { Construct } from "constructs";
 
 export interface ApiConstructProps {
@@ -15,6 +17,7 @@ export interface ApiConstructProps {
   projectBucket: s3.Bucket;
   contentStateMachine: sfn.StateMachine;
   renderStateMachine: sfn.StateMachine;
+  approvalQueue: sqs.Queue;
 }
 
 /**
@@ -42,6 +45,7 @@ export class ApiConstruct extends Construct {
         BUCKET_NAME: props.projectBucket.bucketName,
         CONTENT_STATE_MACHINE_ARN: props.contentStateMachine.stateMachineArn,
         VIDEO_STATE_MACHINE_ARN: props.renderStateMachine.stateMachineArn,
+        APPROVAL_QUEUE_URL: props.approvalQueue.queueUrl,
       },
     });
 
@@ -54,6 +58,18 @@ export class ApiConstruct extends Construct {
     // Grant Step Functions start execution
     props.contentStateMachine.grantStartExecution(this.apiHandler);
     props.renderStateMachine.grantStartExecution(this.apiHandler);
+
+    // Grant SQS receive/delete on approval queue
+    props.approvalQueue.grantConsumeMessages(this.apiHandler);
+
+    // Grant states:SendTaskSuccess for resuming the content state machine
+    this.apiHandler.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["states:SendTaskSuccess"],
+        resources: [props.contentStateMachine.stateMachineArn],
+      }),
+    );
 
     // Cognito authorizer
     const authorizer = new apigateway.CognitoUserPoolsAuthorizer(

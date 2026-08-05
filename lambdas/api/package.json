@@ -18,6 +18,7 @@
     "@aws-sdk/client-s3": "^3.600.0",
     "@aws-sdk/s3-request-presigner": "^3.600.0",
     "@aws-sdk/client-sfn": "^3.600.0",
+    "@aws-sdk/client-sqs": "^3.600.0",
     "ulid": "^2.3.0",
     "zod": "^3.23.0"
   },

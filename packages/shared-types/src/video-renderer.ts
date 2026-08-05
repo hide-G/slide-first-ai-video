@@ -36,6 +36,18 @@ export interface RenderPlan {
   intermediatePrefix: string;
   /** Original render input */
   input: RenderInput;
+  /** Array of chunk descriptors for Step Functions Map state iteration */
+  chunks: RenderChunkDescriptor[];
+}
+
+/**
+ * Descriptor for a single render chunk, used by the Map state to invoke renderChunk.
+ */
+export interface RenderChunkDescriptor {
+  /** The render plan (without the chunks array to avoid circular reference) */
+  plan: Omit<RenderPlan, "chunks">;
+  /** Index of the chunk (0-based) */
+  chunkIndex: number;
 }
 
 /**

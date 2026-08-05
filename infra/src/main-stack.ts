@@ -5,6 +5,7 @@ import { AuthConstruct } from "../lib/auth-construct.js";
 import { MarpLambdaConstruct } from "../lib/marp-lambda-construct.js";
 import { PollyWorkerConstruct } from "../lib/polly-worker-construct.js";
 import { CompositionBuilderConstruct } from "../lib/composition-builder-construct.js";
+import { SlideGeneratorConstruct } from "../lib/slide-generator-construct.js";
 import { RenderStateMachineConstruct } from "../lib/render-state-machine-construct.js";
 import { ContentStateMachineConstruct } from "../lib/content-state-machine-construct.js";
 import { ApiConstruct } from "../lib/api-construct.js";
@@ -70,6 +71,17 @@ export class MainStack extends cdk.Stack {
       },
     );
 
+    // Slide Generator Lambda (Bedrock Converse API)
+    const slideGenerator = new SlideGeneratorConstruct(
+      this,
+      "SlideGenerator",
+      {
+        productSlug: props.productSlug,
+        environment: props.envName,
+        projectBucket: storage.projectBucket,
+      },
+    );
+
     // Render State Machine (must be created before Content SM)
     const renderStateMachine = new RenderStateMachineConstruct(
       this,
@@ -88,6 +100,7 @@ export class MainStack extends cdk.Stack {
       {
         productSlug: props.productSlug,
         environment: props.envName,
+        slideGeneratorLambda: slideGenerator.handler,
         marpLambda: marpLambda.handler,
         pollyWorkerLambda: pollyWorker.handler,
         compositionBuilderLambda: compositionBuilder.handler,
@@ -105,6 +118,7 @@ export class MainStack extends cdk.Stack {
       projectBucket: storage.projectBucket,
       contentStateMachine: contentStateMachine.stateMachine,
       renderStateMachine: renderStateMachine.stateMachine,
+      approvalQueue: contentStateMachine.approvalQueue,
     });
 
     // Delivery: CloudFront distribution

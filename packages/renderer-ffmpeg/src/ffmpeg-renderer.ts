@@ -83,6 +83,19 @@ export class FfmpegRenderer implements VideoRenderer {
       videoBitrateKbps,
       intermediatePrefix,
       input,
+      chunks: Array.from({ length: chunkCount }, (_, i) => ({
+        plan: {
+          totalFrames,
+          chunkCount,
+          fps,
+          width,
+          height,
+          videoBitrateKbps,
+          intermediatePrefix,
+          input,
+        },
+        chunkIndex: i,
+      })),
     };
   }
 

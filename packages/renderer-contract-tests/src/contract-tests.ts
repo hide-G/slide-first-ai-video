@@ -98,6 +98,26 @@ export function createRendererContractTests(
         expect(plan.input).toEqual(input);
       });
 
+      it("returns a chunks array with length equal to chunkCount", async () => {
+        const input = createTestRenderInput();
+        const plan = await renderer.plan(input);
+
+        expect(Array.isArray(plan.chunks)).toBe(true);
+        expect(plan.chunks.length).toBe(plan.chunkCount);
+      });
+
+      it("each chunk has plan and chunkIndex fields", async () => {
+        const input = createTestRenderInput();
+        const plan = await renderer.plan(input);
+
+        for (let i = 0; i < plan.chunks.length; i++) {
+          expect(plan.chunks[i].chunkIndex).toBe(i);
+          expect(plan.chunks[i].plan).toBeDefined();
+          expect(plan.chunks[i].plan.input).toEqual(input);
+          expect(plan.chunks[i].plan.chunkCount).toBe(plan.chunkCount);
+        }
+      });
+
       it("calculates reasonable chunk sizes", async () => {
         const input = createTestRenderInput();
         const plan = await renderer.plan(input);

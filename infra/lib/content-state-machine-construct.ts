@@ -9,6 +9,7 @@ import { Construct } from "constructs";
 export interface ContentStateMachineConstructProps {
   productSlug: string;
   environment: string;
+  slideGeneratorLambda: lambda.IFunction;
   marpLambda: lambda.IFunction;
   pollyWorkerLambda: lambda.IFunction;
   compositionBuilderLambda: lambda.IFunction;
@@ -46,10 +47,22 @@ export class ContentStateMachineConstruct extends Construct {
       retentionPeriod: cdk.Duration.days(14),
     });
 
-    // Step 1: Invoke Bedrock for Marp generation (placeholder Task state)
-    const generateContent = new sfn.Pass(this, "GenerateContent", {
-      comment: "Invoke Bedrock for Marp generation (placeholder)",
-      resultPath: "$.bedrockResult",
+    // Step 1: Invoke Bedrock slide generation via slide-generator Lambda
+    const generateContent = new tasks.LambdaInvoke(
+      this,
+      "GenerateContent",
+      {
+        lambdaFunction: props.slideGeneratorLambda,
+        resultPath: "$.bedrockResult",
+        retryOnServiceExceptions: true,
+        comment: "Invoke Bedrock for Marp slide generation",
+      },
+    );
+    generateContent.addRetry({
+      errors: ["Lambda.ServiceException", "Lambda.TooManyRequestsException"],
+      interval: cdk.Duration.seconds(5),
+      maxAttempts: 3,
+      backoffRate: 2,
     });
 
     // Step 2: Save deck.md to S3

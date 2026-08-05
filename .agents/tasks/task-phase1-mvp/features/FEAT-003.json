@@ -2,7 +2,7 @@
   "id": "FEAT-003",
   "type": "feat",
   "description": "VideoRenderer port with FFmpeg fallback implementation and contract tests that verify both implementations against the same specification",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "In packages/renderer-port/, create the VideoRenderer port interface as specified in design section 7.4: plan(input: RenderInput) -> RenderPlan, renderChunk(plan: RenderPlan, chunkIndex: number) -> ChunkResult, assemble(plan: RenderPlan, chunks: ChunkResult[]) -> RenderOutput. Export RenderInput (S3 keys for images, audio, manifest), RenderPlan (totalFrames, chunks array with frameRange and outputKey), ChunkResult (s3Key, frameCount), RenderOutput (s3Key, durationMs, resolution, fps)",
     "In packages/renderer-ffmpeg/, implement FfmpegRenderer class that implements VideoRenderer. The plan() method calculates total frames from manifest slide durations at target fps, divides into chunks. The renderChunk() method generates an ffmpeg command that creates a video segment from static PNG + audio for the chunk's slides. The assemble() method concatenates chunks and mixes final audio. Implementation uses child_process.execFile to call ffmpeg.",
@@ -29,5 +29,5 @@
     "Run pnpm build to confirm all packages compile cleanly"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "Vitest 3.x requires ESM - contract-tests package is consumed via source alias in vitest.config.ts rather than compiled dist output. Used path.resolve alias in each consuming package's vitest.config.ts to point to ../renderer-contract-tests/src/index.ts. The RenderInput interface from shared-types uses 'bucket' (not 's3Bucket') and 'outputType' (not 'outputPrefix'). FfmpegRenderer uses dependency injection for fetchManifest and resolveS3Path to allow testability without real S3 or ffmpeg binary."
 }

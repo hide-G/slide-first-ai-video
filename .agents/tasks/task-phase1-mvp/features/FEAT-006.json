@@ -1,0 +1,38 @@
+{
+  "id": "FEAT-006",
+  "type": "feat",
+  "description": "CDK infrastructure: DynamoDB tables, S3 buckets, Lambda functions, API Gateway, Cognito, Step Functions state machines (content generation with parallel Marp+Polly, and render pipeline), and Hyperframes CDK Construct integration",
+  "status": "pending",
+  "steps": [
+    "In infra/lib/storage-stack.ts, define: S3 project bucket ({productSlug}-projects-{env}-{accountId}-{region}) with Block Public Access, AES256 encryption, lifecycle rules (7 days for intermediate chunks, retain approved content). DynamoDB tables: Projects (PK: userId, SK: projectId), Versions (PK: projectId, SK: version), Jobs (PK: jobId), Idempotency (PK: idempotencyKey, TTL: 24h).",
+    "In infra/lib/auth-stack.ts, define: Cognito User Pool with email sign-in, User Pool Client for web app, configure JWT token generation.",
+    "In infra/lib/api-stack.ts, define: API Gateway REST API with Cognito authorizer, routes matching design section 15 (POST /v1/projects, POST /v1/projects/{id}/slides, GET /v1/projects/{id}/versions/{version}, POST /v1/projects/{id}/versions/{version}/approve, POST /v1/projects/{id}/videos, GET /v1/jobs/{jobId}, GET /v1/projects/{id}/deliverables). Lambda function for API handlers with minimal IAM (DynamoDB CRUD on own tables, S3 read on project bucket, StepFunctions:StartExecution).",
+    "In infra/lib/marp-lambda-stack.ts, define: Container image Lambda function for Marp rendering (DockerImageFunction). Memory 3008MB, ephemeral storage 2048MB, timeout 5 min. IAM: S3 write to project bucket slides/ and versions/ prefixes. Reference Dockerfile in lambdas/marp-render/.",
+    "In infra/lib/polly-worker-stack.ts, define: Lambda function for Polly worker. Memory 512MB, timeout 60s. IAM: polly:SynthesizeSpeech, S3 write to project bucket audio/ prefix.",
+    "In infra/lib/composition-builder-stack.ts, define: Lambda function for composition builder. Memory 512MB, timeout 60s. IAM: S3 read (manifest, images) and S3 write (composition HTML) on project bucket.",
+    "In infra/lib/content-state-machine.ts, define Step Functions Standard state machine for content generation: (1) Invoke Bedrock for Marp generation (placeholder Task state), (2) Save deck.md to S3, (3) Wait for approval (callback pattern or separate trigger), (4) Parallel branch: [Branch A: Invoke Marp Lambda for PDF/PPTX/PNG] [Branch B: Map over slides -> Invoke Polly Worker Lambda for each slide], (5) After parallel: Invoke timing resolver Lambda, (6) Invoke caption generator Lambda, (7) Invoke composition builder Lambda, (8) Start Render State Machine. Include error handling with retries on transient failures.",
+    "In infra/lib/render-state-machine.ts, define Step Functions Standard state machine for the render pipeline following the VideoRenderer port: (1) Invoke render Lambda with Action=plan, (2) Map state over chunks -> Invoke render Lambda with Action=renderChunk (parallel), (3) Invoke render Lambda with Action=assemble. Memory 10240MB, ephemeral storage 4096MB, timeout 15 min for render Lambda.",
+    "In infra/lib/delivery-stack.ts, define: CloudFront distribution with OAC for S3 origin (project bucket output/ prefix), signed URL support.",
+    "Write CDK assertion tests in infra/test/: verify S3 bucket has Block Public Access, verify DynamoDB tables have correct keys, verify Lambda functions have correct memory/timeout settings, verify Step Functions state machine definition structure, verify API Gateway routes exist with Cognito authorizer, verify IAM policies follow least privilege."
+  ],
+  "acceptance_criteria": [
+    "CDK synth succeeds without errors (npx cdk synth)",
+    "S3 bucket is configured with Block Public Access and lifecycle rules",
+    "DynamoDB tables have correct partition and sort keys",
+    "API Gateway has all 7 routes with Cognito authorizer",
+    "Marp Lambda is DockerImageFunction with 3008MB memory and 2048MB ephemeral storage",
+    "Polly Worker Lambda has polly:SynthesizeSpeech permission",
+    "Content State Machine has Parallel state for Marp + Polly execution",
+    "Render State Machine has Map state for parallel chunk rendering",
+    "CloudFront distribution uses OAC for S3 access",
+    "CDK assertion tests pass confirming resource properties",
+    "productSlug is read from CDK context throughout all resource naming"
+  ],
+  "verification": [
+    "Run pnpm build to confirm CDK TypeScript compiles",
+    "Run pnpm test to confirm CDK assertion tests pass",
+    "Run npx cdk synth --context productSlug=testapp --context env=dev in infra/ to confirm CloudFormation template generation succeeds"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

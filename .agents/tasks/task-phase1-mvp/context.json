@@ -1,0 +1,16 @@
+{
+  "project_type": "TypeScript AWS CDK application with Lambda functions, Step Functions orchestration, and container image Lambdas",
+  "language": "TypeScript",
+  "build_system": "pnpm monorepo with AWS CDK for IaC. Node.js 22 runtime. Container images for Marp Lambda.",
+  "test_framework": "vitest for unit tests, CDK assertions for IaC tests, contract tests for renderer port implementations",
+  "build_command": "pnpm build",
+  "test_command": "pnpm test",
+  "verification_instructions": "1. pnpm install 2. pnpm build (TypeScript compilation) 3. pnpm test (unit + contract tests) 4. pnpm lint (type checking + formatting)",
+  "snapshot_or_generated_files": "CDK snapshot tests in **/*.snapshot.json - regenerate with pnpm test -- -u",
+  "setup_instructions": "Node.js 22 (available via nvm), pnpm available globally. Run pnpm install at workspace root.",
+  "environment_constraints": "COMMON_DEPENDENCIES network mode - npm registry accessible. No Docker daemon available for building container images in CI. Use AST validation and CDK assertions instead of deployed integration tests.",
+  "contribution_requirements": "Follow design document (slide-first-ai-video-design.md) as single source of truth. productSlug configurable via CDK context. TypeScript with AWS SDK v3. Bedrock Converse API for all model calls. VideoRenderer port with two implementations.",
+  "key_patterns": "VideoRenderer port interface (plan/renderChunk/assemble). Parallel Marp PNG + Polly audio execution. PCM audio with measured duration. Speech marks to captions/VTT/SRT conversion. S3 key-based data passing between Step Functions states. Idempotency-Key on mutation APIs. Content-addressed caching.",
+  "relevant_files": ["slide-first-ai-video-design.md"],
+  "directory_structure": "Planned structure: packages/ (shared types, core logic), infra/ (CDK stacks), lambdas/ (Lambda handlers), config/ (environment configs)"
+}

@@ -1,0 +1,33 @@
+{
+  "id": "FEAT-003",
+  "type": "feat",
+  "description": "VideoRenderer port with FFmpeg fallback implementation and contract tests that verify both implementations against the same specification",
+  "status": "pending",
+  "steps": [
+    "In packages/renderer-port/, create the VideoRenderer port interface as specified in design section 7.4: plan(input: RenderInput) -> RenderPlan, renderChunk(plan: RenderPlan, chunkIndex: number) -> ChunkResult, assemble(plan: RenderPlan, chunks: ChunkResult[]) -> RenderOutput. Export RenderInput (S3 keys for images, audio, manifest), RenderPlan (totalFrames, chunks array with frameRange and outputKey), ChunkResult (s3Key, frameCount), RenderOutput (s3Key, durationMs, resolution, fps)",
+    "In packages/renderer-ffmpeg/, implement FfmpegRenderer class that implements VideoRenderer. The plan() method calculates total frames from manifest slide durations at target fps, divides into chunks. The renderChunk() method generates an ffmpeg command that creates a video segment from static PNG + audio for the chunk's slides. The assemble() method concatenates chunks and mixes final audio. Implementation uses child_process.execFile to call ffmpeg.",
+    "In packages/renderer-ffmpeg/, the ffmpeg commands should: use -loop 1 -t {duration} -i {png} for each slide image, -i {pcm} -f s16le -ar 24000 -ac 1 for PCM audio input, output h264 video with -c:v libx264 -pix_fmt yuv420p -r 30, resolution 1920x1080",
+    "In packages/renderer-hyperframes/, create a placeholder HyperframesRenderer that implements VideoRenderer interface. Mark methods with TODO comments referencing the Hyperframes AWS Lambda integration to be completed when the CDK construct is integrated. For now, have plan() return a valid RenderPlan and renderChunk()/assemble() throw 'Not yet implemented - requires Hyperframes Lambda deployment'.",
+    "In packages/renderer-contract-tests/, create shared contract test suite that both renderer implementations must pass. Tests verify: plan() returns correct totalFrames calculation (sum of slide durationMs * fps / 1000), plan() divides frames into reasonable chunk sizes, renderChunk() produces a ChunkResult with valid s3Key format, assemble() produces RenderOutput with correct resolution/fps metadata. Use vitest with parameterized test factory pattern.",
+    "The contract test factory should accept a renderer instance and an S3 mock/stub (since actual S3 operations are not testable in unit tests). Test the logic and output formats, not actual file generation.",
+    "In packages/renderer-ffmpeg/tests/, run contract tests against FfmpegRenderer with mocked child_process (verify correct ffmpeg command construction without requiring ffmpeg binary)",
+    "In packages/renderer-hyperframes/tests/, run contract tests against HyperframesRenderer for plan() only (renderChunk and assemble are expected to throw in placeholder state)"
+  ],
+  "acceptance_criteria": [
+    "VideoRenderer interface is exported from packages/renderer-port/",
+    "FfmpegRenderer implements all three methods of VideoRenderer",
+    "FfmpegRenderer.plan() correctly calculates total frames from manifest durations",
+    "FfmpegRenderer.renderChunk() constructs correct ffmpeg commands for PNG+PCM to video segment",
+    "FfmpegRenderer.assemble() constructs correct ffmpeg concat + audio mix command",
+    "HyperframesRenderer implements the interface with plan() working and renderChunk/assemble throwing",
+    "Contract tests pass for FfmpegRenderer (all methods)",
+    "Contract tests pass for HyperframesRenderer (plan only, others expected to throw)",
+    "pnpm build and pnpm test pass across all renderer packages"
+  ],
+  "verification": [
+    "Run pnpm test to confirm all contract tests and unit tests pass",
+    "Run pnpm build to confirm all packages compile cleanly"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

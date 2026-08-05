@@ -1,0 +1,22 @@
+{
+  "name": "@slide-first/lambda-marp-render",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Marp rendering Lambda function",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint src/",
+    "test": "echo 'No tests yet'"
+  },
+  "dependencies": {
+    "@slide-first/shared-types": "workspace:*",
+    "@slide-first/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.21",
+    "typescript": "5.8.3",
+    "eslint": "9.28.0",
+    "@eslint/js": "9.28.0",
+    "typescript-eslint": "8.33.0"
+  }
+}

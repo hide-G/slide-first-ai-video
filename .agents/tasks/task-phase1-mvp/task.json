@@ -1,0 +1,7 @@
+{
+  "task_id": "task-phase1-mvp",
+  "task_description": "Implement Phase 1 MVP of the slide-first AI video application. Generate Marp Markdown with Bedrock, render PDF/PPTX/PNG via container Marp Lambda, synthesize Polly audio with speech marks, convert to captions/VTT/SRT, run PNG and Polly in parallel via Step Functions, integrate Hyperframes renderer CDK Construct, output full LT video to S3, provide Job progress and deliverable download APIs, and include golden set quality evaluation in CI.",
+  "status": "in_progress",
+  "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003", "FEAT-004", "FEAT-005", "FEAT-006", "FEAT-007", "FEAT-008"],
+  "blocked_reason": null
+}

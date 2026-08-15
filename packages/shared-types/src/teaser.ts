@@ -56,6 +56,10 @@ export interface TeaserGenerationResult {
   postText: PostText;
   /** Total estimated teaser duration in milliseconds */
   totalDurationMs: number;
+  /** Whether the duration is within the acceptable range */
+  durationValid?: boolean;
+  /** Reason if duration validation failed */
+  durationValidationReason?: string;
   /** Token usage info */
   inputTokens?: number;
   outputTokens?: number;
@@ -91,8 +95,8 @@ export interface TeaserGeneratorEvent {
   jobId: string;
   s3Bucket: string;
   s3Prefix: string;
-  /** Full manifest slides for selection */
-  slides: ManifestSlide[];
+  /** Full manifest slides for selection (optional - fetched from S3 if not provided) */
+  slides?: ManifestSlide[];
   /** Optional references/URLs from the original slides */
   references?: string[];
 }

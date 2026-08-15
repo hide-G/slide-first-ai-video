@@ -163,13 +163,20 @@ export class TeaserStateMachineConstruct extends Construct {
       },
     );
 
-    // Chain the steps
+    // Chain: generateTeaser -> polly -> parallel(16:9 + 9:16)
+    const render16x9Branch = buildComposition16x9.next(startRender16x9);
+    const render9x16Branch = buildComposition9x16.next(startRender9x16);
+
+    const parallelRenders = new sfn.Parallel(this, "ParallelRenders", {
+      comment: "Run 16:9 and 9:16 composition+render in parallel",
+      resultPath: "$.parallelRenderResults",
+    });
+    parallelRenders.branch(render16x9Branch);
+    parallelRenders.branch(render9x16Branch);
+
     const definition = generateTeaser
       .next(pollyMapState)
-      .next(buildComposition16x9)
-      .next(startRender16x9)
-      .next(buildComposition9x16)
-      .next(startRender9x16);
+      .next(parallelRenders);
 
     this.stateMachine = new sfn.StateMachine(this, "TeaserStateMachine", {
       stateMachineName: `${productSlug}-${environment}-teaser-pipeline`,

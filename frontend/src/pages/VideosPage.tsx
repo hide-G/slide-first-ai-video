@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { apiClient } from "../api/client.js";
 import { JobProgress } from "../components/JobProgress.js";
 import { VideoPlayer } from "../components/VideoPlayer.js";
@@ -7,6 +7,8 @@ import { DeliverablesList } from "../components/DeliverablesList.js";
 
 export function VideosPage() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
+  const versionNumber = Number(searchParams.get("version")) || 1;
   const [jobId, setJobId] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -17,7 +19,7 @@ export function VideosPage() {
     try {
       setStarting(true);
       setError(null);
-      const response = await apiClient.startVideo(id, { versionNumber: 1 });
+      const response = await apiClient.startVideo(id, { versionNumber });
       setJobId(response.jobId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start video");
@@ -31,7 +33,7 @@ export function VideosPage() {
     try {
       setStarting(true);
       setError(null);
-      const response = await apiClient.startTeaser(id, { versionNumber: 1 });
+      const response = await apiClient.startTeaser(id, { versionNumber });
       setJobId(response.jobId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start teaser");

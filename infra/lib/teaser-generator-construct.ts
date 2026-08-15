@@ -40,12 +40,15 @@ export class TeaserGeneratorConstruct extends Construct {
       },
     });
 
-    // Grant Bedrock invoke model permission
+    // Grant Bedrock invoke model permission scoped to the specific model
+    const modelId = "anthropic.claude-sonnet-4-20250514";
     this.handler.addToRolePolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ["bedrock:InvokeModel"],
-        resources: ["*"],
+        resources: [
+          `arn:aws:bedrock:*::foundation-model/${modelId}`,
+        ],
       }),
     );
 

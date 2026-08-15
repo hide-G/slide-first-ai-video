@@ -10,10 +10,13 @@ import {
   type Message,
   type SystemContentBlock,
 } from "@aws-sdk/client-bedrock-runtime";
+import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import type {
   TeaserGeneratorEvent,
   TeaserGenerationResult,
+  VideoManifest,
 } from "@slide-first/shared-types";
+import { validateTeaserDuration, buildManifestKey } from "@slide-first/core";
 import { selectTeaserSlides } from "./slide-selector.js";
 import { parseHookCandidates } from "./hook-generator.js";
 import { parsePostText } from "./post-text-generator.js";
@@ -92,7 +95,7 @@ function extractJson(text: string): string {
 export const handler = async (
   event: TeaserGeneratorEvent,
 ): Promise<TeaserGenerationResult> => {
-  const { slides, references = [] } = event;
+  const { references = [] } = event;
 
   // Model ID from environment
   const modelId = process.env.BEDROCK_MODEL_ID;
@@ -103,6 +106,32 @@ export const handler = async (
   const maxTokens = process.env.BEDROCK_MAX_TOKENS
     ? parseInt(process.env.BEDROCK_MAX_TOKENS, 10)
     : DEFAULT_MAX_TOKENS;
+
+  // Fetch slides from S3 manifest if not provided directly in the event
+  let slides = event.slides;
+  if (!slides || slides.length === 0) {
+    const bucketName = event.s3Bucket || process.env.BUCKET_NAME;
+    if (!bucketName) {
+      throw new Error("s3Bucket or BUCKET_NAME environment variable is required to fetch manifest");
+    }
+
+    const manifestKey = buildManifestKey({
+      userId: event.userId,
+      projectId: event.projectId,
+      versionNumber: event.versionNumber,
+    });
+
+    const s3Client = new S3Client({});
+    const getObjectResponse = await s3Client.send(
+      new GetObjectCommand({ Bucket: bucketName, Key: manifestKey }),
+    );
+    const manifestBody = await getObjectResponse.Body?.transformToString();
+    if (!manifestBody) {
+      throw new Error(`Failed to read manifest from s3://${bucketName}/${manifestKey}`);
+    }
+    const manifest: VideoManifest = JSON.parse(manifestBody);
+    slides = manifest.slides;
+  }
 
   const client = new BedrockRuntimeClient({});
   const systemPrompt = buildTeaserSystemPrompt();
@@ -185,11 +214,19 @@ export const handler = async (
     0,
   );
 
+  // Validate teaser duration is within acceptable range (30-60s)
+  const validation = validateTeaserDuration(selectedSlides);
+  if (!validation.valid) {
+    console.warn(`Teaser duration validation warning: ${validation.reason}`);
+  }
+
   return {
     selectedSlides,
     hookCandidates,
     postText,
     totalDurationMs,
+    durationValid: validation.valid,
+    durationValidationReason: validation.reason,
     inputTokens: totalInputTokens,
     outputTokens: totalOutputTokens,
   };

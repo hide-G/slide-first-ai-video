@@ -2,6 +2,7 @@ import * as cdk from "aws-cdk-lib";
 import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
 import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
 import * as s3 from "aws-cdk-lib/aws-s3";
+import * as s3deploy from "aws-cdk-lib/aws-s3-deployment";
 import { Construct } from "constructs";
 
 export interface FrontendConstructProps {
@@ -65,6 +66,14 @@ export class FrontendConstruct extends Construct {
     new cdk.CfnOutput(this, "FrontendUrl", {
       value: `https://${this.distribution.distributionDomainName}`,
       description: "Frontend application URL",
+    });
+
+    // フロントエンドのビルド成果物をS3に自動デプロイ
+    new s3deploy.BucketDeployment(this, "DeployFrontend", {
+      sources: [s3deploy.Source.asset("../frontend/dist")],
+      destinationBucket: this.bucket,
+      distribution: this.distribution,
+      distributionPaths: ["/*"],
     });
   }
 }

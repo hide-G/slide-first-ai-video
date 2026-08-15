@@ -1,39 +1,68 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { buildPdfArgs, buildPptxArgs, buildPngArgs } from "./marp-commands.js";
 
-// Mock child_process
-vi.mock("node:child_process", () => ({
-  execFile: vi.fn((_cmd, _args, _opts, callback) => {
-    if (callback) {
-      callback(null, "success", "");
-    }
-    return {};
-  }),
+vi.mock("@marp-team/marp-core", () => ({
+  Marp: vi.fn(() => ({
+    render: vi.fn(() => ({
+      html: "<section id=\"1\"><h1>Slide 1</h1></section>",
+      css: "body { margin: 0; }",
+    })),
+  })),
 }));
 
-describe("Marp command builders", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+vi.mock("@sparticuz/chromium", () => ({
+  default: {
+    executablePath: vi.fn().mockResolvedValue("/usr/bin/chromium"),
+    args: ["--no-sandbox"],
+    defaultViewport: { width: 1280, height: 720 },
+  },
+}));
+
+const mockScreenshot = vi.fn().mockResolvedValue(Buffer.from("png-data"));
+const mockPdf = vi.fn().mockResolvedValue(Buffer.from("pdf-data"));
+const mockSetContent = vi.fn().mockResolvedValue(undefined);
+const mockSetViewport = vi.fn().mockResolvedValue(undefined);
+const mock$$ = vi.fn().mockResolvedValue([
+  { screenshot: mockScreenshot },
+  { screenshot: mockScreenshot },
+]);
+const mockNewPage = vi.fn().mockResolvedValue({
+  setContent: mockSetContent,
+  setViewport: mockSetViewport,
+  pdf: mockPdf,
+  $$: mock$$,
+  screenshot: mockScreenshot,
+});
+const mockClose = vi.fn().mockResolvedValue(undefined);
+
+vi.mock("puppeteer-core", () => ({
+  default: {
+    launch: vi.fn().mockResolvedValue({
+      newPage: mockNewPage,
+      close: mockClose,
+    }),
+  },
+}));
+
+import { renderMarpToHtml, generatePdfBuffer, generatePngBuffers } from "./marp-commands.js";
+
+describe("marp-commands (Docker-free)", () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it("renders Marp Markdown to HTML", () => {
+    const html = renderMarpToHtml("# Hello");
+    expect(html).toContain("<!DOCTYPE html>");
+    expect(html).toContain("<style>");
   });
 
-  describe("buildPdfArgs", () => {
-    it("constructs correct arguments for PDF generation", () => {
-      const args = buildPdfArgs("deck.md");
-      expect(args).toEqual(["--pdf", "deck.md"]);
-    });
+  it("generates PDF buffer", async () => {
+    const buffer = await generatePdfBuffer("# Test");
+    expect(buffer).toBeInstanceOf(Buffer);
+    expect(mockClose).toHaveBeenCalled();
   });
 
-  describe("buildPptxArgs", () => {
-    it("constructs correct arguments for PPTX generation", () => {
-      const args = buildPptxArgs("deck.md");
-      expect(args).toEqual(["--pptx", "deck.md"]);
-    });
-  });
-
-  describe("buildPngArgs", () => {
-    it("constructs correct arguments for PNG generation with scale 2", () => {
-      const args = buildPngArgs("deck.md");
-      expect(args).toEqual(["--images", "png", "--image-scale", "2", "deck.md"]);
-    });
+  it("generates PNG buffers for each slide", async () => {
+    const buffers = await generatePngBuffers("# Slide 1\n---\n# Slide 2");
+    expect(buffers).toHaveLength(2);
+    expect(mockClose).toHaveBeenCalled();
   });
 });

@@ -2,7 +2,7 @@
  * DynamoDB operations for Project entities.
  */
 
-import { PutCommand, GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { PutCommand, GetCommand, UpdateCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
 import { docClient, TABLE_NAME } from "./client.js";
 
@@ -139,4 +139,35 @@ export async function incrementProjectVersion(
   }
 
   return newVersion;
+}
+
+/**
+ * List projects by userId using GSI1.
+ */
+export async function listProjectsByUser(
+  userId: string,
+  nextToken?: string,
+): Promise<{ projects: ProjectRecord[]; nextToken?: string }> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: TABLE_NAME,
+      IndexName: "GSI1",
+      KeyConditionExpression: "GSI1PK = :pk",
+      ExpressionAttributeValues: {
+        ":pk": `USER#${userId}`,
+      },
+      ScanIndexForward: false,
+      Limit: 50,
+      ExclusiveStartKey: nextToken
+        ? JSON.parse(Buffer.from(nextToken, "base64url").toString("utf-8"))
+        : undefined,
+    }),
+  );
+
+  const projects = (result.Items ?? []) as ProjectRecord[];
+  const lastKey = result.LastEvaluatedKey
+    ? Buffer.from(JSON.stringify(result.LastEvaluatedKey)).toString("base64url")
+    : undefined;
+
+  return { projects, nextToken: lastKey };
 }

@@ -96,12 +96,20 @@ export async function handleStartTeaser(
   });
 
   // Start Step Functions execution with teaser output type
+  const s3Bucket = process.env.BUCKET_NAME ?? "";
+  const s3Prefix = `${userId}/${projectId}/versions/v${String(versionNumber).padStart(4, "0")}/`;
   const executionInput = JSON.stringify({
     projectId,
     userId,
     versionNumber,
     jobId,
     outputTypes: ["x-teaser-16x9"],
+    s3Bucket,
+    s3Prefix,
+    assetsPrefix: s3Prefix,
+    voiceId: process.env.VOICE_ID ?? "Takumi",
+    engine: process.env.VOICE_ENGINE ?? "neural",
+    sampleRate: process.env.VOICE_SAMPLE_RATE ?? "24000",
   });
 
   if (TEASER_STATE_MACHINE_ARN) {

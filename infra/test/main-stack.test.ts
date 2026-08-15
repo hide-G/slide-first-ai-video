@@ -236,13 +236,13 @@ describe("MainStack - API Gateway", () => {
     });
   });
 
-  it("creates 8 API methods", () => {
+  it("creates 9 API methods", () => {
     const template = createTestStack();
-    // 8 routes: POST /projects, POST /projects/{id}/slides,
+    // 9 routes: GET /projects, POST /projects, POST /projects/{id}/slides,
     // GET /projects/{id}/versions/{version}, POST /projects/{id}/versions/{version}/approve,
     // POST /projects/{id}/videos, POST /projects/{id}/videos/teaser,
     // GET /projects/{id}/deliverables, GET /jobs/{jobId}
-    template.resourceCountIs("AWS::ApiGateway::Method", 8);
+    template.resourceCountIs("AWS::ApiGateway::Method", 9);
   });
 
   it("all methods use Cognito authorization", () => {

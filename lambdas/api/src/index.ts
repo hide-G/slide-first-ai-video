@@ -11,6 +11,7 @@ import type {
 import { buildErrorResponse } from "./middleware/index.js";
 import {
   handleCreateProject,
+  handleListProjects,
   handleStartSlides,
   handleGetVersion,
   handleApprove,
@@ -33,6 +34,12 @@ interface Route {
 }
 
 const routes: Route[] = [
+  {
+    method: "GET",
+    pattern: /^\/v1\/projects\/?$/,
+    handler: handleListProjects,
+    paramKeys: [],
+  },
   {
     method: "POST",
     pattern: /^\/v1\/projects\/?$/,

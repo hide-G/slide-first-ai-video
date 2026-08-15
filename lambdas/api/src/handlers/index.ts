@@ -1,4 +1,4 @@
-export { handleCreateProject } from "./projects.js";
+export { handleCreateProject, handleListProjects } from "./projects.js";
 export { handleStartSlides } from "./slides.js";
 export { handleGetVersion } from "./versions.js";
 export { handleApprove } from "./approve.js";

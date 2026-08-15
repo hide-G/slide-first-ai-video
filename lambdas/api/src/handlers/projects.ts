@@ -1,5 +1,5 @@
 /**
- * POST /v1/projects - Create a new project.
+ * Project API handlers.
  */
 
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
@@ -16,7 +16,32 @@ import {
   createProject,
   putIfAbsent,
   completeIdempotencyRecord,
+  listProjectsByUser,
 } from "../db/index.js";
+
+export async function handleListProjects(
+  event: APIGatewayProxyEventV2,
+): Promise<APIGatewayProxyResultV2> {
+  const userId = extractUserId(event);
+  if (!userId) {
+    throw new UnauthorizedError();
+  }
+
+  const nextToken = event.queryStringParameters?.nextToken;
+  const { projects, nextToken: resultToken } = await listProjectsByUser(userId, nextToken);
+
+  return buildResponse(200, {
+    projects: projects.map((p) => ({
+      projectId: p.projectId,
+      userId: p.userId,
+      title: p.title,
+      status: p.status,
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt,
+    })),
+    ...(resultToken ? { nextToken: resultToken } : {}),
+  });
+}
 
 export async function handleCreateProject(
   event: APIGatewayProxyEventV2,

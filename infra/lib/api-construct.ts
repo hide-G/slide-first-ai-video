@@ -100,8 +100,9 @@ export class ApiConstruct extends Construct {
       authorizationType: apigateway.AuthorizationType.COGNITO,
     };
 
-    // Routes: POST /v1/projects
+    // Routes: GET /v1/projects (list), POST /v1/projects (create)
     const projects = this.api.root.addResource("projects");
+    projects.addMethod("GET", lambdaIntegration, authOptions);
     projects.addMethod("POST", lambdaIntegration, authOptions);
 
     // Routes: POST /v1/projects/{id}/slides

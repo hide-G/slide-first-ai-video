@@ -4,6 +4,7 @@ export {
   getProject,
   updateProjectStatus,
   incrementProjectVersion,
+  listProjectsByUser,
 } from "./projects.js";
 export type { ProjectRecord } from "./projects.js";
 export { createVersion, getVersion, updateVersionStatus } from "./versions.js";

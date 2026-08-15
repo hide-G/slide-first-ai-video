@@ -17,6 +17,7 @@ export interface ApiConstructProps {
   projectBucket: s3.Bucket;
   contentStateMachine: sfn.StateMachine;
   renderStateMachine: sfn.StateMachine;
+  teaserStateMachine: sfn.StateMachine;
   approvalQueue: sqs.Queue;
 }
 
@@ -45,6 +46,7 @@ export class ApiConstruct extends Construct {
         BUCKET_NAME: props.projectBucket.bucketName,
         CONTENT_STATE_MACHINE_ARN: props.contentStateMachine.stateMachineArn,
         VIDEO_STATE_MACHINE_ARN: props.renderStateMachine.stateMachineArn,
+        TEASER_STATE_MACHINE_ARN: props.teaserStateMachine.stateMachineArn,
         APPROVAL_QUEUE_URL: props.approvalQueue.queueUrl,
       },
     });
@@ -58,6 +60,7 @@ export class ApiConstruct extends Construct {
     // Grant Step Functions start execution
     props.contentStateMachine.grantStartExecution(this.apiHandler);
     props.renderStateMachine.grantStartExecution(this.apiHandler);
+    props.teaserStateMachine.grantStartExecution(this.apiHandler);
 
     // Grant SQS receive/delete on approval queue
     props.approvalQueue.grantConsumeMessages(this.apiHandler);

@@ -2,7 +2,7 @@
   "id": "FEAT-003",
   "type": "feat",
   "description": "Phase 2: X向け短尺版 (X teaser short video). Implement the teaser generation Lambda (important slide selection + short script via Bedrock), hook text generation (3 options), subtitle style selection, thumbnail generation, 9:16 slide-card template, post text and source page generation. Add teaser state machine and CDK infrastructure.",
-  "status": "pending",
+  "status": "in_progress",
   "steps": [
     "Create lambdas/teaser-generator/ workspace package with package.json, tsconfig.json, tsconfig.build.json",
     "Create lambdas/teaser-generator/src/index.ts - Lambda handler that receives projectId/versionNumber/manifest, calls Bedrock to select important slides (importance=HIGH, max 3-6), generate teaserNote (shortened script), hookText (3 options), and post text",

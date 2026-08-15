@@ -181,6 +181,26 @@ describe("MainStack - Lambda Functions", () => {
     });
   });
 
+  it("creates Teaser Generator Lambda with 1024MB memory", () => {
+    const template = createTestStack();
+
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      FunctionName: "testapp-dev-teaser-generator",
+      MemorySize: 1024,
+      Timeout: 120,
+    });
+  });
+
+  it("creates Teaser Composition Builder Lambda with 512MB memory", () => {
+    const template = createTestStack();
+
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      FunctionName: "testapp-dev-teaser-composition-builder",
+      MemorySize: 512,
+      Timeout: 60,
+    });
+  });
+
   it("grants Polly Worker polly:SynthesizeSpeech permission", () => {
     const template = createTestStack();
 
@@ -254,9 +274,9 @@ describe("MainStack - Step Functions", () => {
     });
   });
 
-  it("creates 2 state machines total", () => {
+  it("creates 3 state machines total", () => {
     const template = createTestStack();
-    template.resourceCountIs("AWS::StepFunctions::StateMachine", 2);
+    template.resourceCountIs("AWS::StepFunctions::StateMachine", 3);
   });
 
   it("content state machine has Parallel state for Marp + Polly", () => {
@@ -305,6 +325,15 @@ describe("MainStack - Step Functions", () => {
     // Verify the approval step uses waitForTaskToken pattern (SQS send)
     expect(definitionStr).toContain("WaitForApproval");
     expect(definitionStr).toContain(".waitForTaskToken");
+  });
+
+  it("creates Teaser Pipeline state machine", () => {
+    const template = createTestStack();
+
+    template.hasResourceProperties("AWS::StepFunctions::StateMachine", {
+      StateMachineName: "testapp-dev-teaser-pipeline",
+      StateMachineType: "STANDARD",
+    });
   });
 
   it("render state machine has Map state for parallel chunk rendering", () => {
@@ -442,6 +471,19 @@ describe("MainStack - Environment Variables", () => {
       Environment: {
         Variables: Match.objectLike({
           VIDEO_STATE_MACHINE_ARN: Match.anyValue(),
+        }),
+      },
+    });
+  });
+
+  it("API Lambda has TEASER_STATE_MACHINE_ARN env var", () => {
+    const template = createTestStack();
+
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      FunctionName: "testapp-dev-api",
+      Environment: {
+        Variables: Match.objectLike({
+          TEASER_STATE_MACHINE_ARN: Match.anyValue(),
         }),
       },
     });

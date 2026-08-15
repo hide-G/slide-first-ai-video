@@ -27,8 +27,8 @@ import {
 } from "../db/index.js";
 
 const sfnClient = new SFNClient({});
-const VIDEO_STATE_MACHINE_ARN =
-  process.env.VIDEO_STATE_MACHINE_ARN ?? "";
+const TEASER_STATE_MACHINE_ARN =
+  process.env.TEASER_STATE_MACHINE_ARN ?? "";
 
 export async function handleStartTeaser(
   event: APIGatewayProxyEventV2,
@@ -104,10 +104,10 @@ export async function handleStartTeaser(
     outputTypes: ["x-teaser-16x9"],
   });
 
-  if (VIDEO_STATE_MACHINE_ARN) {
+  if (TEASER_STATE_MACHINE_ARN) {
     await sfnClient.send(
       new StartExecutionCommand({
-        stateMachineArn: VIDEO_STATE_MACHINE_ARN,
+        stateMachineArn: TEASER_STATE_MACHINE_ARN,
         name: `teaser-${jobId}`,
         input: executionInput,
       }),

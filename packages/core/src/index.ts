@@ -50,3 +50,12 @@ export type {
   SlideInput,
   ManifestConfig,
 } from "./manifest/index.js";
+
+// Teaser module
+export {
+  calculateTeaserDuration,
+  validateTeaserDuration,
+  DEFAULT_TEASER_CONFIG,
+  calculateSlideCardLayout,
+  SLIDE_CARD_DIMENSIONS,
+} from "./teaser/index.js";

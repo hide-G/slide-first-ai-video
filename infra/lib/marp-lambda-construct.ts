@@ -10,20 +10,23 @@ export interface MarpLambdaConstructProps {
 }
 
 /**
- * Marp Lambda construct: DockerImageFunction for Marp rendering.
- * Memory 3008MB, ephemeral storage 2048MB, timeout 5 min.
+ * Marp Lambda コンストラクト: Node.js Lambda で Marp レンダリングを実行。
+ * @sparticuz/chromium を使用し、Docker 不要。
+ * メモリ 3008MB、エフェメラルストレージ 2048MB、タイムアウト 5分。
  */
 export class MarpLambdaConstruct extends Construct {
-  public readonly handler: lambda.DockerImageFunction;
+  public readonly handler: lambda.Function;
 
   constructor(scope: Construct, id: string, props: MarpLambdaConstructProps) {
     super(scope, id);
 
     const { productSlug, environment } = props;
 
-    this.handler = new lambda.DockerImageFunction(this, "MarpHandler", {
+    this.handler = new lambda.Function(this, "MarpHandler", {
       functionName: `${productSlug}-${environment}-marp-render`,
-      code: lambda.DockerImageCode.fromImageAsset("../lambdas/marp-render"),
+      runtime: lambda.Runtime.NODEJS_22_X,
+      handler: "index.handler",
+      code: lambda.Code.fromAsset("../lambdas/marp-render/dist"),
       memorySize: 3008,
       ephemeralStorageSize: cdk.Size.mebibytes(2048),
       timeout: cdk.Duration.minutes(5),
@@ -32,7 +35,7 @@ export class MarpLambdaConstruct extends Construct {
       },
     });
 
-    // Grant S3 read/write to all keys (actual keys are userId/projectId/versions/vNNNN/slides/...)
+    // S3 読み書き権限を付与
     props.projectBucket.grantReadWrite(this.handler, "*");
   }
 }

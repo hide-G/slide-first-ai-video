@@ -1,0 +1,131 @@
+:root {
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --text: #1e293b;
+  --text-secondary: #64748b;
+  --border: #e2e8f0;
+  --error: #dc2626;
+  --success: #059669;
+  --radius: 8px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+}
+
+/* ログイン画面 */
+.login-container {
+  max-width: 400px;
+  margin: 80px auto;
+  padding: 40px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+  text-align: center;
+}
+.login-container h1 { margin-bottom: 8px; font-size: 24px; }
+.login-container .subtitle { color: var(--text-secondary); margin-bottom: 24px; }
+.login-form { display: flex; flex-direction: column; gap: 12px; }
+.login-form input {
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 14px;
+}
+.login-form button[type="submit"] {
+  background: var(--primary);
+  color: white;
+  border: none;
+  padding: 12px;
+  border-radius: var(--radius);
+  font-size: 14px;
+  cursor: pointer;
+}
+.login-form button[type="submit"]:hover { background: var(--primary-hover); }
+.login-form button[type="submit"]:disabled { background: #9ca3af; cursor: not-allowed; }
+.switch-mode { font-size: 13px; color: var(--text-secondary); margin-top: 8px; }
+.switch-mode button { background: none; border: none; color: var(--primary); cursor: pointer; text-decoration: underline; }
+
+/* ローディング */
+.loading { display: flex; justify-content: center; align-items: center; height: 100vh; }
+
+/* ダッシュボード */
+.dashboard header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.dashboard header h1 { font-size: 18px; }
+.user-info { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+.user-info button {
+  background: none;
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.dashboard main { max-width: 800px; margin: 24px auto; padding: 0 16px; }
+.dashboard section { background: var(--surface); border-radius: var(--radius); padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+.dashboard h2 { font-size: 16px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+@media (max-width: 600px) { .form-grid { grid-template-columns: 1fr; } }
+.form-grid label { display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; }
+.form-grid input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 14px;
+}
+.form-grid input:disabled { background: #f1f5f9; }
+
+.primary-button {
+  background: var(--primary);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: var(--radius);
+  font-size: 14px;
+  cursor: pointer;
+  width: 100%;
+}
+.primary-button:hover { background: var(--primary-hover); }
+.primary-button:disabled { background: #9ca3af; cursor: not-allowed; }
+
+.progress-section .progress-bar { padding: 12px; background: #f1f5f9; border-radius: var(--radius); font-size: 14px; }
+.progress-section .step.error { color: var(--error); }
+
+.error { color: var(--error); font-size: 13px; margin-top: 8px; }
+
+.markdown-preview {
+  background: #1e293b;
+  color: #e2e8f0;
+  padding: 16px;
+  border-radius: var(--radius);
+  font-family: "Fira Code", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-x: auto;
+  max-height: 400px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+
+.deliverables-section ul { list-style: none; }
+.deliverables-section li { padding: 8px 0; border-bottom: 1px solid var(--border); }
+.deliverables-section li:last-child { border-bottom: none; }
+.deliverables-section a { color: var(--primary); text-decoration: none; }
+.deliverables-section a:hover { text-decoration: underline; }

@@ -1,24 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Mock child_process for marp commands
-vi.mock("node:child_process", () => ({
-  execFile: vi.fn((_cmd: string, _args: string[], _opts: unknown, callback?: (err: Error | null, stdout: string, stderr: string) => void) => {
-    if (callback) {
-      callback(null, "", "");
-    }
-    return {};
-  }),
+// marp-commands をモック
+vi.mock("./marp-commands.js", () => ({
+  generatePdfBuffer: vi.fn().mockResolvedValue(Buffer.from("mock-pdf")),
+  generatePptxBuffer: vi.fn().mockResolvedValue(Buffer.from("mock-pptx")),
+  generatePngBuffers: vi.fn().mockResolvedValue([
+    Buffer.from("png-1"),
+    Buffer.from("png-2"),
+    Buffer.from("png-3"),
+  ]),
 }));
 
-// Mock fs/promises
-vi.mock("node:fs/promises", () => ({
-  writeFile: vi.fn().mockResolvedValue(undefined),
-  readFile: vi.fn().mockResolvedValue(Buffer.from("mock-file-content")),
-  readdir: vi.fn().mockResolvedValue(["deck.001.png", "deck.002.png", "deck.003.png"]),
-  mkdir: vi.fn().mockResolvedValue(undefined),
-}));
-
-// Mock AWS SDK
+// AWS SDK をモック
 vi.mock("@aws-sdk/client-s3", () => {
   const mockSend = vi.fn().mockResolvedValue({});
   return {
@@ -28,21 +21,14 @@ vi.mock("@aws-sdk/client-s3", () => {
   };
 });
 
-// Mock marp-commands
-vi.mock("./marp-commands.js", () => ({
-  generatePdf: vi.fn().mockResolvedValue({ stdout: "", stderr: "" }),
-  generatePptx: vi.fn().mockResolvedValue({ stdout: "", stderr: "" }),
-  generatePng: vi.fn().mockResolvedValue({ stdout: "", stderr: "" }),
-}));
-
 import type { MarpRenderEvent } from "./index.js";
 
 describe("Marp render handler", () => {
   let handler: (event: MarpRenderEvent) => Promise<unknown>;
   let s3MockSend: ReturnType<typeof vi.fn>;
-  let mockGeneratePdf: ReturnType<typeof vi.fn>;
-  let mockGeneratePptx: ReturnType<typeof vi.fn>;
-  let mockGeneratePng: ReturnType<typeof vi.fn>;
+  let mockGeneratePdfBuffer: ReturnType<typeof vi.fn>;
+  let mockGeneratePptxBuffer: ReturnType<typeof vi.fn>;
+  let mockGeneratePngBuffers: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -51,9 +37,9 @@ describe("Marp render handler", () => {
     s3MockSend = (s3Module as unknown as { __mockSend: ReturnType<typeof vi.fn> }).__mockSend;
 
     const marpModule = await import("./marp-commands.js");
-    mockGeneratePdf = marpModule.generatePdf as ReturnType<typeof vi.fn>;
-    mockGeneratePptx = marpModule.generatePptx as ReturnType<typeof vi.fn>;
-    mockGeneratePng = marpModule.generatePng as ReturnType<typeof vi.fn>;
+    mockGeneratePdfBuffer = marpModule.generatePdfBuffer as ReturnType<typeof vi.fn>;
+    mockGeneratePptxBuffer = marpModule.generatePptxBuffer as ReturnType<typeof vi.fn>;
+    mockGeneratePngBuffers = marpModule.generatePngBuffers as ReturnType<typeof vi.fn>;
 
     const module = await import("./index.js");
     handler = module.handler;
@@ -69,27 +55,27 @@ describe("Marp render handler", () => {
     outputs: ["pdf", "pptx", "png"],
   };
 
-  it("generates PDF when requested", async () => {
+  it("PDF 生成のリクエストを処理する", async () => {
     const event = { ...baseEvent, outputs: ["pdf"] as MarpRenderEvent["outputs"] };
     const result = await handler(event) as { pdfKey?: string };
 
-    expect(mockGeneratePdf).toHaveBeenCalledWith("deck.md", "/tmp/marp-work");
+    expect(mockGeneratePdfBuffer).toHaveBeenCalledWith(baseEvent.deckMarkdown);
     expect(result.pdfKey).toBe("user-456/proj-123/versions/v0001/deck.pdf");
   });
 
-  it("generates PPTX when requested", async () => {
+  it("PPTX 生成のリクエストを処理する", async () => {
     const event = { ...baseEvent, outputs: ["pptx"] as MarpRenderEvent["outputs"] };
     const result = await handler(event) as { pptxKey?: string };
 
-    expect(mockGeneratePptx).toHaveBeenCalledWith("deck.md", "/tmp/marp-work");
+    expect(mockGeneratePptxBuffer).toHaveBeenCalledWith(baseEvent.deckMarkdown);
     expect(result.pptxKey).toBe("user-456/proj-123/versions/v0001/deck.pptx");
   });
 
-  it("generates PNG images when requested", async () => {
+  it("PNG 画像生成のリクエストを処理する", async () => {
     const event = { ...baseEvent, outputs: ["png"] as MarpRenderEvent["outputs"] };
     const result = await handler(event) as { slideImageKeys: string[] };
 
-    expect(mockGeneratePng).toHaveBeenCalledWith("deck.md", "/tmp/marp-work");
+    expect(mockGeneratePngBuffers).toHaveBeenCalledWith(baseEvent.deckMarkdown);
     expect(result.slideImageKeys).toEqual([
       "user-456/proj-123/versions/v0001/slides/deck.001.png",
       "user-456/proj-123/versions/v0001/slides/deck.002.png",
@@ -97,22 +83,22 @@ describe("Marp render handler", () => {
     ]);
   });
 
-  it("handles all output formats together", async () => {
+  it("全出力形式を同時に処理する", async () => {
     const result = await handler(baseEvent) as {
       pdfKey?: string;
       pptxKey?: string;
       slideImageKeys: string[];
     };
 
-    expect(mockGeneratePdf).toHaveBeenCalled();
-    expect(mockGeneratePptx).toHaveBeenCalled();
-    expect(mockGeneratePng).toHaveBeenCalled();
+    expect(mockGeneratePdfBuffer).toHaveBeenCalled();
+    expect(mockGeneratePptxBuffer).toHaveBeenCalled();
+    expect(mockGeneratePngBuffers).toHaveBeenCalled();
     expect(result.pdfKey).toBeDefined();
     expect(result.pptxKey).toBeDefined();
     expect(result.slideImageKeys).toHaveLength(3);
   });
 
-  it("uploads files to S3 with correct content types", async () => {
+  it("正しい Content-Type で S3 にアップロードする", async () => {
     const event = { ...baseEvent, outputs: ["pdf"] as MarpRenderEvent["outputs"] };
     await handler(event);
 
@@ -120,17 +106,5 @@ describe("Marp render handler", () => {
     const uploadCall = s3MockSend.mock.calls[0][0];
     expect(uploadCall.input.Bucket).toBe("test-bucket");
     expect(uploadCall.input.ContentType).toBe("application/pdf");
-  });
-
-  it("writes deck markdown to /tmp work directory", async () => {
-    const { writeFile } = await import("node:fs/promises");
-    const event = { ...baseEvent, outputs: ["pdf"] as MarpRenderEvent["outputs"] };
-    await handler(event);
-
-    expect(writeFile).toHaveBeenCalledWith(
-      "/tmp/marp-work/deck.md",
-      baseEvent.deckMarkdown,
-      "utf-8",
-    );
   });
 });

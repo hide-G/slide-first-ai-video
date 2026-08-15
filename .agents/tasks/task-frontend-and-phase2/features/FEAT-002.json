@@ -2,7 +2,7 @@
   "id": "FEAT-002",
   "type": "feat",
   "description": "Create React frontend workspace package (frontend/) with Vite, React 18, React Router, and AWS Amplify libraries for Cognito authentication. Implement the full UI: login, project CRUD, slide generation/preview/edit/approve workflow, video generation with job progress, deliverable download, and video player. Add API Gateway teaser endpoint. Update CDK with Amplify Hosting construct and teaser API route.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Add 'frontend' to pnpm-workspace.yaml packages list",
     "Create frontend/package.json with React 18, react-router-dom, @aws-amplify/ui-react, aws-amplify, vite, @vitejs/plugin-react, vitest, typescript deps",
@@ -51,5 +51,5 @@
     "eval \"$(mise activate bash)\" && pnpm lint"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "All implemented successfully. Frontend package uses React 18 + Vite + AWS Amplify Authenticator with jsdom vitest environment. Teaser API handler follows same pattern as videos.ts with outputTypes set to x-teaser-16x9. CDK frontend construct uses S3 + CloudFront with SPA error response routing. Existing CDK tests updated: 8 API methods (was 7), 2 OAC instances (was 1). vi.stubEnv does not work for import.meta.env in Vite test environment - tests use stringContaining matchers instead of exact URL matching."
 }

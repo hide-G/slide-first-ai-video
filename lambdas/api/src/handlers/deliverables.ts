@@ -2,7 +2,7 @@
  * GET /v1/projects/{id}/deliverables - List deliverables with presigned URLs.
  */
 
-import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
+import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 import {
   S3Client,
   ListObjectsV2Command,
@@ -50,8 +50,8 @@ export interface Deliverable {
 }
 
 export async function handleGetDeliverables(
-  event: APIGatewayProxyEventV2,
-): Promise<APIGatewayProxyResultV2> {
+  event: APIGatewayProxyEvent,
+): Promise<APIGatewayProxyResult> {
   const userId = extractUserId(event);
   if (!userId) {
     throw new UnauthorizedError();

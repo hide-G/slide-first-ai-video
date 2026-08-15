@@ -1,9 +1,15 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import * as cdk from "aws-cdk-lib";
 import { Template, Match } from "aws-cdk-lib/assertions";
 import { MainStack } from "../src/main-stack.js";
 
+let testTemplate: Template | undefined;
+
 function createTestStack(): Template {
+  if (testTemplate) {
+    return testTemplate;
+  }
+
   const app = new cdk.App();
   const stack = new MainStack(app, "TestStack", {
     productSlug: "testapp",
@@ -13,8 +19,13 @@ function createTestStack(): Template {
       region: "us-east-1",
     },
   });
-  return Template.fromStack(stack);
+  testTemplate = Template.fromStack(stack);
+  return testTemplate;
 }
+
+beforeAll(() => {
+  createTestStack();
+});
 
 describe("MainStack - Storage", () => {
   it("creates S3 bucket with Block Public Access", () => {
@@ -130,14 +141,15 @@ describe("MainStack - Auth", () => {
 });
 
 describe("MainStack - Lambda Functions", () => {
-  it("creates Marp Lambda as DockerImageFunction with 3008MB memory", () => {
+  it("creates Marp Lambda as Node.js ZIP Lambda with 3008MB memory", () => {
     const template = createTestStack();
 
     template.hasResourceProperties("AWS::Lambda::Function", {
       FunctionName: "testapp-dev-marp-render",
+      Runtime: "nodejs22.x",
+      Handler: "index.handler",
       MemorySize: 3008,
       Timeout: 300,
-      PackageType: "Image",
     });
   });
 
@@ -236,20 +248,58 @@ describe("MainStack - API Gateway", () => {
     });
   });
 
-  it("creates 9 API methods", () => {
+  it("adds CORS headers to default, unauthorized, and access-denied responses", () => {
     const template = createTestStack();
-    // 9 routes: GET /projects, POST /projects, POST /projects/{id}/slides,
-    // GET /projects/{id}/versions/{version}, POST /projects/{id}/versions/{version}/approve,
-    // POST /projects/{id}/videos, POST /projects/{id}/videos/teaser,
-    // GET /projects/{id}/deliverables, GET /jobs/{jobId}
-    template.resourceCountIs("AWS::ApiGateway::Method", 9);
+    const corsResponseParameters = {
+      "gatewayresponse.header.Access-Control-Allow-Origin": "'*'",
+      "gatewayresponse.header.Access-Control-Allow-Headers":
+        "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,Idempotency-Key'",
+      "gatewayresponse.header.Access-Control-Allow-Methods":
+        "'GET,POST,PUT,DELETE,OPTIONS'",
+    };
+
+    template.resourceCountIs("AWS::ApiGateway::GatewayResponse", 4);
+    for (const responseType of [
+      "DEFAULT_4XX",
+      "DEFAULT_5XX",
+      "UNAUTHORIZED",
+      "ACCESS_DENIED",
+    ]) {
+      template.hasResourceProperties("AWS::ApiGateway::GatewayResponse", {
+        ResponseType: responseType,
+        ResponseParameters: corsResponseParameters,
+      });
+    }
   });
 
-  it("all methods use Cognito authorization", () => {
+  it("creates 9 protected API methods and 12 CORS preflight methods", () => {
+    const template = createTestStack();
+    const methods = Object.values(
+      template.findResources("AWS::ApiGateway::Method"),
+    );
+    const protectedMethods = methods.filter(
+      (method) => method.Properties.HttpMethod !== "OPTIONS",
+    );
+    const preflightMethods = methods.filter(
+      (method) => method.Properties.HttpMethod === "OPTIONS",
+    );
+
+    template.resourceCountIs("AWS::ApiGateway::Method", 21);
+    expect(protectedMethods).toHaveLength(9);
+    expect(preflightMethods).toHaveLength(12);
+  });
+
+  it("uses Cognito for protected methods and no auth for CORS preflight", () => {
     const template = createTestStack();
     const methods = template.findResources("AWS::ApiGateway::Method");
 
     for (const [, method] of Object.entries(methods)) {
+      if (method.Properties.HttpMethod === "OPTIONS") {
+        expect(method.Properties.AuthorizationType).toBe("NONE");
+        expect(method.Properties.Integration.Type).toBe("MOCK");
+        continue;
+      }
+
       expect(method.Properties.AuthorizationType).toBe("COGNITO_USER_POOLS");
     }
   });

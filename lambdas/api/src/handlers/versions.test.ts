@@ -30,34 +30,21 @@ vi.mock("@aws-sdk/client-s3", () => {
   };
 });
 
-import type { APIGatewayProxyEventV2 } from "aws-lambda";
+import type { APIGatewayProxyEvent } from "aws-lambda";
 import { handleGetVersion } from "./versions.js";
+import { createRestApiEvent } from "../test-utils/rest-api-event.js";
 
-function makeEvent(overrides: Partial<APIGatewayProxyEventV2> = {}): APIGatewayProxyEventV2 {
+function makeEvent(
+  overrides: Partial<APIGatewayProxyEvent> = {},
+): APIGatewayProxyEvent {
   return {
-    version: "2.0",
-    routeKey: "GET /v1/projects/{id}/versions/{version}",
-    rawPath: "/v1/projects/proj-001/versions/1",
-    rawQueryString: "",
-    headers: {},
-    pathParameters: { id: "proj-001", version: "1" },
-    requestContext: {
-      accountId: "123456789",
-      apiId: "api-id",
-      authorizer: { jwt: { claims: { sub: "user-123" }, scopes: [] } },
-      domainName: "api.example.com",
-      domainPrefix: "api",
-      http: { method: "GET", path: "/v1/projects/proj-001/versions/1", protocol: "HTTP/1.1", sourceIp: "127.0.0.1", userAgent: "test" },
-      requestId: "req-id",
-      routeKey: "GET /v1/projects/{id}/versions/{version}",
-      stage: "$default",
-      time: "01/Jan/2024:00:00:00 +0000",
-      timeEpoch: 1704067200000,
-    },
-    body: null,
-    isBase64Encoded: false,
+    ...createRestApiEvent({
+      httpMethod: "GET",
+      path: "/v1/projects/proj-001/versions/1",
+      pathParameters: { id: "proj-001", version: "1" },
+    }),
     ...overrides,
-  } as unknown as APIGatewayProxyEventV2;
+  };
 }
 
 describe("handleGetVersion", () => {

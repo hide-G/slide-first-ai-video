@@ -151,7 +151,7 @@ export class MainStack extends cdk.Stack {
     );
 
     // API: API Gateway with Cognito authorizer and Lambda
-    new ApiConstruct(this, "Api", {
+    const api = new ApiConstruct(this, "Api", {
       productSlug: props.productSlug,
       environment: props.envName,
       userPool: auth.userPool,
@@ -174,6 +174,17 @@ export class MainStack extends cdk.Stack {
     new FrontendConstruct(this, "Frontend", {
       productSlug: props.productSlug,
       environment: props.envName,
+      // APIクライアントが/v1を付与するため、stageを含まないオリジンだけを配布する。
+      apiEndpoint: cdk.Fn.join("", [
+        "https://",
+        api.api.restApiId,
+        ".execute-api.",
+        cdk.Aws.REGION,
+        ".",
+        cdk.Aws.URL_SUFFIX,
+      ]),
+      cognitoUserPoolId: auth.userPool.userPoolId,
+      cognitoUserPoolClientId: auth.userPoolClient.userPoolClientId,
     });
   }
 }

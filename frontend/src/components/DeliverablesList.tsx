@@ -1,96 +1,42 @@
-import { useState, useEffect } from "react";
-import { apiClient } from "../api/client.js";
-import type { Deliverable } from "../api/types.js";
+import type { GetDeliverablesResponse } from "../api/types.js";
+import { useLanguage } from "../i18n/LanguageContext.js";
 
 interface DeliverablesListProps {
-  projectId: string;
-  onVideoSelect?: (url: string) => void;
+  deliverables: GetDeliverablesResponse;
 }
 
-/**
- * Fetch and display downloadable deliverables (PDF, PPTX, MP4, VTT, SRT).
- */
-export function DeliverablesList({
-  projectId,
-  onVideoSelect,
-}: DeliverablesListProps) {
-  const [deliverables, setDeliverables] = useState<Deliverable[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+export function DeliverablesList({ deliverables }: DeliverablesListProps) {
+  const { t } = useLanguage();
 
-  useEffect(() => {
-    loadDeliverables();
-  }, [projectId]);
-
-  async function loadDeliverables() {
-    try {
-      setLoading(true);
-      const response = await apiClient.getDeliverables(projectId);
-      setDeliverables(response.deliverables);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to load deliverables",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  if (loading) {
-    return <div>Loading deliverables...</div>;
-  }
-
-  if (error) {
-    return <div style={{ color: "red" }}>{error}</div>;
-  }
-
-  if (deliverables.length === 0) {
-    return <p>No deliverables available yet.</p>;
+  if (!deliverables.deliverables || deliverables.deliverables.length === 0) {
+    return <p>{t("deliverables.empty")}</p>;
   }
 
   return (
     <div>
-      <h2>Deliverables</h2>
+      <h2>{t("deliverables.title")}</h2>
       <ul style={{ listStyle: "none", padding: 0 }}>
-        {deliverables.map((d) => (
+        {deliverables.deliverables.map((deliverable) => (
           <li
-            key={d.key}
+            key={deliverable.key}
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "1rem",
               padding: "0.5rem",
-              border: "1px solid #eee",
-              borderRadius: "4px",
-              marginBottom: "0.5rem",
+              borderBottom: "1px solid #eee",
             }}
           >
-            <span style={{ fontWeight: "bold", textTransform: "uppercase" }}>
-              {d.type}
-            </span>
-            <span style={{ flex: 1 }}>{d.filename}</span>
             <a
-              href={d.url}
-              download={d.filename}
-              style={{ color: "#2196F3" }}
+              href={deliverable.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={t("deliverables.download", {
+                filename: deliverable.filename,
+              })}
             >
-              Download
+              📥 {deliverable.filename}
             </a>
-            {d.type === "mp4" && onVideoSelect && (
-              <button
-                onClick={() => onVideoSelect(d.url)}
-                style={{
-                  background: "none",
-                  border: "1px solid #2196F3",
-                  color: "#2196F3",
-                  borderRadius: "4px",
-                  padding: "0.25rem 0.5rem",
-                  cursor: "pointer",
-                }}
-              >
-                Play
-              </button>
-            )}
+            <span style={{ marginLeft: "1rem", color: "#666", fontSize: "0.85rem" }}>
+              ({t("deliverables.type", { type: deliverable.type })})
+            </span>
           </li>
         ))}
       </ul>

@@ -1,7 +1,8 @@
-/**
- * AWS Amplify configuration from environment variables.
- */
+import type { RuntimeConfig } from "./runtime-config.js";
 
+/**
+ * CDKが配布した実行時設定から構築するAWS Amplify設定。
+ */
 export interface AmplifyConfig {
   Auth: {
     Cognito: {
@@ -11,12 +12,12 @@ export interface AmplifyConfig {
   };
 }
 
-export function getAmplifyConfig(): AmplifyConfig {
+export function getAmplifyConfig(runtimeConfig: RuntimeConfig): AmplifyConfig {
   return {
     Auth: {
       Cognito: {
-        userPoolId: import.meta.env.VITE_COGNITO_USER_POOL_ID ?? "",
-        userPoolClientId: import.meta.env.VITE_COGNITO_CLIENT_ID ?? "",
+        userPoolId: runtimeConfig.cognitoUserPoolId,
+        userPoolClientId: runtimeConfig.cognitoUserPoolClientId,
       },
     },
   };

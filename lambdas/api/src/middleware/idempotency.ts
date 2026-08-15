@@ -3,7 +3,7 @@
  * Prevents duplicate mutation processing using DynamoDB conditional writes.
  */
 
-import type { APIGatewayProxyEventV2 } from "aws-lambda";
+import type { APIGatewayProxyEvent } from "aws-lambda";
 import { isValidIdempotencyKey } from "@slide-first/core";
 import { ApiError } from "./errors.js";
 
@@ -13,7 +13,7 @@ import { ApiError } from "./errors.js";
  * Throws if the key is present but invalid format.
  */
 export function extractIdempotencyKey(
-  event: APIGatewayProxyEventV2,
+  event: APIGatewayProxyEvent,
 ): string | null {
   const key =
     event.headers?.["idempotency-key"] ||

@@ -1,86 +1,101 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { apiClient } from "../api/client.js";
 import { MarkdownPreview } from "../components/MarkdownPreview.js";
-import type { Version } from "../api/types.js";
+import type { GetVersionResponse } from "../api/types.js";
+import { getErrorDescriptor } from "../i18n/errors.js";
+import { useLanguage } from "../i18n/LanguageContext.js";
+import {
+  message,
+  statusMessage,
+  type MessageDescriptor,
+} from "../i18n/messages.js";
 
 export function VersionPage() {
   const { id, version } = useParams<{ id: string; version: string }>();
-  const navigate = useNavigate();
-  const [versionData, setVersionData] = useState<Version | null>(null);
-  const [markdownContent, setMarkdownContent] = useState<string>("");
+  const { format, t } = useLanguage();
+  const [data, setData] = useState<GetVersionResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<MessageDescriptor | null>(null);
   const [approving, setApproving] = useState(false);
 
   useEffect(() => {
-    if (id && version) {
-      loadVersion();
+    if (!id || !version) {
+      return;
     }
+
+    void loadVersion();
   }, [id, version]);
 
-  async function loadVersion() {
+  async function loadVersion(): Promise<void> {
     try {
       setLoading(true);
-      const response = await apiClient.getVersion(id!, Number(version!));
-      setVersionData(response.version);
-      setMarkdownContent(response.markdownContent ?? "");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load version");
+      const response = await apiClient.getVersion(id!, Number(version));
+      setData(response);
+    } catch (error) {
+      setError(getErrorDescriptor(error, message("errors.versionLoad")));
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleApprove() {
-    if (!id || !version) return;
+  async function handleApprove(): Promise<void> {
+    if (!id || !version) {
+      return;
+    }
+
     try {
       setApproving(true);
       setError(null);
       await apiClient.approveVersion(id, Number(version));
-      // Navigate to videos page after approval
-      navigate(`/projects/${id}/videos`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to approve version");
+      await loadVersion();
+    } catch (error) {
+      setError(getErrorDescriptor(error, message("errors.versionApprove")));
     } finally {
       setApproving(false);
     }
   }
 
   if (loading) {
-    return <div>Loading version...</div>;
+    return <div>{t("common.loading")}</div>;
   }
 
   if (error) {
-    return <div style={{ color: "red" }}>{error}</div>;
+    return <div role="alert" style={{ color: "red" }}>{format(error)}</div>;
+  }
+
+  if (!data) {
+    return <div>{t("version.notFound")}</div>;
   }
 
   return (
     <div>
-      <h1>
-        Version {version} - {versionData?.status}
-      </h1>
+      <h1>{t("version.title", { version: version ?? "" })}</h1>
+      <p>
+        {t("common.status")}: {" "}
+        <strong>{format(statusMessage(data.version.status))}</strong>
+      </p>
 
-      {versionData?.status === "SLIDE_READY" && (
-        <button
-          onClick={handleApprove}
-          disabled={approving}
-          style={{
-            background: "#4CAF50",
-            color: "white",
-            padding: "0.5rem 1rem",
-            border: "none",
-            borderRadius: "4px",
-            cursor: "pointer",
-            marginBottom: "1rem",
-          }}
-        >
-          {approving ? "Approving..." : "Approve Slides"}
+      {data.version.status === "SLIDE_READY" && (
+        <button onClick={() => void handleApprove()} disabled={approving}>
+          {approving ? t("version.approving") : t("version.approve")}
         </button>
       )}
 
-      <h2>Slide Preview</h2>
-      <MarkdownPreview content={markdownContent} />
+      {data.version.status === "SLIDE_APPROVED" && (
+        <p style={{ color: "green" }}>{t("version.approved")}</p>
+      )}
+
+      {data.markdownContent && (
+        <div style={{ marginTop: "1rem" }}>
+          <h2>{t("version.slidesMarkdown")}</h2>
+          <MarkdownPreview content={data.markdownContent} />
+        </div>
+      )}
+
+      <div style={{ marginTop: "1rem" }}>
+        <Link to={`/projects/${id}`}>{t("nav.backToProject")}</Link>
+      </div>
     </div>
   );
 }

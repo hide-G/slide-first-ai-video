@@ -12,12 +12,13 @@
     "eval": "node packages/evaluation/dist/cli.js"
   },
   "devDependencies": {
+    "@eslint/js": "9.28.0",
+    "esbuild": "0.28.2",
     "eslint": "9.28.0",
     "prettier": "3.5.3",
     "typescript": "5.8.3",
-    "vitest": "3.1.4",
-    "@eslint/js": "9.28.0",
-    "typescript-eslint": "8.33.0"
+    "typescript-eslint": "8.33.0",
+    "vitest": "3.1.4"
   },
   "engines": {
     "node": ">=22",
@@ -25,6 +26,8 @@
   },
   "packageManager": "pnpm@10.28.1",
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }

@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Mock all AWS SDKs
 vi.mock("@aws-sdk/client-dynamodb", () => ({
   DynamoDBClient: vi.fn(() => ({})),
   ConditionalCheckFailedException: class ConditionalCheckFailedException extends Error {
@@ -18,6 +17,7 @@ vi.mock("@aws-sdk/lib-dynamodb", () => {
     PutCommand: vi.fn((input) => ({ input, type: "Put" })),
     GetCommand: vi.fn((input) => ({ input, type: "Get" })),
     UpdateCommand: vi.fn((input) => ({ input, type: "Update" })),
+    QueryCommand: vi.fn((input) => ({ input, type: "Query" })),
     __mockSend: mockSend,
   };
 });
@@ -49,8 +49,9 @@ vi.mock("ulid", () => ({
   ulid: vi.fn(() => "01TESTROUTERID00001"),
 }));
 
-import type { APIGatewayProxyEventV2, Context } from "aws-lambda";
+import type { APIGatewayProxyEvent, Context } from "aws-lambda";
 import { handler } from "./index.js";
+import { createRestApiEvent } from "./test-utils/rest-api-event.js";
 
 const mockContext: Context = {
   callbackWaitsForEmptyEventLoop: true,
@@ -67,40 +68,26 @@ const mockContext: Context = {
   succeed: () => {},
 };
 
+const expectedCorsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "Content-Type,Authorization,X-Amz-Date,X-Api-Key,Idempotency-Key",
+  "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+};
+
 function makeEvent(
   method: string,
   path: string,
-  overrides: Partial<APIGatewayProxyEventV2> = {},
-): APIGatewayProxyEventV2 {
+  overrides: Partial<APIGatewayProxyEvent> = {},
+): APIGatewayProxyEvent {
   return {
-    version: "2.0",
-    routeKey: `${method} ${path}`,
-    rawPath: path,
-    rawQueryString: "",
-    headers: { "content-type": "application/json" },
-    requestContext: {
-      accountId: "123456789",
-      apiId: "api-id",
-      authorizer: { jwt: { claims: { sub: "user-123" }, scopes: [] } },
-      domainName: "api.example.com",
-      domainPrefix: "api",
-      http: {
-        method,
-        path,
-        protocol: "HTTP/1.1",
-        sourceIp: "127.0.0.1",
-        userAgent: "test",
-      },
-      requestId: "req-id",
-      routeKey: `${method} ${path}`,
-      stage: "$default",
-      time: "01/Jan/2024:00:00:00 +0000",
-      timeEpoch: 1704067200000,
-    },
-    body: null,
-    isBase64Encoded: false,
+    ...createRestApiEvent({
+      httpMethod: method,
+      path,
+      headers: { "content-type": "application/json" },
+    }),
     ...overrides,
-  } as unknown as APIGatewayProxyEventV2;
+  };
 }
 
 describe("API Router", () => {
@@ -115,24 +102,37 @@ describe("API Router", () => {
     mockSend.mockResolvedValue({});
   });
 
-  it("returns 404 for unknown routes", async () => {
+  it("returns CORS headers with 404 for unknown routes", async () => {
     const event = makeEvent("GET", "/v1/unknown");
     const result = await handler(event, mockContext);
 
     expect(result.statusCode).toBe(404);
-    const body = JSON.parse(result.body as string);
+    expect(result.headers).toMatchObject(expectedCorsHeaders);
+    const body = JSON.parse(result.body);
     expect(body.error).toBe("NOT_FOUND");
   });
 
-  it("routes POST /v1/projects correctly", async () => {
-    const event = makeEvent("POST", "/v1/projects", {
+  it("routes GET /projects when the REST API path includes the stage", async () => {
+    const event = makeEvent("GET", "/v1/projects");
+    const result = await handler(event, mockContext);
+
+    expect(result.statusCode).toBe(200);
+    expect(result.headers).toMatchObject(expectedCorsHeaders);
+    const body = JSON.parse(result.body);
+    expect(body.projects).toEqual([]);
+  });
+
+  it("routes POST /projects without a leading /v1 path prefix", async () => {
+    const event = makeEvent("POST", "/projects", {
       body: JSON.stringify({ title: "Router Test" }),
     });
 
     const result = await handler(event, mockContext);
     expect(result.statusCode).toBe(201);
-    const body = JSON.parse(result.body as string);
-    expect(body.title).toBe("Router Test");
+    expect(result.headers).toMatchObject(expectedCorsHeaders);
+    const body = JSON.parse(result.body);
+    expect(body.project.projectId).toBe("01TESTROUTERID00001");
+    expect(body.project.title).toBe("Router Test");
   });
 
   it("routes GET /v1/jobs/{jobId} correctly", async () => {
@@ -153,35 +153,21 @@ describe("API Router", () => {
     const result = await handler(event, mockContext);
 
     expect(result.statusCode).toBe(200);
-    const body = JSON.parse(result.body as string);
+    const body = JSON.parse(result.body);
     expect(body.jobId).toBe("job-abc");
   });
 
-  it("handles errors gracefully", async () => {
-    // No auth context
-    const event = makeEvent("POST", "/v1/projects", {
+  it("adds CORS headers to exception responses", async () => {
+    const event = makeEvent("POST", "/projects", {
       body: JSON.stringify({ title: "Test" }),
       requestContext: {
-        accountId: "123456789",
-        apiId: "api-id",
-        domainName: "api.example.com",
-        domainPrefix: "api",
-        http: {
-          method: "POST",
-          path: "/v1/projects",
-          protocol: "HTTP/1.1",
-          sourceIp: "127.0.0.1",
-          userAgent: "test",
-        },
-        requestId: "req-id",
-        routeKey: "POST /v1/projects",
-        stage: "$default",
-        time: "01/Jan/2024:00:00:00 +0000",
-        timeEpoch: 1704067200000,
-      } as unknown as APIGatewayProxyEventV2["requestContext"],
+        ...makeEvent("POST", "/projects").requestContext,
+        authorizer: undefined,
+      } as unknown as APIGatewayProxyEvent["requestContext"],
     });
 
     const result = await handler(event, mockContext);
     expect(result.statusCode).toBe(401);
+    expect(result.headers).toMatchObject(expectedCorsHeaders);
   });
 });

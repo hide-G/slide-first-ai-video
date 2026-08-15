@@ -21,34 +21,21 @@ vi.mock("@aws-sdk/lib-dynamodb", () => {
   };
 });
 
-import type { APIGatewayProxyEventV2 } from "aws-lambda";
+import type { APIGatewayProxyEvent } from "aws-lambda";
 import { handleGetJob } from "./jobs.js";
+import { createRestApiEvent } from "../test-utils/rest-api-event.js";
 
-function makeEvent(overrides: Partial<APIGatewayProxyEventV2> = {}): APIGatewayProxyEventV2 {
+function makeEvent(
+  overrides: Partial<APIGatewayProxyEvent> = {},
+): APIGatewayProxyEvent {
   return {
-    version: "2.0",
-    routeKey: "GET /v1/jobs/{jobId}",
-    rawPath: "/v1/jobs/job-001",
-    rawQueryString: "",
-    headers: {},
-    pathParameters: { jobId: "job-001" },
-    requestContext: {
-      accountId: "123456789",
-      apiId: "api-id",
-      authorizer: { jwt: { claims: { sub: "user-123" }, scopes: [] } },
-      domainName: "api.example.com",
-      domainPrefix: "api",
-      http: { method: "GET", path: "/v1/jobs/job-001", protocol: "HTTP/1.1", sourceIp: "127.0.0.1", userAgent: "test" },
-      requestId: "req-id",
-      routeKey: "GET /v1/jobs/{jobId}",
-      stage: "$default",
-      time: "01/Jan/2024:00:00:00 +0000",
-      timeEpoch: 1704067200000,
-    },
-    body: null,
-    isBase64Encoded: false,
+    ...createRestApiEvent({
+      httpMethod: "GET",
+      path: "/v1/jobs/job-001",
+      pathParameters: { jobId: "job-001" },
+    }),
     ...overrides,
-  } as unknown as APIGatewayProxyEventV2;
+  };
 }
 
 describe("handleGetJob", () => {

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-// Mock aws-amplify/auth
+// aws-amplify/authをモックする。
 vi.mock("aws-amplify/auth", () => ({
   fetchAuthSession: vi.fn().mockResolvedValue({
     tokens: {
@@ -9,7 +9,7 @@ vi.mock("aws-amplify/auth", () => ({
   }),
 }));
 
-import { apiClient, ApiError } from "./client.js";
+import { apiClient, ApiError, configureApiClient } from "./client.js";
 
 describe("apiClient", () => {
   let fetchMock: ReturnType<typeof vi.fn>;
@@ -17,6 +17,7 @@ describe("apiClient", () => {
   beforeEach(() => {
     fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
+    configureApiClient("https://api.example.test/v1/");
   });
 
   afterEach(() => {
@@ -50,7 +51,7 @@ describe("apiClient", () => {
     await apiClient.listProjects();
 
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/v1/projects"),
+      "https://api.example.test/v1/projects",
       expect.objectContaining({ method: "GET" }),
     );
   });
@@ -101,7 +102,7 @@ describe("apiClient", () => {
 
     try {
       await apiClient.listProjects();
-      expect.fail("Expected ApiError to be thrown");
+      expect.fail("ApiErrorが送出される必要があります。");
     } catch (err) {
       expect(err).toBeInstanceOf(ApiError);
       expect((err as ApiError).statusCode).toBe(404);

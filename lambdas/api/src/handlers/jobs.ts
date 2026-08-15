@@ -2,7 +2,7 @@
  * GET /v1/jobs/{jobId} - Get job status and progress.
  */
 
-import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
+import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 import {
   extractUserId,
   buildResponse,
@@ -30,8 +30,8 @@ const STAGE_MESSAGES: Record<string, string> = {
 };
 
 export async function handleGetJob(
-  event: APIGatewayProxyEventV2,
-): Promise<APIGatewayProxyResultV2> {
+  event: APIGatewayProxyEvent,
+): Promise<APIGatewayProxyResult> {
   const userId = extractUserId(event);
   if (!userId) {
     throw new UnauthorizedError();

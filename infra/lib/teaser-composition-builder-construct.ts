@@ -1,7 +1,28 @@
+import { existsSync } from "node:fs";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import * as cdk from "aws-cdk-lib";
 import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as lambdaNodejs from "aws-cdk-lib/aws-lambda-nodejs";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
+
+function findRepositoryRoot(startDirectory: string): string {
+  let directory = startDirectory;
+
+  while (true) {
+    if (existsSync(path.join(directory, "pnpm-lock.yaml"))) {
+      return directory;
+    }
+
+    const parentDirectory = path.dirname(directory);
+    if (parentDirectory === directory) {
+      throw new Error("pnpm-lock.yamlを含むリポジトリルートを特定できませんでした。");
+    }
+
+    directory = parentDirectory;
+  }
+}
 
 export interface TeaserCompositionBuilderConstructProps {
   productSlug: string;
@@ -10,9 +31,8 @@ export interface TeaserCompositionBuilderConstructProps {
 }
 
 /**
- * Teaser Composition Builder construct: Lambda function that generates
- * Hyperframes HTML for teaser videos (16:9 and 9:16 layouts).
- * Memory 512MB, timeout 60s. IAM: S3 read/write.
+ * ティーザー動画向けHyperframes HTMLを生成するConstruct。
+ * メモリ512MiB、タイムアウト60秒、S3の読み書きを許可する。
  */
 export class TeaserCompositionBuilderConstruct extends Construct {
   public readonly handler: lambda.Function;
@@ -25,26 +45,45 @@ export class TeaserCompositionBuilderConstruct extends Construct {
     super(scope, id);
 
     const { productSlug, environment } = props;
+    const repositoryRoot = findRepositoryRoot(
+      path.dirname(fileURLToPath(import.meta.url)),
+    );
 
-    this.handler = new lambda.Function(
+    // ローカルesbuildでworkspace依存とAWS SDKをバンドルする。
+    this.handler = new lambdaNodejs.NodejsFunction(
       this,
       "TeaserCompositionBuilderHandler",
       {
         functionName: `${productSlug}-${environment}-teaser-composition-builder`,
         runtime: lambda.Runtime.NODEJS_22_X,
-        handler: "index.handler",
-        code: lambda.Code.fromAsset(
-          "../lambdas/teaser-composition-builder/dist",
+        entry: path.join(
+          repositoryRoot,
+          "lambdas",
+          "teaser-composition-builder",
+          "src",
+          "index.ts",
         ),
+        handler: "handler",
+        depsLockFilePath: path.join(repositoryRoot, "pnpm-lock.yaml"),
+        projectRoot: repositoryRoot,
         memorySize: 512,
         timeout: cdk.Duration.seconds(60),
         environment: {
           BUCKET_NAME: props.projectBucket.bucketName,
         },
+        bundling: {
+          bundleAwsSDK: true,
+          externalModules: [],
+          forceDockerBundling: false,
+          format: lambdaNodejs.OutputFormat.CJS,
+          minify: false,
+          sourceMap: false,
+          target: "node22",
+        },
       },
     );
 
-    // Grant S3 read/write for reading assets and writing composition HTML
+    // アセットの読み取りとHTML成果物の書き込みを許可する。
     props.projectBucket.grantReadWrite(this.handler);
   }
 }

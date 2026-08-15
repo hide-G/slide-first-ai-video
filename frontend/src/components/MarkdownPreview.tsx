@@ -1,15 +1,18 @@
+import { useLanguage } from "../i18n/LanguageContext.js";
+
 interface MarkdownPreviewProps {
   content: string;
 }
 
 /**
- * Simple Marp markdown preview component.
- * Renders markdown content as preformatted text.
- * In production, this could use a Marp renderer for full slide preview.
+ * Marp Markdownを整形済みテキストとして表示する簡易プレビュー。
+ * 本番環境ではMarpレンダラーによるスライドプレビューへ置き換えられる。
  */
 export function MarkdownPreview({ content }: MarkdownPreviewProps) {
+  const { t } = useLanguage();
+
   if (!content) {
-    return <p>No content available</p>;
+    return <p>{t("markdown.empty")}</p>;
   }
 
   return (

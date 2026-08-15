@@ -8,11 +8,14 @@ import { Construct } from "constructs";
 export interface FrontendConstructProps {
   productSlug: string;
   environment: string;
+  apiEndpoint: string;
+  cognitoUserPoolId: string;
+  cognitoUserPoolClientId: string;
 }
 
 /**
- * Frontend construct: S3 bucket for SPA hosting + CloudFront distribution.
- * Hosts the React frontend application with SPA routing support.
+ * フロントエンド構成: SPAホスティング用のS3バケットとCloudFrontディストリビューション。
+ * クライアント側ルーティングを備えたReactフロントエンドを配信する。
  */
 export class FrontendConstruct extends Construct {
   public readonly bucket: s3.Bucket;
@@ -21,9 +24,15 @@ export class FrontendConstruct extends Construct {
   constructor(scope: Construct, id: string, props: FrontendConstructProps) {
     super(scope, id);
 
-    const { productSlug, environment } = props;
+    const {
+      productSlug,
+      environment,
+      apiEndpoint,
+      cognitoUserPoolId,
+      cognitoUserPoolClientId,
+    } = props;
 
-    // S3 bucket for SPA static assets
+    // SPA静的アセット用のS3バケット
     this.bucket = new s3.Bucket(this, "FrontendBucket", {
       bucketName: `${productSlug}-${environment}-frontend`,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
@@ -32,7 +41,7 @@ export class FrontendConstruct extends Construct {
       autoDeleteObjects: true,
     });
 
-    // CloudFront distribution for SPA
+    // SPA用のCloudFrontディストリビューション
     this.distribution = new cloudfront.Distribution(this, "Distribution", {
       comment: `${productSlug}-${environment} frontend`,
       defaultBehavior: {
@@ -43,7 +52,7 @@ export class FrontendConstruct extends Construct {
         allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
       },
       defaultRootObject: "index.html",
-      // SPA routing: return index.html for 403/404 errors (client-side routing)
+      // クライアント側ルーティングのため、403/404ではindex.htmlを返す。
       errorResponses: [
         {
           httpStatus: 403,
@@ -62,18 +71,30 @@ export class FrontendConstruct extends Construct {
       httpVersion: cloudfront.HttpVersion.HTTP2_AND_3,
     });
 
-    // Output the distribution domain name
+    // CloudFrontドメイン名を出力する。
     new cdk.CfnOutput(this, "FrontendUrl", {
       value: `https://${this.distribution.distributionDomainName}`,
       description: "Frontend application URL",
     });
 
-    // フロントエンドのビルド成果物をS3に自動デプロイ
+    // フロントエンドのビルド成果物と、ブラウザ公開可能な接続設定をS3に配布する。
+    // source mapはデバッグ用のため、アセット作成時に除外する。
     new s3deploy.BucketDeployment(this, "DeployFrontend", {
-      sources: [s3deploy.Source.asset("../frontend/dist")],
+      sources: [
+        s3deploy.Source.asset("../frontend/dist", {
+          exclude: ["*.map", "**/*.map"],
+        }),
+        // パスワード、トークン、Client Secretは絶対に含めない。
+        s3deploy.Source.jsonData("runtime-config.json", {
+          apiEndpoint,
+          cognitoUserPoolId,
+          cognitoUserPoolClientId,
+        }),
+      ],
       destinationBucket: this.bucket,
       distribution: this.distribution,
       distributionPaths: ["/*"],
+      memoryLimit: 512,
     });
   }
 }

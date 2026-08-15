@@ -2,7 +2,7 @@
  * POST /v1/projects/{id}/videos - Start video generation.
  */
 
-import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
+import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 import { ulid } from "ulid";
 import { SFNClient, StartExecutionCommand } from "@aws-sdk/client-sfn";
 import {
@@ -31,8 +31,8 @@ const VIDEO_STATE_MACHINE_ARN =
   process.env.VIDEO_STATE_MACHINE_ARN ?? "";
 
 export async function handleStartVideo(
-  event: APIGatewayProxyEventV2,
-): Promise<APIGatewayProxyResultV2> {
+  event: APIGatewayProxyEvent,
+): Promise<APIGatewayProxyResult> {
   const userId = extractUserId(event);
   if (!userId) {
     throw new UnauthorizedError();

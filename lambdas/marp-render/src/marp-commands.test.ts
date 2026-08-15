@@ -17,22 +17,29 @@ vi.mock("@sparticuz/chromium", () => ({
   },
 }));
 
-const mockScreenshot = vi.fn().mockResolvedValue(Buffer.from("png-data"));
-const mockPdf = vi.fn().mockResolvedValue(Buffer.from("pdf-data"));
-const mockSetContent = vi.fn().mockResolvedValue(undefined);
-const mockSetViewport = vi.fn().mockResolvedValue(undefined);
-const mock$$ = vi.fn().mockResolvedValue([
-  { screenshot: mockScreenshot },
-  { screenshot: mockScreenshot },
-]);
-const mockNewPage = vi.fn().mockResolvedValue({
-  setContent: mockSetContent,
-  setViewport: mockSetViewport,
-  pdf: mockPdf,
-  $$: mock$$,
-  screenshot: mockScreenshot,
+const { mockNewPage, mockClose } = vi.hoisted(() => {
+  const mockScreenshot = vi.fn().mockResolvedValue(Buffer.from("png-data"));
+  const mockPdf = vi.fn().mockResolvedValue(Buffer.from("pdf-data"));
+  const mockSetContent = vi.fn().mockResolvedValue(undefined);
+  const mockSetViewport = vi.fn().mockResolvedValue(undefined);
+  const mock$$ = vi.fn().mockResolvedValue([
+    { screenshot: mockScreenshot },
+    { screenshot: mockScreenshot },
+  ]);
+  const mockNewPage = vi.fn().mockResolvedValue({
+    setContent: mockSetContent,
+    setViewport: mockSetViewport,
+    pdf: mockPdf,
+    $$: mock$$,
+    screenshot: mockScreenshot,
+  });
+  const mockClose = vi.fn().mockResolvedValue(undefined);
+
+  return {
+    mockNewPage,
+    mockClose,
+  };
 });
-const mockClose = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("puppeteer-core", () => ({
   default: {

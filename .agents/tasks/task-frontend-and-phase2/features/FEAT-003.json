@@ -2,7 +2,7 @@
   "id": "FEAT-003",
   "type": "feat",
   "description": "Phase 2: X向け短尺版 (X teaser short video). Implement the teaser generation Lambda (important slide selection + short script via Bedrock), hook text generation (3 options), subtitle style selection, thumbnail generation, 9:16 slide-card template, post text and source page generation. Add teaser state machine and CDK infrastructure.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Create lambdas/teaser-generator/ workspace package with package.json, tsconfig.json, tsconfig.build.json",
     "Create lambdas/teaser-generator/src/index.ts - Lambda handler that receives projectId/versionNumber/manifest, calls Bedrock to select important slides (importance=HIGH, max 3-6), generate teaserNote (shortened script), hookText (3 options), and post text",
@@ -49,5 +49,5 @@
     "eval \"$(mise activate bash)\" && pnpm lint"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "All deliverables implemented: shared-types teaser module, core teaser duration/layout, teaser-generator Lambda (Bedrock slide selection + hook + post text), teaser-composition-builder Lambda (16:9 and 9:16 Hyperframes HTML), CDK constructs (TeaserGenerator, TeaserCompositionBuilder, TeaserStateMachine), main-stack updated with 3 new constructs, API handler updated to use TEASER_STATE_MACHINE_ARN. All 40 infra tests pass, all unit tests pass (23 teaser-generator, 16 core/teaser, 13 teaser-composition-builder). Build and lint clean."
 }

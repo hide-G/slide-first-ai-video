@@ -11,10 +11,12 @@ import type {
 import { buildErrorResponse } from "./middleware/index.js";
 import {
   handleCreateProject,
+  handleListProjects,
   handleStartSlides,
   handleGetVersion,
   handleApprove,
   handleStartVideo,
+  handleStartTeaser,
   handleGetJob,
   handleGetDeliverables,
 } from "./handlers/index.js";
@@ -32,6 +34,12 @@ interface Route {
 }
 
 const routes: Route[] = [
+  {
+    method: "GET",
+    pattern: /^\/v1\/projects\/?$/,
+    handler: handleListProjects,
+    paramKeys: [],
+  },
   {
     method: "POST",
     pattern: /^\/v1\/projects\/?$/,
@@ -55,6 +63,12 @@ const routes: Route[] = [
     pattern: /^\/v1\/projects\/([^/]+)\/versions\/([^/]+)\/approve\/?$/,
     handler: handleApprove,
     paramKeys: ["id", "version"],
+  },
+  {
+    method: "POST",
+    pattern: /^\/v1\/projects\/([^/]+)\/videos\/teaser\/?$/,
+    handler: handleStartTeaser,
+    paramKeys: ["id"],
   },
   {
     method: "POST",

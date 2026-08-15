@@ -1,0 +1,24 @@
+{
+  "id": "FEAT-001",
+  "type": "chore",
+  "description": "Environment setup and baseline verification. Install dependencies and confirm existing build/test/lint passes for all workspace packages.",
+  "status": "completed",
+  "steps": [
+    "Run: MISE_NODE_VERIFY=false mise install node@22 && mise use node@22 && npm install -g pnpm@10",
+    "Run: pnpm install in the workspace root /projects/sandbox/slide-first-ai-video",
+    "Run: pnpm build and confirm all packages compile without errors",
+    "Run: pnpm test and confirm all tests pass",
+    "Run: pnpm lint and confirm no lint errors"
+  ],
+  "acceptance_criteria": [
+    "pnpm install completes without errors",
+    "pnpm build exits with code 0",
+    "pnpm test exits with code 0 (all tests pass)",
+    "pnpm lint exits with code 0"
+  ],
+  "verification": [
+    "eval \"$(mise activate bash)\" && pnpm build && pnpm test && pnpm lint"
+  ],
+  "blocked_reason": null,
+  "findings": "Environment verified: Node 22.23.2, pnpm 10.28.1 (both pre-installed via mise). pnpm install completed successfully (221 packages). pnpm build compiled all 15 workspace packages. pnpm test passed all 324 tests across 16 workspace projects. pnpm lint passed with no errors. esbuild build scripts are ignored (pnpm approve-builds warning) but this does not affect compilation."
+}

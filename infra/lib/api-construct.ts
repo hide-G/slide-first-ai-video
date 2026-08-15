@@ -17,6 +17,7 @@ export interface ApiConstructProps {
   projectBucket: s3.Bucket;
   contentStateMachine: sfn.StateMachine;
   renderStateMachine: sfn.StateMachine;
+  teaserStateMachine: sfn.StateMachine;
   approvalQueue: sqs.Queue;
 }
 
@@ -45,6 +46,7 @@ export class ApiConstruct extends Construct {
         BUCKET_NAME: props.projectBucket.bucketName,
         CONTENT_STATE_MACHINE_ARN: props.contentStateMachine.stateMachineArn,
         VIDEO_STATE_MACHINE_ARN: props.renderStateMachine.stateMachineArn,
+        TEASER_STATE_MACHINE_ARN: props.teaserStateMachine.stateMachineArn,
         APPROVAL_QUEUE_URL: props.approvalQueue.queueUrl,
       },
     });
@@ -58,6 +60,7 @@ export class ApiConstruct extends Construct {
     // Grant Step Functions start execution
     props.contentStateMachine.grantStartExecution(this.apiHandler);
     props.renderStateMachine.grantStartExecution(this.apiHandler);
+    props.teaserStateMachine.grantStartExecution(this.apiHandler);
 
     // Grant SQS receive/delete on approval queue
     props.approvalQueue.grantConsumeMessages(this.apiHandler);
@@ -97,8 +100,9 @@ export class ApiConstruct extends Construct {
       authorizationType: apigateway.AuthorizationType.COGNITO,
     };
 
-    // Routes: POST /v1/projects
+    // Routes: GET /v1/projects (list), POST /v1/projects (create)
     const projects = this.api.root.addResource("projects");
+    projects.addMethod("GET", lambdaIntegration, authOptions);
     projects.addMethod("POST", lambdaIntegration, authOptions);
 
     // Routes: POST /v1/projects/{id}/slides
@@ -118,6 +122,10 @@ export class ApiConstruct extends Construct {
     // Routes: POST /v1/projects/{id}/videos
     const videos = projectId.addResource("videos");
     videos.addMethod("POST", lambdaIntegration, authOptions);
+
+    // Routes: POST /v1/projects/{id}/videos/teaser
+    const teaser = videos.addResource("teaser");
+    teaser.addMethod("POST", lambdaIntegration, authOptions);
 
     // Routes: GET /v1/projects/{id}/deliverables
     const deliverables = projectId.addResource("deliverables");

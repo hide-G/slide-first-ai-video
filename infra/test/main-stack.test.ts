@@ -181,6 +181,26 @@ describe("MainStack - Lambda Functions", () => {
     });
   });
 
+  it("creates Teaser Generator Lambda with 1024MB memory", () => {
+    const template = createTestStack();
+
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      FunctionName: "testapp-dev-teaser-generator",
+      MemorySize: 1024,
+      Timeout: 120,
+    });
+  });
+
+  it("creates Teaser Composition Builder Lambda with 512MB memory", () => {
+    const template = createTestStack();
+
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      FunctionName: "testapp-dev-teaser-composition-builder",
+      MemorySize: 512,
+      Timeout: 60,
+    });
+  });
+
   it("grants Polly Worker polly:SynthesizeSpeech permission", () => {
     const template = createTestStack();
 
@@ -216,12 +236,13 @@ describe("MainStack - API Gateway", () => {
     });
   });
 
-  it("creates 7 API methods", () => {
+  it("creates 9 API methods", () => {
     const template = createTestStack();
-    // 7 routes: POST /projects, POST /projects/{id}/slides,
+    // 9 routes: GET /projects, POST /projects, POST /projects/{id}/slides,
     // GET /projects/{id}/versions/{version}, POST /projects/{id}/versions/{version}/approve,
-    // POST /projects/{id}/videos, GET /projects/{id}/deliverables, GET /jobs/{jobId}
-    template.resourceCountIs("AWS::ApiGateway::Method", 7);
+    // POST /projects/{id}/videos, POST /projects/{id}/videos/teaser,
+    // GET /projects/{id}/deliverables, GET /jobs/{jobId}
+    template.resourceCountIs("AWS::ApiGateway::Method", 9);
   });
 
   it("all methods use Cognito authorization", () => {
@@ -253,9 +274,9 @@ describe("MainStack - Step Functions", () => {
     });
   });
 
-  it("creates 2 state machines total", () => {
+  it("creates 3 state machines total", () => {
     const template = createTestStack();
-    template.resourceCountIs("AWS::StepFunctions::StateMachine", 2);
+    template.resourceCountIs("AWS::StepFunctions::StateMachine", 3);
   });
 
   it("content state machine has Parallel state for Marp + Polly", () => {
@@ -306,6 +327,15 @@ describe("MainStack - Step Functions", () => {
     expect(definitionStr).toContain(".waitForTaskToken");
   });
 
+  it("creates Teaser Pipeline state machine", () => {
+    const template = createTestStack();
+
+    template.hasResourceProperties("AWS::StepFunctions::StateMachine", {
+      StateMachineName: "testapp-dev-teaser-pipeline",
+      StateMachineType: "STANDARD",
+    });
+  });
+
   it("render state machine has Map state for parallel chunk rendering", () => {
     const template = createTestStack();
 
@@ -341,7 +371,7 @@ describe("MainStack - SQS", () => {
 });
 
 describe("MainStack - CloudFront", () => {
-  it("creates CloudFront distribution", () => {
+  it("creates CloudFront distribution for content delivery", () => {
     const template = createTestStack();
 
     template.hasResourceProperties("AWS::CloudFront::Distribution", {
@@ -352,13 +382,57 @@ describe("MainStack - CloudFront", () => {
     });
   });
 
+  it("creates CloudFront distribution for frontend", () => {
+    const template = createTestStack();
+
+    template.hasResourceProperties("AWS::CloudFront::Distribution", {
+      DistributionConfig: Match.objectLike({
+        Comment: "testapp-dev frontend",
+        Enabled: true,
+      }),
+    });
+  });
+
   it("uses OAC for S3 access", () => {
     const template = createTestStack();
 
     template.resourceCountIs(
       "AWS::CloudFront::OriginAccessControl",
-      1,
+      2,
     );
+  });
+});
+
+describe("MainStack - Frontend Hosting", () => {
+  it("creates frontend S3 bucket", () => {
+    const template = createTestStack();
+
+    template.hasResourceProperties("AWS::S3::Bucket", {
+      BucketName: "testapp-dev-frontend",
+    });
+  });
+
+  it("creates frontend CloudFront with SPA error responses", () => {
+    const template = createTestStack();
+
+    template.hasResourceProperties("AWS::CloudFront::Distribution", {
+      DistributionConfig: Match.objectLike({
+        Comment: "testapp-dev frontend",
+        DefaultRootObject: "index.html",
+        CustomErrorResponses: Match.arrayWith([
+          Match.objectLike({
+            ErrorCode: 403,
+            ResponseCode: 200,
+            ResponsePagePath: "/index.html",
+          }),
+          Match.objectLike({
+            ErrorCode: 404,
+            ResponseCode: 200,
+            ResponsePagePath: "/index.html",
+          }),
+        ]),
+      }),
+    });
   });
 });
 
@@ -397,6 +471,19 @@ describe("MainStack - Environment Variables", () => {
       Environment: {
         Variables: Match.objectLike({
           VIDEO_STATE_MACHINE_ARN: Match.anyValue(),
+        }),
+      },
+    });
+  });
+
+  it("API Lambda has TEASER_STATE_MACHINE_ARN env var", () => {
+    const template = createTestStack();
+
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      FunctionName: "testapp-dev-api",
+      Environment: {
+        Variables: Match.objectLike({
+          TEASER_STATE_MACHINE_ARN: Match.anyValue(),
         }),
       },
     });

@@ -3,3 +3,4 @@ packages:
   - "infra"
   - "lambdas/*"
   - "config"
+  - "frontend"

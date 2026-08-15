@@ -18,6 +18,7 @@ vi.mock("@aws-sdk/lib-dynamodb", () => {
     PutCommand: vi.fn((input) => ({ input, type: "Put" })),
     GetCommand: vi.fn((input) => ({ input, type: "Get" })),
     UpdateCommand: vi.fn((input) => ({ input, type: "Update" })),
+    QueryCommand: vi.fn((input) => ({ input, type: "Query" })),
     __mockSend: mockSend,
   };
 });
@@ -27,7 +28,7 @@ vi.mock("ulid", () => ({
 }));
 
 import type { APIGatewayProxyEventV2 } from "aws-lambda";
-import { handleCreateProject } from "./projects.js";
+import { handleCreateProject, handleListProjects } from "./projects.js";
 
 function makeEvent(overrides: Partial<APIGatewayProxyEventV2> = {}): APIGatewayProxyEventV2 {
   return {
@@ -130,5 +131,92 @@ describe("handleCreateProject", () => {
     expect(result.statusCode).toBe(201);
     const body = JSON.parse(result.body as string);
     expect(body.projectId).toBe("existing-id");
+  });
+});
+
+describe("handleListProjects", () => {
+  let mockSend: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const dynamoModule = await import("@aws-sdk/lib-dynamodb");
+    mockSend = (dynamoModule as unknown as { __mockSend: ReturnType<typeof vi.fn> }).__mockSend;
+    mockSend.mockResolvedValue({ Items: [] });
+  });
+
+  function makeGetEvent(overrides: Partial<APIGatewayProxyEventV2> = {}): APIGatewayProxyEventV2 {
+    return {
+      version: "2.0",
+      routeKey: "GET /v1/projects",
+      rawPath: "/v1/projects",
+      rawQueryString: "",
+      headers: { "content-type": "application/json" },
+      queryStringParameters: undefined,
+      requestContext: {
+        accountId: "123456789",
+        apiId: "api-id",
+        authorizer: {
+          jwt: { claims: { sub: "user-123" }, scopes: [] },
+        },
+        domainName: "api.example.com",
+        domainPrefix: "api",
+        http: { method: "GET", path: "/v1/projects", protocol: "HTTP/1.1", sourceIp: "127.0.0.1", userAgent: "test" },
+        requestId: "req-id",
+        routeKey: "GET /v1/projects",
+        stage: "$default",
+        time: "01/Jan/2024:00:00:00 +0000",
+        timeEpoch: 1704067200000,
+      },
+      body: undefined,
+      isBase64Encoded: false,
+      ...overrides,
+    } as unknown as APIGatewayProxyEventV2;
+  }
+
+  it("returns 200 with projects list", async () => {
+    mockSend.mockResolvedValue({
+      Items: [
+        {
+          projectId: "proj-001",
+          userId: "user-123",
+          title: "My Project",
+          status: "DRAFT",
+          createdAt: "2024-01-01T00:00:00.000Z",
+          updatedAt: "2024-01-01T00:00:00.000Z",
+        },
+      ],
+      LastEvaluatedKey: undefined,
+    });
+
+    const event = makeGetEvent();
+    const result = await handleListProjects(event);
+
+    expect(result.statusCode).toBe(200);
+    const body = JSON.parse(result.body as string);
+    expect(body.projects).toHaveLength(1);
+    expect(body.projects[0].projectId).toBe("proj-001");
+    expect(body.projects[0].title).toBe("My Project");
+  });
+
+  it("returns 401 if no auth", async () => {
+    const event = makeGetEvent({
+      requestContext: {
+        ...makeGetEvent().requestContext,
+        authorizer: undefined,
+      } as unknown as APIGatewayProxyEventV2["requestContext"],
+    });
+
+    await expect(handleListProjects(event)).rejects.toThrow("Unauthorized");
+  });
+
+  it("returns empty array when user has no projects", async () => {
+    mockSend.mockResolvedValue({ Items: [], LastEvaluatedKey: undefined });
+
+    const event = makeGetEvent();
+    const result = await handleListProjects(event);
+
+    expect(result.statusCode).toBe(200);
+    const body = JSON.parse(result.body as string);
+    expect(body.projects).toHaveLength(0);
   });
 });

@@ -33,3 +33,15 @@ export type {
   ListProjectsResponse,
   ErrorResponse,
 } from "./api.js";
+
+export type {
+  TeaserConfig,
+  HookTextCandidate,
+  SelectedSlide,
+  PostText,
+  TeaserGenerationResult,
+  SlideCardLayout,
+  TeaserGeneratorEvent,
+  TeaserCompositionBuilderEvent,
+  TeaserCompositionBuilderResult,
+} from "./teaser.js";

@@ -39,7 +39,7 @@ export function ProjectDetailPage() {
       });
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to start slide generation",
+        err instanceof Error ? err.message : "スライド生成の開始に失敗しました",
       );
     } finally {
       setGenerating(false);
@@ -48,10 +48,10 @@ export function ProjectDetailPage() {
 
   return (
     <div>
-      <h1>Project: {id}</h1>
+      <h1>プロジェクト: {id}</h1>
 
       <nav style={{ marginBottom: "1rem" }}>
-        <Link to={`/projects/${id}/videos`}>Videos</Link>
+        <Link to={`/projects/${id}/videos`}>動画一覧</Link>
       </nav>
 
       {error && <div style={{ color: "red", marginBottom: "1rem" }}>{error}</div>}
@@ -65,66 +65,66 @@ export function ProjectDetailPage() {
             marginBottom: "1rem",
           }}
         >
-          <p>Slide generation started!</p>
+          <p>スライド生成を開始しました</p>
           <Link to={`/projects/${id}/versions/${result.versionNumber}`}>
-            View Version {result.versionNumber}
+            バージョン {result.versionNumber} を確認
           </Link>
         </div>
       )}
 
-      <h2>Generate Slides</h2>
+      <h2>スライド生成</h2>
       <form onSubmit={handleStartSlides}>
         <div style={{ marginBottom: "0.5rem" }}>
           <label>
-            Theme:
+            テーマ:
             <input
               type="text"
               value={theme}
               onChange={(e) => setTheme(e.target.value)}
-              placeholder="e.g., technology, business"
+              placeholder="例: AWS CDK, サーバーレス"
               style={{ marginLeft: "0.5rem", padding: "0.3rem" }}
             />
           </label>
         </div>
         <div style={{ marginBottom: "0.5rem" }}>
           <label>
-            Audience:
+            対象者:
             <input
               type="text"
               value={audience}
               onChange={(e) => setAudience(e.target.value)}
-              placeholder="e.g., developers, executives"
+              placeholder="例: エンジニア初心者"
               style={{ marginLeft: "0.5rem", padding: "0.3rem" }}
             />
           </label>
         </div>
         <div style={{ marginBottom: "0.5rem" }}>
           <label>
-            Duration (seconds):
+            持ち時間（秒）:
             <input
               type="number"
               value={duration}
               onChange={(e) => setDuration(e.target.value)}
-              placeholder="60"
+              placeholder="300"
               style={{ marginLeft: "0.5rem", padding: "0.3rem" }}
             />
           </label>
         </div>
         <div style={{ marginBottom: "0.5rem" }}>
           <label>
-            Reference URLs (one per line):
+            参照URL（1行に1つ）:
             <br />
             <textarea
               value={urls}
               onChange={(e) => setUrls(e.target.value)}
               rows={3}
               cols={50}
-              placeholder="https://example.com/article"
+              placeholder="https://docs.aws.amazon.com/cdk/"
             />
           </label>
         </div>
         <button type="submit" disabled={generating}>
-          {generating ? "Generating..." : "Generate Slides"}
+          {generating ? "生成中..." : "スライド生成を開始"}
         </button>
       </form>
     </div>

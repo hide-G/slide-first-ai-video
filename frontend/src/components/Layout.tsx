@@ -1,44 +1,27 @@
-import { Outlet, Link, Navigate, useNavigate } from "react-router-dom";
+import { Outlet, Link } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth.js";
 
 export function Layout() {
-  const { isAuthenticated, isLoading, username, signOut } = useAuth();
-  const navigate = useNavigate();
-
-  async function handleSignOut() {
-    await signOut();
-    navigate("/login");
-  }
-
-  if (isLoading) {
-    return <div>Loading...</div>;
-  }
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
+  const { signOut } = useAuth();
 
   return (
-    <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "1rem" }}>
+    <div style={{ maxWidth: "900px", margin: "0 auto", padding: "1rem" }}>
       <header
         style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
           borderBottom: "1px solid #ddd",
-          paddingBottom: "1rem",
-          marginBottom: "1rem",
+          paddingBottom: "0.5rem",
+          marginBottom: "1.5rem",
         }}
       >
-        <nav>
-          <Link to="/projects" style={{ marginRight: "1rem" }}>
-            Projects
-          </Link>
-        </nav>
-        <div>
-          <span style={{ marginRight: "1rem" }}>{username}</span>
-          <button onClick={handleSignOut}>Sign Out</button>
-        </div>
+        <Link to="/projects" style={{ textDecoration: "none", color: "#333" }}>
+          <strong>Slide-First AI Video</strong>
+        </Link>
+        <button onClick={signOut} style={{ cursor: "pointer" }}>
+          ログアウト
+        </button>
       </header>
       <main>
         <Outlet />

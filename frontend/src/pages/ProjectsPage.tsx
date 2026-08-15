@@ -20,7 +20,9 @@ export function ProjectsPage() {
       const response = await apiClient.listProjects();
       setProjects(response.projects);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load projects");
+      setError(
+        err instanceof Error ? err.message : "プロジェクトの読み込みに失敗しました",
+      );
     } finally {
       setLoading(false);
     }
@@ -38,7 +40,7 @@ export function ProjectsPage() {
       setTitle("");
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to create project",
+        err instanceof Error ? err.message : "プロジェクトの作成に失敗しました",
       );
     } finally {
       setCreating(false);
@@ -46,48 +48,51 @@ export function ProjectsPage() {
   }
 
   if (loading) {
-    return <div>Loading projects...</div>;
+    return <div>読み込み中...</div>;
   }
 
   return (
     <div>
-      <h1>Projects</h1>
+      <h1>プロジェクト</h1>
 
-      {error && <div style={{ color: "red", marginBottom: "1rem" }}>{error}</div>}
+      {error && <p style={{ color: "red" }}>{error}</p>}
 
-      <form onSubmit={handleCreateProject} style={{ marginBottom: "2rem" }}>
+      <form onSubmit={handleCreateProject} style={{ marginBottom: "1rem" }}>
         <input
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Project title"
-          required
-          style={{ marginRight: "0.5rem", padding: "0.5rem" }}
+          placeholder="プロジェクト名を入力"
+          disabled={creating}
+          style={{ padding: "0.5rem", marginRight: "0.5rem", minWidth: "300px" }}
         />
-        <button type="submit" disabled={creating}>
-          {creating ? "Creating..." : "Create Project"}
+        <button type="submit" disabled={creating || !title.trim()}>
+          {creating ? "作成中..." : "プロジェクト作成"}
         </button>
       </form>
 
       {projects.length === 0 ? (
-        <p>No projects yet. Create one above.</p>
+        <p>プロジェクトがありません。上のフォームから作成してください。</p>
       ) : (
         <ul style={{ listStyle: "none", padding: 0 }}>
           {projects.map((project) => (
             <li
               key={project.projectId}
               style={{
-                border: "1px solid #ddd",
-                borderRadius: "8px",
-                padding: "1rem",
+                padding: "0.75rem",
                 marginBottom: "0.5rem",
+                border: "1px solid #ddd",
+                borderRadius: "4px",
               }}
             >
               <Link to={`/projects/${project.projectId}`}>
                 <strong>{project.title}</strong>
               </Link>
-              {project.description && <p>{project.description}</p>}
-              <small>Created: {new Date(project.createdAt).toLocaleDateString()}</small>
+              <span
+                style={{ marginLeft: "1rem", fontSize: "0.85rem", color: "#666" }}
+              >
+                状態: {project.status}
+              </span>
             </li>
           ))}
         </ul>

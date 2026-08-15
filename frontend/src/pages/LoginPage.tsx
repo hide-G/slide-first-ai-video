@@ -4,14 +4,15 @@ import "@aws-amplify/ui-react/styles.css";
 
 export function LoginPage() {
   return (
-    <div style={{ display: "flex", justifyContent: "center", padding: "2rem" }}>
+    <div style={{ maxWidth: "400px", margin: "4rem auto", padding: "1rem" }}>
+      <h1 style={{ textAlign: "center", marginBottom: "1rem" }}>
+        Slide-First AI Video
+      </h1>
+      <p style={{ textAlign: "center", color: "#666", marginBottom: "2rem" }}>
+        スライドから動画を自動生成
+      </p>
       <Authenticator>
-        {({ user }) => {
-          if (user) {
-            return <Navigate to="/projects" replace />;
-          }
-          return <div>Redirecting...</div>;
-        }}
+        {() => <Navigate to="/projects" replace />}
       </Authenticator>
     </div>
   );

@@ -1,83 +1,96 @@
 import { useState } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { apiClient } from "../api/client.js";
 import { JobProgress } from "../components/JobProgress.js";
-import { VideoPlayer } from "../components/VideoPlayer.js";
 import { DeliverablesList } from "../components/DeliverablesList.js";
+import type { Job, GetDeliverablesResponse } from "../api/types.js";
 
 export function VideosPage() {
   const { id } = useParams<{ id: string }>();
-  const [searchParams] = useSearchParams();
-  const versionNumber = Number(searchParams.get("version")) || 1;
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [starting, setStarting] = useState(false);
+  const [versionNumber, setVersionNumber] = useState("1");
+  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [job, setJob] = useState<Job | null>(null);
+  const [deliverables, setDeliverables] =
+    useState<GetDeliverablesResponse | null>(null);
 
-  async function handleStartVideo() {
+  async function handleStartVideo(e: React.FormEvent) {
+    e.preventDefault();
     if (!id) return;
+
     try {
-      setStarting(true);
+      setGenerating(true);
       setError(null);
-      const response = await apiClient.startVideo(id, { versionNumber });
-      setJobId(response.jobId);
+      const response = await apiClient.startVideo(id, {
+        versionNumber: Number(versionNumber),
+      });
+      pollJob(response.jobId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to start video");
-    } finally {
-      setStarting(false);
+      setError(err instanceof Error ? err.message : "動画生成の開始に失敗しました");
+      setGenerating(false);
     }
   }
 
-  async function handleStartTeaser() {
-    if (!id) return;
-    try {
-      setStarting(true);
-      setError(null);
-      const response = await apiClient.startTeaser(id, { versionNumber });
-      setJobId(response.jobId);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to start teaser");
-    } finally {
-      setStarting(false);
+  async function pollJob(jobId: string) {
+    for (let i = 0; i < 120; i++) {
+      await new Promise((r) => setTimeout(r, 5000));
+      try {
+        const jobData = await apiClient.getJob(jobId);
+        setJob(jobData.job);
+        if (jobData.job.status === "SUCCEEDED") {
+          setGenerating(false);
+          const delivs = await apiClient.getDeliverables(id!);
+          setDeliverables(delivs);
+          return;
+        }
+        if (jobData.job.status === "FAILED") {
+          setError(jobData.job.error || "動画生成に失敗しました");
+          setGenerating(false);
+          return;
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "状態確認に失敗しました");
+        setGenerating(false);
+        return;
+      }
     }
-  }
-
-  function handleJobComplete(completedJobId: string) {
-    // After job completes, we can show deliverables
-    setJobId(completedJobId);
+    setError("タイムアウト: 動画生成が完了しませんでした");
+    setGenerating(false);
   }
 
   return (
     <div>
-      <h1>Videos</h1>
+      <h1>動画生成</h1>
 
       {error && <div style={{ color: "red", marginBottom: "1rem" }}>{error}</div>}
 
-      <div style={{ marginBottom: "1rem" }}>
+      <form onSubmit={handleStartVideo} style={{ marginBottom: "1rem" }}>
+        <label>
+          バージョン番号:
+          <input
+            type="number"
+            value={versionNumber}
+            onChange={(e) => setVersionNumber(e.target.value)}
+            min="1"
+            style={{ marginLeft: "0.5rem", padding: "0.3rem", width: "80px" }}
+          />
+        </label>
         <button
-          onClick={handleStartVideo}
-          disabled={starting}
-          style={{ marginRight: "0.5rem" }}
+          type="submit"
+          disabled={generating}
+          style={{ marginLeft: "1rem" }}
         >
-          {starting ? "Starting..." : "Generate Full Video"}
+          {generating ? "生成中..." : "動画生成を開始"}
         </button>
-        <button onClick={handleStartTeaser} disabled={starting}>
-          {starting ? "Starting..." : "Generate Teaser"}
-        </button>
+      </form>
+
+      {job && <JobProgress job={{ job }} />}
+
+      {deliverables && <DeliverablesList deliverables={deliverables} />}
+
+      <div style={{ marginTop: "1rem" }}>
+        <Link to={`/projects/${id}`}>← プロジェクトに戻る</Link>
       </div>
-
-      {jobId && (
-        <JobProgress jobId={jobId} onComplete={handleJobComplete} />
-      )}
-
-      {videoUrl && <VideoPlayer url={videoUrl} />}
-
-      {id && (
-        <DeliverablesList
-          projectId={id}
-          onVideoSelect={(url) => setVideoUrl(url)}
-        />
-      )}
     </div>
   );
 }

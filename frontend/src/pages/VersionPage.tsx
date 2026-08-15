@@ -1,32 +1,29 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { apiClient } from "../api/client.js";
+import { JobProgress } from "../components/JobProgress.js";
 import { MarkdownPreview } from "../components/MarkdownPreview.js";
-import type { Version } from "../api/types.js";
+import type { GetVersionResponse } from "../api/types.js";
 
 export function VersionPage() {
   const { id, version } = useParams<{ id: string; version: string }>();
-  const navigate = useNavigate();
-  const [versionData, setVersionData] = useState<Version | null>(null);
-  const [markdownContent, setMarkdownContent] = useState<string>("");
+  const [data, setData] = useState<GetVersionResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [approving, setApproving] = useState(false);
 
   useEffect(() => {
-    if (id && version) {
-      loadVersion();
-    }
+    if (!id || !version) return;
+    loadVersion();
   }, [id, version]);
 
   async function loadVersion() {
     try {
       setLoading(true);
-      const response = await apiClient.getVersion(id!, Number(version!));
-      setVersionData(response.version);
-      setMarkdownContent(response.markdownContent ?? "");
+      const response = await apiClient.getVersion(id!, Number(version));
+      setData(response);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load version");
+      setError(err instanceof Error ? err.message : "読み込みに失敗しました");
     } finally {
       setLoading(false);
     }
@@ -36,51 +33,44 @@ export function VersionPage() {
     if (!id || !version) return;
     try {
       setApproving(true);
-      setError(null);
       await apiClient.approveVersion(id, Number(version));
-      // Navigate to videos page after approval
-      navigate(`/projects/${id}/videos`);
+      await loadVersion();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to approve version");
+      setError(err instanceof Error ? err.message : "承認に失敗しました");
     } finally {
       setApproving(false);
     }
   }
 
-  if (loading) {
-    return <div>Loading version...</div>;
-  }
-
-  if (error) {
-    return <div style={{ color: "red" }}>{error}</div>;
-  }
+  if (loading) return <div>読み込み中...</div>;
+  if (error) return <div style={{ color: "red" }}>{error}</div>;
+  if (!data) return <div>データが見つかりません</div>;
 
   return (
     <div>
-      <h1>
-        Version {version} - {versionData?.status}
-      </h1>
+      <h1>バージョン {version}</h1>
+      <p>状態: <strong>{data.version.status}</strong></p>
 
-      {versionData?.status === "SLIDE_READY" && (
-        <button
-          onClick={handleApprove}
-          disabled={approving}
-          style={{
-            background: "#4CAF50",
-            color: "white",
-            padding: "0.5rem 1rem",
-            border: "none",
-            borderRadius: "4px",
-            cursor: "pointer",
-            marginBottom: "1rem",
-          }}
-        >
-          {approving ? "Approving..." : "Approve Slides"}
+      {data.version.status === "SLIDE_READY" && (
+        <button onClick={handleApprove} disabled={approving}>
+          {approving ? "承認中..." : "このバージョンを承認する"}
         </button>
       )}
 
-      <h2>Slide Preview</h2>
-      <MarkdownPreview content={markdownContent} />
+      {data.version.status === "SLIDE_APPROVED" && (
+        <p style={{ color: "green" }}>✅ 承認済み — 動画生成が可能です</p>
+      )}
+
+      {data.markdownContent && (
+        <div style={{ marginTop: "1rem" }}>
+          <h2>スライド (Marp Markdown)</h2>
+          <MarkdownPreview content={data.markdownContent} />
+        </div>
+      )}
+
+      <div style={{ marginTop: "1rem" }}>
+        <Link to={`/projects/${id}`}>← プロジェクトに戻る</Link>
+      </div>
     </div>
   );
 }

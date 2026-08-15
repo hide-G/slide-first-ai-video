@@ -90,6 +90,17 @@ export class ApiConstruct extends Construct {
       deployOptions: {
         stageName: "v1",
       },
+      defaultCorsPreflightOptions: {
+        allowOrigins: apigateway.Cors.ALL_ORIGINS,
+        allowMethods: apigateway.Cors.ALL_METHODS,
+        allowHeaders: [
+          "Content-Type",
+          "Authorization",
+          "X-Amz-Date",
+          "X-Api-Key",
+          "Idempotency-Key",
+        ],
+      },
     });
 
     const lambdaIntegration = new apigateway.LambdaIntegration(

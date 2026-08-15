@@ -1,70 +1,118 @@
 /**
- * Marp CLI command builders.
- * Constructs commands for generating PDF, PPTX, and PNG outputs.
+ * Marp レンダリングコマンド (Docker不要版)
+ * @marp-team/marp-core で Markdown → HTML 変換し、
+ * puppeteer-core + @sparticuz/chromium で PDF/PNG 生成を行う。
  */
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
-const execFileAsync = promisify(execFile);
-
-export interface MarpCommandResult {
-  stdout: string;
-  stderr: string;
-}
+import { Marp } from "@marp-team/marp-core";
+import chromium from "@sparticuz/chromium";
+import puppeteer from "puppeteer-core";
 
 /**
- * Execute a marp CLI command with the given arguments.
+ * Marp Markdown を完全な HTML ドキュメントに変換する。
  */
-export async function execMarp(args: string[], cwd: string): Promise<MarpCommandResult> {
-  const { stdout, stderr } = await execFileAsync("marp", args, {
-    cwd,
-    timeout: 120_000,
+export function renderMarpToHtml(markdown: string): string {
+  const marp = new Marp({
+    html: true,
+    math: true,
   });
-  return { stdout, stderr };
+
+  const { html, css } = marp.render(markdown);
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>${css}</style>
+</head>
+<body>
+${html}
+</body>
+</html>`;
 }
 
 /**
- * Build arguments for generating a PDF from a Marp markdown file.
- * Command: marp --pdf deck.md
+ * Chromium ブラウザインスタンスを起動する。
  */
-export function buildPdfArgs(inputFile: string): string[] {
-  return ["--pdf", inputFile];
+async function launchBrowser() {
+  const executablePath = await chromium.executablePath();
+  return puppeteer.launch({
+    args: chromium.args,
+    defaultViewport: chromium.defaultViewport,
+    executablePath,
+    headless: true,
+  });
 }
 
 /**
- * Build arguments for generating a PPTX from a Marp markdown file.
- * Command: marp --pptx deck.md
+ * Marp Markdown から PDF を生成する。
  */
-export function buildPptxArgs(inputFile: string): string[] {
-  return ["--pptx", inputFile];
+export async function generatePdfBuffer(markdown: string): Promise<Buffer> {
+  const html = renderMarpToHtml(markdown);
+  const browser = await launchBrowser();
+
+  try {
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: "networkidle0" });
+
+    const pdfBuffer = await page.pdf({
+      width: "1280px",
+      height: "720px",
+      printBackground: true,
+      preferCSSPageSize: true,
+    });
+
+    return Buffer.from(pdfBuffer);
+  } finally {
+    await browser.close();
+  }
 }
 
 /**
- * Build arguments for generating PNG images from a Marp markdown file.
- * Command: marp --images png --image-scale 2 deck.md
+ * Marp Markdown から各スライドの PNG 画像を生成する。
  */
-export function buildPngArgs(inputFile: string): string[] {
-  return ["--images", "png", "--image-scale", "2", inputFile];
+export async function generatePngBuffers(
+  markdown: string,
+  scale: number = 2,
+): Promise<Buffer[]> {
+  const html = renderMarpToHtml(markdown);
+  const browser = await launchBrowser();
+
+  try {
+    const page = await browser.newPage();
+    await page.setViewport({
+      width: 1280 * scale,
+      height: 720 * scale,
+      deviceScaleFactor: scale,
+    });
+    await page.setContent(html, { waitUntil: "networkidle0" });
+
+    const slideElements = await page.$$("section[id]");
+
+    if (slideElements.length === 0) {
+      const screenshot = await page.screenshot({
+        type: "png",
+        fullPage: true,
+      });
+      return [Buffer.from(screenshot)];
+    }
+
+    const buffers: Buffer[] = [];
+    for (const element of slideElements) {
+      const screenshot = await element.screenshot({ type: "png" });
+      buffers.push(Buffer.from(screenshot));
+    }
+
+    return buffers;
+  } finally {
+    await browser.close();
+  }
 }
 
 /**
- * Generate PDF output using Marp CLI.
+ * Marp Markdown から PPTX を生成する。
+ * 現時点では PDF をフォールバックとして使用。
  */
-export async function generatePdf(inputFile: string, cwd: string): Promise<MarpCommandResult> {
-  return execMarp(buildPdfArgs(inputFile), cwd);
-}
-
-/**
- * Generate PPTX output using Marp CLI.
- */
-export async function generatePptx(inputFile: string, cwd: string): Promise<MarpCommandResult> {
-  return execMarp(buildPptxArgs(inputFile), cwd);
-}
-
-/**
- * Generate PNG images using Marp CLI.
- */
-export async function generatePng(inputFile: string, cwd: string): Promise<MarpCommandResult> {
-  return execMarp(buildPngArgs(inputFile), cwd);
+export async function generatePptxBuffer(markdown: string): Promise<Buffer> {
+  return generatePdfBuffer(markdown);
 }

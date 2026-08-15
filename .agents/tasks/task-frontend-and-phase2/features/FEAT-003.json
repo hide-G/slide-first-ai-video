@@ -1,0 +1,53 @@
+{
+  "id": "FEAT-003",
+  "type": "feat",
+  "description": "Phase 2: X向け短尺版 (X teaser short video). Implement the teaser generation Lambda (important slide selection + short script via Bedrock), hook text generation (3 options), subtitle style selection, thumbnail generation, 9:16 slide-card template, post text and source page generation. Add teaser state machine and CDK infrastructure.",
+  "status": "pending",
+  "steps": [
+    "Create lambdas/teaser-generator/ workspace package with package.json, tsconfig.json, tsconfig.build.json",
+    "Create lambdas/teaser-generator/src/index.ts - Lambda handler that receives projectId/versionNumber/manifest, calls Bedrock to select important slides (importance=HIGH, max 3-6), generate teaserNote (shortened script), hookText (3 options), and post text",
+    "Create lambdas/teaser-generator/src/prompts.ts - system/user prompts for: (1) slide importance evaluation and selection, (2) hook text generation (3 options), (3) teaser note shortening, (4) post text with source links generation",
+    "Create lambdas/teaser-generator/src/slide-selector.ts - logic to filter slides by importance=HIGH and includeInXTeaser=true, limit to 3-6 slides, ensure total duration 30-60s",
+    "Create lambdas/teaser-generator/src/hook-generator.ts - generate 3 hook text candidates using Bedrock, each under 2 seconds of reading time",
+    "Create lambdas/teaser-generator/src/post-text-generator.ts - generate X post text with hashtags and source page links from slide references",
+    "Create lambdas/teaser-generator/src/index.test.ts - unit tests with mocked Bedrock calls",
+    "Create lambdas/teaser-generator/src/slide-selector.test.ts - test slide filtering logic",
+    "Create lambdas/teaser-generator/src/hook-generator.test.ts - test hook generation",
+    "Update packages/shared-types/src/video-manifest.ts - add TeaserOutput interface fields if needed (hookText choices, selectedSlides, postText)",
+    "Create packages/shared-types/src/teaser.ts - TeaserConfig, HookTextCandidate, TeaserGenerationResult, PostText, SlideCardLayout types",
+    "Update packages/shared-types/src/index.ts to export teaser types",
+    "Create packages/core/src/teaser/index.ts - teaser duration calculation (sum selected slides, validate 30-60s range), slide-card layout dimensions (1080x1920 with top slide area and bottom caption area)",
+    "Create packages/core/src/teaser/slide-card.ts - layout calculation for 9:16: top 60% shows 16:9 slide scaled to fit, bottom 40% for keyPoints + caption text",
+    "Create packages/core/src/teaser/index.test.ts - test duration and layout calculations",
+    "Update packages/core/src/index.ts to export teaser module",
+    "Create lambdas/teaser-composition-builder/ workspace package",
+    "Create lambdas/teaser-composition-builder/src/index.ts - builds Hyperframes index.html for teaser: hook overlay (first 2s), selected slides with teaserNote audio, CTA at end. Supports both 16:9 and 9:16 (slide-card) layouts",
+    "Create lambdas/teaser-composition-builder/src/slide-card-template.ts - HTML template for 9:16: slide image in top portion, keyPoints bullets below, large caption text at bottom",
+    "Create lambdas/teaser-composition-builder/src/index.test.ts - test HTML output structure",
+    "Create infra/lib/teaser-generator-construct.ts - Lambda construct for teaser-generator with Bedrock InvokeModel permissions",
+    "Create infra/lib/teaser-composition-builder-construct.ts - Lambda construct for teaser-composition-builder with S3 read/write",
+    "Create infra/lib/teaser-state-machine-construct.ts - Step Functions Standard: (1) invoke teaser-generator, (2) Polly for selected slides teaserNotes, (3) teaser-composition-builder, (4) render state machine for 16:9, (5) optionally render 9:16",
+    "Update infra/src/main-stack.ts to add TeaserGeneratorConstruct, TeaserCompositionBuilderConstruct, TeaserStateMachineConstruct",
+    "Update infra/lib/api-construct.ts to pass teaserStateMachine ARN to API Lambda env vars",
+    "Update lambdas/api/src/handlers/teaser.ts to start the teaser state machine (not content SM)",
+    "Update infra/test/main-stack.test.ts to assert teaser resources exist",
+    "Ensure pnpm build and pnpm test pass"
+  ],
+  "acceptance_criteria": [
+    "teaser-generator Lambda selects HIGH-importance slides and generates hook text, short scripts, and post text",
+    "teaser-composition-builder generates valid Hyperframes HTML for both 16:9 and 9:16 layouts",
+    "9:16 slide-card template places 16:9 slide in top area with keyPoints and caption below",
+    "Teaser state machine chains: selection -> Polly -> composition -> render",
+    "POST /v1/projects/{id}/videos/teaser starts the teaser pipeline",
+    "All new packages have unit tests that pass",
+    "CDK stack includes teaser infrastructure (Lambda, Step Functions)",
+    "pnpm build and pnpm test pass"
+  ],
+  "verification": [
+    "eval \"$(mise activate bash)\" && pnpm install && pnpm build",
+    "eval \"$(mise activate bash)\" && pnpm test",
+    "eval \"$(mise activate bash)\" && pnpm lint"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

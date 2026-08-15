@@ -34,34 +34,23 @@ vi.mock("ulid", () => ({
   ulid: vi.fn(() => "01TESTTEASERJOBID01"),
 }));
 
-import type { APIGatewayProxyEventV2 } from "aws-lambda";
+import type { APIGatewayProxyEvent } from "aws-lambda";
 import { handleStartTeaser } from "./teaser.js";
+import { createRestApiEvent } from "../test-utils/rest-api-event.js";
 
-function makeEvent(overrides: Partial<APIGatewayProxyEventV2> = {}): APIGatewayProxyEventV2 {
+function makeEvent(
+  overrides: Partial<APIGatewayProxyEvent> = {},
+): APIGatewayProxyEvent {
   return {
-    version: "2.0",
-    routeKey: "POST /v1/projects/{id}/videos/teaser",
-    rawPath: "/v1/projects/proj-001/videos/teaser",
-    rawQueryString: "",
-    headers: { "content-type": "application/json" },
-    pathParameters: { id: "proj-001" },
-    requestContext: {
-      accountId: "123456789",
-      apiId: "api-id",
-      authorizer: { jwt: { claims: { sub: "user-123" }, scopes: [] } },
-      domainName: "api.example.com",
-      domainPrefix: "api",
-      http: { method: "POST", path: "/v1/projects/proj-001/videos/teaser", protocol: "HTTP/1.1", sourceIp: "127.0.0.1", userAgent: "test" },
-      requestId: "req-id",
-      routeKey: "POST /v1/projects/{id}/videos/teaser",
-      stage: "$default",
-      time: "01/Jan/2024:00:00:00 +0000",
-      timeEpoch: 1704067200000,
-    },
-    body: JSON.stringify({ versionNumber: 1 }),
-    isBase64Encoded: false,
+    ...createRestApiEvent({
+      httpMethod: "POST",
+      path: "/v1/projects/proj-001/videos/teaser",
+      headers: { "content-type": "application/json" },
+      pathParameters: { id: "proj-001" },
+      body: JSON.stringify({ versionNumber: 1 }),
+    }),
     ...overrides,
-  } as unknown as APIGatewayProxyEventV2;
+  };
 }
 
 describe("handleStartTeaser", () => {

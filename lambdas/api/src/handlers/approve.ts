@@ -6,7 +6,7 @@
  * the version status in DynamoDB.
  */
 
-import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
+import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 import {
   SQSClient,
   ReceiveMessageCommand,
@@ -84,8 +84,8 @@ async function findTaskToken(
 }
 
 export async function handleApprove(
-  event: APIGatewayProxyEventV2,
-): Promise<APIGatewayProxyResultV2> {
+  event: APIGatewayProxyEvent,
+): Promise<APIGatewayProxyResult> {
   const userId = extractUserId(event);
   if (!userId) {
     throw new UnauthorizedError();

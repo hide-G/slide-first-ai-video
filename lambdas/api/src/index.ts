@@ -4,8 +4,8 @@
  */
 
 import type {
-  APIGatewayProxyEventV2,
-  APIGatewayProxyResultV2,
+  APIGatewayProxyEvent,
+  APIGatewayProxyResult,
   Context,
 } from "aws-lambda";
 import { buildErrorResponse } from "./middleware/index.js";
@@ -22,76 +22,126 @@ import {
 } from "./handlers/index.js";
 
 type RouteHandler = (
-  event: APIGatewayProxyEventV2,
-) => Promise<APIGatewayProxyResultV2>;
+  event: APIGatewayProxyEvent,
+) => Promise<APIGatewayProxyResult>;
 
 interface Route {
   method: string;
   pattern: RegExp;
   handler: RouteHandler;
-  /** Named parameter keys extracted from the pattern */
+  /** 正規表現から抽出する名前付きパスパラメータ */
   paramKeys: string[];
 }
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "Content-Type,Authorization,X-Amz-Date,X-Api-Key,Idempotency-Key",
+  "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+};
 
 const routes: Route[] = [
   {
     method: "GET",
-    pattern: /^\/v1\/projects\/?$/,
+    pattern: /^\/projects\/?$/,
     handler: handleListProjects,
     paramKeys: [],
   },
   {
     method: "POST",
-    pattern: /^\/v1\/projects\/?$/,
+    pattern: /^\/projects\/?$/,
     handler: handleCreateProject,
     paramKeys: [],
   },
   {
     method: "POST",
-    pattern: /^\/v1\/projects\/([^/]+)\/slides\/?$/,
+    pattern: /^\/projects\/([^/]+)\/slides\/?$/,
     handler: handleStartSlides,
     paramKeys: ["id"],
   },
   {
     method: "GET",
-    pattern: /^\/v1\/projects\/([^/]+)\/versions\/([^/]+)\/?$/,
+    pattern: /^\/projects\/([^/]+)\/versions\/([^/]+)\/?$/,
     handler: handleGetVersion,
     paramKeys: ["id", "version"],
   },
   {
     method: "POST",
-    pattern: /^\/v1\/projects\/([^/]+)\/versions\/([^/]+)\/approve\/?$/,
+    pattern: /^\/projects\/([^/]+)\/versions\/([^/]+)\/approve\/?$/,
     handler: handleApprove,
     paramKeys: ["id", "version"],
   },
   {
     method: "POST",
-    pattern: /^\/v1\/projects\/([^/]+)\/videos\/teaser\/?$/,
+    pattern: /^\/projects\/([^/]+)\/videos\/teaser\/?$/,
     handler: handleStartTeaser,
     paramKeys: ["id"],
   },
   {
     method: "POST",
-    pattern: /^\/v1\/projects\/([^/]+)\/videos\/?$/,
+    pattern: /^\/projects\/([^/]+)\/videos\/?$/,
     handler: handleStartVideo,
     paramKeys: ["id"],
   },
   {
     method: "GET",
-    pattern: /^\/v1\/jobs\/([^/]+)\/?$/,
+    pattern: /^\/jobs\/([^/]+)\/?$/,
     handler: handleGetJob,
     paramKeys: ["jobId"],
   },
   {
     method: "GET",
-    pattern: /^\/v1\/projects\/([^/]+)\/deliverables\/?$/,
+    pattern: /^\/projects\/([^/]+)\/deliverables\/?$/,
     handler: handleGetDeliverables,
     paramKeys: ["id"],
   },
 ];
 
 /**
- * Match a request to a route handler.
+ * REST APIイベントのstageと任意の/v1プレフィックスを除去して、
+ * APIリソースのパスへ正規化する。
+ */
+function normalizePath(path: string, stage: string): string {
+  let normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const stagePrefix = `/${stage}`;
+
+  if (
+    stage &&
+    stage !== "$default" &&
+    (normalizedPath === stagePrefix ||
+      normalizedPath.startsWith(`${stagePrefix}/`))
+  ) {
+    normalizedPath = normalizedPath.slice(stagePrefix.length) || "/";
+  }
+
+  if (normalizedPath === "/v1") {
+    return "/";
+  }
+
+  if (normalizedPath.startsWith("/v1/")) {
+    return normalizedPath.slice("/v1".length);
+  }
+
+  return normalizedPath;
+}
+
+/**
+ * ルート処理結果へCORSヘッダーを必ず追加する。
+ */
+function withCorsHeaders(
+  response: APIGatewayProxyResult,
+): APIGatewayProxyResult {
+  return {
+    ...response,
+    headers: {
+      ...response.headers,
+      ...corsHeaders,
+    },
+  };
+}
+
+/**
+ * リクエストをルートhandlerへ照合する。
  */
 function matchRoute(
   method: string,
@@ -99,6 +149,7 @@ function matchRoute(
 ): { handler: RouteHandler; params: Record<string, string> } | null {
   for (const route of routes) {
     if (route.method !== method) continue;
+
     const match = path.match(route.pattern);
     if (match) {
       const params: Record<string, string> = {};
@@ -108,37 +159,36 @@ function matchRoute(
       return { handler: route.handler, params };
     }
   }
+
   return null;
 }
 
 export const handler = async (
-  event: APIGatewayProxyEventV2,
+  event: APIGatewayProxyEvent,
   _context: Context,
-): Promise<APIGatewayProxyResultV2> => {
+): Promise<APIGatewayProxyResult> => {
   try {
-    const method = event.requestContext.http.method;
-    const path = event.rawPath;
+    const path = normalizePath(event.path, event.requestContext.stage);
+    const matched = matchRoute(event.httpMethod, path);
 
-    const matched = matchRoute(method, path);
     if (!matched) {
-      return {
+      return withCorsHeaders({
         statusCode: 404,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           error: "NOT_FOUND",
-          message: `No route matches ${method} ${path}`,
+          message: `No route matches ${event.httpMethod} ${path}`,
         }),
-      };
+      });
     }
 
-    // Inject extracted path parameters
     event.pathParameters = {
-      ...event.pathParameters,
+      ...(event.pathParameters ?? {}),
       ...matched.params,
     };
 
-    return await matched.handler(event);
+    return withCorsHeaders(await matched.handler(event));
   } catch (error) {
-    return buildErrorResponse(error);
+    return withCorsHeaders(buildErrorResponse(error));
   }
 };

@@ -1,8 +1,29 @@
+import { existsSync } from "node:fs";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import * as cdk from "aws-cdk-lib";
-import * as lambda from "aws-cdk-lib/aws-lambda";
-import * as s3 from "aws-cdk-lib/aws-s3";
 import * as iam from "aws-cdk-lib/aws-iam";
+import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as lambdaNodejs from "aws-cdk-lib/aws-lambda-nodejs";
+import * as s3 from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
+
+function findRepositoryRoot(startDirectory: string): string {
+  let directory = startDirectory;
+
+  while (true) {
+    if (existsSync(path.join(directory, "pnpm-lock.yaml"))) {
+      return directory;
+    }
+
+    const parentDirectory = path.dirname(directory);
+    if (parentDirectory === directory) {
+      throw new Error("pnpm-lock.yamlを含むリポジトリルートを特定できませんでした。");
+    }
+
+    directory = parentDirectory;
+  }
+}
 
 export interface PollyWorkerConstructProps {
   productSlug: string;
@@ -11,8 +32,8 @@ export interface PollyWorkerConstructProps {
 }
 
 /**
- * Polly Worker construct: Lambda function for speech synthesis.
- * Memory 512MB, timeout 60s. IAM: polly:SynthesizeSpeech, S3 write to all keys.
+ * 音声合成を行うPolly Worker Construct。
+ * メモリ512MiB、タイムアウト60秒、Pollyの音声合成とS3入出力を許可する。
  */
 export class PollyWorkerConstruct extends Construct {
   public readonly handler: lambda.Function;
@@ -21,20 +42,41 @@ export class PollyWorkerConstruct extends Construct {
     super(scope, id);
 
     const { productSlug, environment } = props;
+    const repositoryRoot = findRepositoryRoot(
+      path.dirname(fileURLToPath(import.meta.url)),
+    );
 
-    this.handler = new lambda.Function(this, "PollyWorkerHandler", {
+    // ローカルesbuildでworkspace依存とAWS SDKをバンドルする。
+    this.handler = new lambdaNodejs.NodejsFunction(this, "PollyWorkerHandler", {
       functionName: `${productSlug}-${environment}-polly-worker`,
       runtime: lambda.Runtime.NODEJS_22_X,
-      handler: "index.handler",
-      code: lambda.Code.fromAsset("../lambdas/polly-worker/dist"),
+      entry: path.join(
+        repositoryRoot,
+        "lambdas",
+        "polly-worker",
+        "src",
+        "index.ts",
+      ),
+      handler: "handler",
+      depsLockFilePath: path.join(repositoryRoot, "pnpm-lock.yaml"),
+      projectRoot: repositoryRoot,
       memorySize: 512,
       timeout: cdk.Duration.seconds(60),
       environment: {
         BUCKET_NAME: props.projectBucket.bucketName,
       },
+      bundling: {
+        bundleAwsSDK: true,
+        externalModules: [],
+        forceDockerBundling: false,
+        format: lambdaNodejs.OutputFormat.CJS,
+        minify: false,
+        sourceMap: false,
+        target: "node22",
+      },
     });
 
-    // Grant polly:SynthesizeSpeech
+    // Pollyの音声合成を許可する。
     this.handler.addToRolePolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
@@ -43,9 +85,9 @@ export class PollyWorkerConstruct extends Construct {
       }),
     );
 
-    // Grant S3 write to all keys (actual keys are userId/projectId/versions/vNNNN/audio/...)
+    // 実際のキーはuserId/projectId/versions/vNNNN/audio/...配下になる。
     props.projectBucket.grantWrite(this.handler, "*");
-    // Grant S3 read for input text
+    // 入力テキストの読み取りを許可する。
     props.projectBucket.grantRead(this.handler);
   }
 }

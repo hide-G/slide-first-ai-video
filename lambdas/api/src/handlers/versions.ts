@@ -2,7 +2,7 @@
  * GET /v1/projects/{id}/versions/{version} - Get version markdown and metadata.
  */
 
-import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
+import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { buildVersionPrefix } from "@slide-first/core";
 import {
@@ -19,8 +19,8 @@ const s3Client = new S3Client({});
 const BUCKET_NAME = process.env.BUCKET_NAME ?? "";
 
 export async function handleGetVersion(
-  event: APIGatewayProxyEventV2,
-): Promise<APIGatewayProxyResultV2> {
+  event: APIGatewayProxyEvent,
+): Promise<APIGatewayProxyResult> {
   const userId = extractUserId(event);
   if (!userId) {
     throw new UnauthorizedError();

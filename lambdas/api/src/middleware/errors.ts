@@ -2,7 +2,7 @@
  * Error response formatting middleware.
  */
 
-import type { APIGatewayProxyResultV2 } from "aws-lambda";
+import type { APIGatewayProxyResult } from "aws-lambda";
 import { ValidationError } from "./validation.js";
 
 export class ApiError extends Error {
@@ -43,7 +43,7 @@ export class ConflictError extends ApiError {
 /**
  * Build an error response from any error type.
  */
-export function buildErrorResponse(error: unknown): APIGatewayProxyResultV2 {
+export function buildErrorResponse(error: unknown): APIGatewayProxyResult {
   if (error instanceof ApiError) {
     return {
       statusCode: error.statusCode,
@@ -85,7 +85,7 @@ export function buildErrorResponse(error: unknown): APIGatewayProxyResultV2 {
 export function buildResponse(
   statusCode: number,
   body: unknown,
-): APIGatewayProxyResultV2 {
+): APIGatewayProxyResult {
   return {
     statusCode,
     headers: { "Content-Type": "application/json" },

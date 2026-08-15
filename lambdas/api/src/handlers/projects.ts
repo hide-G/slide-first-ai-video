@@ -2,7 +2,7 @@
  * Project API handlers.
  */
 
-import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
+import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 import { ulid } from "ulid";
 import {
   extractUserId,
@@ -20,38 +20,40 @@ import {
 } from "../db/index.js";
 
 export async function handleListProjects(
-  event: APIGatewayProxyEventV2,
-): Promise<APIGatewayProxyResultV2> {
+  event: APIGatewayProxyEvent,
+): Promise<APIGatewayProxyResult> {
   const userId = extractUserId(event);
   if (!userId) {
     throw new UnauthorizedError();
   }
 
   const nextToken = event.queryStringParameters?.nextToken;
-  const { projects, nextToken: resultToken } = await listProjectsByUser(userId, nextToken);
+  const { projects, nextToken: resultToken } = await listProjectsByUser(
+    userId,
+    nextToken,
+  );
 
   return buildResponse(200, {
-    projects: projects.map((p) => ({
-      projectId: p.projectId,
-      userId: p.userId,
-      title: p.title,
-      status: p.status,
-      createdAt: p.createdAt,
-      updatedAt: p.updatedAt,
+    projects: projects.map((project) => ({
+      projectId: project.projectId,
+      userId: project.userId,
+      title: project.title,
+      status: project.status,
+      createdAt: project.createdAt,
+      updatedAt: project.updatedAt,
     })),
     ...(resultToken ? { nextToken: resultToken } : {}),
   });
 }
 
 export async function handleCreateProject(
-  event: APIGatewayProxyEventV2,
-): Promise<APIGatewayProxyResultV2> {
+  event: APIGatewayProxyEvent,
+): Promise<APIGatewayProxyResult> {
   const userId = extractUserId(event);
   if (!userId) {
     throw new UnauthorizedError();
   }
 
-  // Check idempotency
   const idempotencyKey = extractIdempotencyKey(event);
   if (idempotencyKey) {
     const existing = await putIfAbsent(idempotencyKey, userId);
@@ -67,8 +69,7 @@ export async function handleCreateProject(
   const body = validateBody(CreateProjectSchema, event.body ?? null);
   const projectId = ulid();
   const now = new Date().toISOString();
-
-  await createProject({
+  const project = {
     projectId,
     userId,
     title: body.title,
@@ -80,28 +81,16 @@ export async function handleCreateProject(
     currentVersion: 0,
     createdAt: now,
     updatedAt: now,
-  });
+  };
 
-  const responseBody = JSON.stringify({
-    projectId,
-    userId,
-    title: body.title,
-    status: "DRAFT",
-    createdAt: now,
-    updatedAt: now,
-  });
+  await createProject(project);
 
-  // Store idempotency response
+  const response = { project };
+  const responseBody = JSON.stringify(response);
+
   if (idempotencyKey) {
     await completeIdempotencyRecord(idempotencyKey, userId, 201, responseBody);
   }
 
-  return buildResponse(201, {
-    projectId,
-    userId,
-    title: body.title,
-    status: "DRAFT",
-    createdAt: now,
-    updatedAt: now,
-  });
+  return buildResponse(201, response);
 }

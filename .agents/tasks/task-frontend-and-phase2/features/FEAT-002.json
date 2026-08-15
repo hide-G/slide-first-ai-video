@@ -2,7 +2,7 @@
   "id": "FEAT-002",
   "type": "feat",
   "description": "Create React frontend workspace package (frontend/) with Vite, React 18, React Router, and AWS Amplify libraries for Cognito authentication. Implement the full UI: login, project CRUD, slide generation/preview/edit/approve workflow, video generation with job progress, deliverable download, and video player. Add API Gateway teaser endpoint. Update CDK with Amplify Hosting construct and teaser API route.",
-  "status": "pending",
+  "status": "in_progress",
   "steps": [
     "Add 'frontend' to pnpm-workspace.yaml packages list",
     "Create frontend/package.json with React 18, react-router-dom, @aws-amplify/ui-react, aws-amplify, vite, @vitejs/plugin-react, vitest, typescript deps",

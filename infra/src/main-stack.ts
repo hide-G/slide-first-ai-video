@@ -10,6 +10,7 @@ import { RenderStateMachineConstruct } from "../lib/render-state-machine-constru
 import { ContentStateMachineConstruct } from "../lib/content-state-machine-construct.js";
 import { ApiConstruct } from "../lib/api-construct.js";
 import { DeliveryConstruct } from "../lib/delivery-construct.js";
+import { FrontendConstruct } from "../lib/frontend-construct.js";
 
 export interface MainStackProps extends cdk.StackProps {
   productSlug: string;
@@ -126,6 +127,12 @@ export class MainStack extends cdk.Stack {
       productSlug: props.productSlug,
       environment: props.envName,
       projectBucket: storage.projectBucket,
+    });
+
+    // Frontend: S3 + CloudFront SPA hosting
+    new FrontendConstruct(this, "Frontend", {
+      productSlug: props.productSlug,
+      environment: props.envName,
     });
   }
 }

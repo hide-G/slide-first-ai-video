@@ -15,6 +15,7 @@ import {
   handleGetVersion,
   handleApprove,
   handleStartVideo,
+  handleStartTeaser,
   handleGetJob,
   handleGetDeliverables,
 } from "./handlers/index.js";
@@ -55,6 +56,12 @@ const routes: Route[] = [
     pattern: /^\/v1\/projects\/([^/]+)\/versions\/([^/]+)\/approve\/?$/,
     handler: handleApprove,
     paramKeys: ["id", "version"],
+  },
+  {
+    method: "POST",
+    pattern: /^\/v1\/projects\/([^/]+)\/videos\/teaser\/?$/,
+    handler: handleStartTeaser,
+    paramKeys: ["id"],
   },
   {
     method: "POST",

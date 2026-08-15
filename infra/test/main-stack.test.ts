@@ -216,12 +216,13 @@ describe("MainStack - API Gateway", () => {
     });
   });
 
-  it("creates 7 API methods", () => {
+  it("creates 8 API methods", () => {
     const template = createTestStack();
-    // 7 routes: POST /projects, POST /projects/{id}/slides,
+    // 8 routes: POST /projects, POST /projects/{id}/slides,
     // GET /projects/{id}/versions/{version}, POST /projects/{id}/versions/{version}/approve,
-    // POST /projects/{id}/videos, GET /projects/{id}/deliverables, GET /jobs/{jobId}
-    template.resourceCountIs("AWS::ApiGateway::Method", 7);
+    // POST /projects/{id}/videos, POST /projects/{id}/videos/teaser,
+    // GET /projects/{id}/deliverables, GET /jobs/{jobId}
+    template.resourceCountIs("AWS::ApiGateway::Method", 8);
   });
 
   it("all methods use Cognito authorization", () => {
@@ -341,7 +342,7 @@ describe("MainStack - SQS", () => {
 });
 
 describe("MainStack - CloudFront", () => {
-  it("creates CloudFront distribution", () => {
+  it("creates CloudFront distribution for content delivery", () => {
     const template = createTestStack();
 
     template.hasResourceProperties("AWS::CloudFront::Distribution", {
@@ -352,13 +353,57 @@ describe("MainStack - CloudFront", () => {
     });
   });
 
+  it("creates CloudFront distribution for frontend", () => {
+    const template = createTestStack();
+
+    template.hasResourceProperties("AWS::CloudFront::Distribution", {
+      DistributionConfig: Match.objectLike({
+        Comment: "testapp-dev frontend",
+        Enabled: true,
+      }),
+    });
+  });
+
   it("uses OAC for S3 access", () => {
     const template = createTestStack();
 
     template.resourceCountIs(
       "AWS::CloudFront::OriginAccessControl",
-      1,
+      2,
     );
+  });
+});
+
+describe("MainStack - Frontend Hosting", () => {
+  it("creates frontend S3 bucket", () => {
+    const template = createTestStack();
+
+    template.hasResourceProperties("AWS::S3::Bucket", {
+      BucketName: "testapp-dev-frontend",
+    });
+  });
+
+  it("creates frontend CloudFront with SPA error responses", () => {
+    const template = createTestStack();
+
+    template.hasResourceProperties("AWS::CloudFront::Distribution", {
+      DistributionConfig: Match.objectLike({
+        Comment: "testapp-dev frontend",
+        DefaultRootObject: "index.html",
+        CustomErrorResponses: Match.arrayWith([
+          Match.objectLike({
+            ErrorCode: 403,
+            ResponseCode: 200,
+            ResponsePagePath: "/index.html",
+          }),
+          Match.objectLike({
+            ErrorCode: 404,
+            ResponseCode: 200,
+            ResponsePagePath: "/index.html",
+          }),
+        ]),
+      }),
+    });
   });
 });
 

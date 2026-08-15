@@ -119,6 +119,10 @@ export class ApiConstruct extends Construct {
     const videos = projectId.addResource("videos");
     videos.addMethod("POST", lambdaIntegration, authOptions);
 
+    // Routes: POST /v1/projects/{id}/videos/teaser
+    const teaser = videos.addResource("teaser");
+    teaser.addMethod("POST", lambdaIntegration, authOptions);
+
     // Routes: GET /v1/projects/{id}/deliverables
     const deliverables = projectId.addResource("deliverables");
     deliverables.addMethod("GET", lambdaIntegration, authOptions);

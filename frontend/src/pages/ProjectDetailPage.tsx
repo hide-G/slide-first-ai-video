@@ -1,23 +1,29 @@
 import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { apiClient } from "../api/client.js";
+import { getErrorDescriptor } from "../i18n/errors.js";
+import { useLanguage } from "../i18n/LanguageContext.js";
+import { message, type MessageDescriptor } from "../i18n/messages.js";
 
 export function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const { format, t } = useLanguage();
   const [theme, setTheme] = useState("");
   const [audience, setAudience] = useState("");
   const [duration, setDuration] = useState("");
   const [urls, setUrls] = useState("");
   const [generating, setGenerating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<MessageDescriptor | null>(null);
   const [result, setResult] = useState<{
     jobId: string;
     versionNumber: number;
   } | null>(null);
 
-  async function handleStartSlides(e: React.FormEvent) {
+  async function handleStartSlides(e: React.FormEvent): Promise<void> {
     e.preventDefault();
-    if (!id) return;
+    if (!id) {
+      return;
+    }
 
     try {
       setGenerating(true);
@@ -29,7 +35,7 @@ export function ProjectDetailPage() {
         urls: urls
           ? urls
               .split("\n")
-              .map((u) => u.trim())
+              .map((url) => url.trim())
               .filter(Boolean)
           : undefined,
       });
@@ -37,10 +43,8 @@ export function ProjectDetailPage() {
         jobId: response.jobId,
         versionNumber: response.versionNumber,
       });
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "スライド生成の開始に失敗しました",
-      );
+    } catch (error) {
+      setError(getErrorDescriptor(error, message("errors.slidesStart")));
     } finally {
       setGenerating(false);
     }
@@ -48,13 +52,17 @@ export function ProjectDetailPage() {
 
   return (
     <div>
-      <h1>プロジェクト: {id}</h1>
+      <h1>{t("project.detailTitle", { id: id ?? "" })}</h1>
 
       <nav style={{ marginBottom: "1rem" }}>
-        <Link to={`/projects/${id}/videos`}>動画一覧</Link>
+        <Link to={`/projects/${id}/videos`}>{t("project.videos")}</Link>
       </nav>
 
-      {error && <div style={{ color: "red", marginBottom: "1rem" }}>{error}</div>}
+      {error && (
+        <div role="alert" style={{ color: "red", marginBottom: "1rem" }}>
+          {format(error)}
+        </div>
+      )}
 
       {result && (
         <div
@@ -65,46 +73,46 @@ export function ProjectDetailPage() {
             marginBottom: "1rem",
           }}
         >
-          <p>スライド生成を開始しました</p>
+          <p>{t("project.slidesStarted")}</p>
           <Link to={`/projects/${id}/versions/${result.versionNumber}`}>
-            バージョン {result.versionNumber} を確認
+            {t("project.viewVersion", { version: result.versionNumber })}
           </Link>
         </div>
       )}
 
-      <h2>スライド生成</h2>
+      <h2>{t("project.slides")}</h2>
       <form onSubmit={handleStartSlides}>
         <div style={{ marginBottom: "0.5rem" }}>
           <label>
-            テーマ:
+            {t("project.theme")}
             <input
               type="text"
               value={theme}
-              onChange={(e) => setTheme(e.target.value)}
-              placeholder="例: AWS CDK, サーバーレス"
+              onChange={(event) => setTheme(event.target.value)}
+              placeholder={t("project.themePlaceholder")}
               style={{ marginLeft: "0.5rem", padding: "0.3rem" }}
             />
           </label>
         </div>
         <div style={{ marginBottom: "0.5rem" }}>
           <label>
-            対象者:
+            {t("project.audience")}
             <input
               type="text"
               value={audience}
-              onChange={(e) => setAudience(e.target.value)}
-              placeholder="例: エンジニア初心者"
+              onChange={(event) => setAudience(event.target.value)}
+              placeholder={t("project.audiencePlaceholder")}
               style={{ marginLeft: "0.5rem", padding: "0.3rem" }}
             />
           </label>
         </div>
         <div style={{ marginBottom: "0.5rem" }}>
           <label>
-            持ち時間（秒）:
+            {t("project.duration")}
             <input
               type="number"
               value={duration}
-              onChange={(e) => setDuration(e.target.value)}
+              onChange={(event) => setDuration(event.target.value)}
               placeholder="300"
               style={{ marginLeft: "0.5rem", padding: "0.3rem" }}
             />
@@ -112,11 +120,11 @@ export function ProjectDetailPage() {
         </div>
         <div style={{ marginBottom: "0.5rem" }}>
           <label>
-            参照URL（1行に1つ）:
+            {t("project.references")}
             <br />
             <textarea
               value={urls}
-              onChange={(e) => setUrls(e.target.value)}
+              onChange={(event) => setUrls(event.target.value)}
               rows={3}
               cols={50}
               placeholder="https://docs.aws.amazon.com/cdk/"
@@ -124,7 +132,7 @@ export function ProjectDetailPage() {
           </label>
         </div>
         <button type="submit" disabled={generating}>
-          {generating ? "生成中..." : "スライド生成を開始"}
+          {generating ? t("project.generating") : t("project.startSlides")}
         </button>
       </form>
     </div>

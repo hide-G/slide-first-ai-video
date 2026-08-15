@@ -2,77 +2,86 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { apiClient } from "../api/client.js";
 import type { Project } from "../api/types.js";
+import { getErrorDescriptor } from "../i18n/errors.js";
+import { useLanguage } from "../i18n/LanguageContext.js";
+import {
+  message,
+  statusMessage,
+  type MessageDescriptor,
+} from "../i18n/messages.js";
 
 export function ProjectsPage() {
+  const { format, t } = useLanguage();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<MessageDescriptor | null>(null);
   const [title, setTitle] = useState("");
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
-    loadProjects();
+    void loadProjects();
   }, []);
 
-  async function loadProjects() {
+  async function loadProjects(): Promise<void> {
     try {
       setLoading(true);
       const response = await apiClient.listProjects();
       setProjects(response.projects);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "プロジェクトの読み込みに失敗しました",
-      );
+    } catch (error) {
+      setError(getErrorDescriptor(error, message("errors.projectsLoad")));
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleCreateProject(e: React.FormEvent) {
+  async function handleCreateProject(e: React.FormEvent): Promise<void> {
     e.preventDefault();
-    if (!title.trim()) return;
+    if (!title.trim()) {
+      return;
+    }
 
     try {
       setCreating(true);
       setError(null);
       const response = await apiClient.createProject({ title: title.trim() });
-      setProjects((prev) => [response.project, ...prev]);
+      setProjects((previousProjects) => [
+        response.project,
+        ...previousProjects,
+      ]);
       setTitle("");
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "プロジェクトの作成に失敗しました",
-      );
+    } catch (error) {
+      setError(getErrorDescriptor(error, message("errors.projectsCreate")));
     } finally {
       setCreating(false);
     }
   }
 
   if (loading) {
-    return <div>読み込み中...</div>;
+    return <div>{t("common.loading")}</div>;
   }
 
   return (
     <div>
-      <h1>プロジェクト</h1>
+      <h1>{t("projects.title")}</h1>
 
-      {error && <p style={{ color: "red" }}>{error}</p>}
+      {error && <p role="alert" style={{ color: "red" }}>{format(error)}</p>}
 
       <form onSubmit={handleCreateProject} style={{ marginBottom: "1rem" }}>
         <input
           type="text"
           value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="プロジェクト名を入力"
+          onChange={(event) => setTitle(event.target.value)}
+          placeholder={t("projects.namePlaceholder")}
           disabled={creating}
           style={{ padding: "0.5rem", marginRight: "0.5rem", minWidth: "300px" }}
         />
         <button type="submit" disabled={creating || !title.trim()}>
-          {creating ? "作成中..." : "プロジェクト作成"}
+          {creating ? t("projects.creating") : t("projects.create")}
         </button>
       </form>
 
       {projects.length === 0 ? (
-        <p>プロジェクトがありません。上のフォームから作成してください。</p>
+        <p>{t("projects.empty")}</p>
       ) : (
         <ul style={{ listStyle: "none", padding: 0 }}>
           {projects.map((project) => (
@@ -91,7 +100,7 @@ export function ProjectsPage() {
               <span
                 style={{ marginLeft: "1rem", fontSize: "0.85rem", color: "#666" }}
               >
-                状態: {project.status}
+                {t("common.status")}: {format(statusMessage(project.status))}
               </span>
             </li>
           ))}

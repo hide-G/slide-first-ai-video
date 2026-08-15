@@ -1,12 +1,16 @@
+import { useLanguage } from "../i18n/LanguageContext.js";
+
 interface VideoPlayerProps {
   url: string;
   title?: string;
 }
 
 /**
- * HTML5 video player component.
+ * HTML5動画プレーヤーコンポーネント。
  */
 export function VideoPlayer({ url, title }: VideoPlayerProps) {
+  const { t } = useLanguage();
+
   if (!url) {
     return null;
   }
@@ -26,7 +30,7 @@ export function VideoPlayer({ url, title }: VideoPlayerProps) {
         style={{ width: "100%", maxHeight: "480px" }}
         src={url}
       >
-        Your browser does not support the video tag.
+        {t("video.unsupported")}
       </video>
     </div>
   );

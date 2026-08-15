@@ -1,19 +1,15 @@
 import type { GetJobResponse } from "../api/types.js";
+import { useLanguage } from "../i18n/LanguageContext.js";
+import { jobStatusMessage } from "../i18n/messages.js";
 
 interface JobProgressProps {
   job: GetJobResponse;
 }
 
-const statusLabel: Record<string, string> = {
-  PENDING: "待機中",
-  RUNNING: "実行中",
-  SUCCEEDED: "完了",
-  FAILED: "失敗",
-  CANCELLED: "キャンセル",
-};
-
 export function JobProgress({ job }: JobProgressProps) {
-  const j = job.job;
+  const { format, t } = useLanguage();
+  const currentJob = job.job;
+
   return (
     <div
       style={{
@@ -21,13 +17,17 @@ export function JobProgress({ job }: JobProgressProps) {
         border: "1px solid #ddd",
         borderRadius: "8px",
         marginBottom: "1rem",
-        background: j.status === "FAILED" ? "#fff0f0" : "#f0f8ff",
+        background: currentJob.status === "FAILED" ? "#fff0f0" : "#f0f8ff",
       }}
     >
       <p>
-        <strong>ジョブ状態:</strong> {statusLabel[j.status] || j.status}
+        <strong>{t("job.status")}:</strong> {format(jobStatusMessage(currentJob.status))}
       </p>
-      {j.error && <p style={{ color: "red" }}>エラー: {j.error}</p>}
+      {currentJob.error && (
+        <p style={{ color: "red" }}>
+          {t("common.error")}: {currentJob.error}
+        </p>
+      )}
     </div>
   );
 }

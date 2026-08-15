@@ -1,8 +1,5 @@
-/**
- * Typed API client wrapping fetch with Authorization header.
- */
-
 import { fetchAuthSession } from "aws-amplify/auth";
+import { createLocalizedError } from "../i18n/errors.js";
 import type {
   CreateProjectRequest,
   CreateProjectResponse,
@@ -17,8 +14,30 @@ import type {
   ErrorResponse,
 } from "./types.js";
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_ENDPOINT ?? "";
+let apiBaseUrl: string | undefined;
+
+/**
+ * APIのオリジンを設定する。誤ってstageを含む値が渡されても、/v1はクライアント側で一度だけ付与する。
+ */
+export function configureApiClient(apiEndpoint: string): void {
+  const withoutTrailingSlashes = apiEndpoint.trim().replace(/\/+$/, "");
+  if (!withoutTrailingSlashes) {
+    throw createLocalizedError("errors.apiEndpointEmpty");
+  }
+
+  apiBaseUrl = withoutTrailingSlashes.replace(/(?:\/v1)+$/i, "");
+  if (!apiBaseUrl) {
+    throw createLocalizedError("errors.apiEndpointInvalid");
+  }
+}
+
+function getApiBaseUrl(): string {
+  if (!apiBaseUrl) {
+    throw createLocalizedError("errors.apiRuntimeConfigNotLoaded");
+  }
+
+  return apiBaseUrl;
+}
 
 export class ApiError extends Error {
   constructor(
@@ -38,7 +57,7 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
       return { Authorization: `Bearer ${idToken}` };
     }
   } catch {
-    // Not authenticated
+    // 未認証の場合はAuthorizationヘッダーを付与しない。
   }
   return {};
 }
@@ -53,7 +72,7 @@ async function request<T>(
     ...(await getAuthHeaders()),
   };
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(`${getApiBaseUrl()}${path}`, {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
@@ -68,17 +87,17 @@ async function request<T>(
 }
 
 export const apiClient = {
-  /** List all projects */
+  /** プロジェクト一覧を取得する。 */
   listProjects(): Promise<ListProjectsResponse> {
     return request<ListProjectsResponse>("GET", "/v1/projects");
   },
 
-  /** Create a new project */
+  /** プロジェクトを作成する。 */
   createProject(data: CreateProjectRequest): Promise<CreateProjectResponse> {
     return request<CreateProjectResponse>("POST", "/v1/projects", data);
   },
 
-  /** Start slide generation */
+  /** スライド生成を開始する。 */
   startSlides(
     projectId: string,
     data: StartSlidesRequest,
@@ -90,7 +109,7 @@ export const apiClient = {
     );
   },
 
-  /** Get version details */
+  /** バージョン詳細を取得する。 */
   getVersion(
     projectId: string,
     versionNumber: number,
@@ -101,7 +120,7 @@ export const apiClient = {
     );
   },
 
-  /** Approve a version */
+  /** バージョンを承認する。 */
   approveVersion(projectId: string, versionNumber: number): Promise<void> {
     return request<void>(
       "POST",
@@ -109,7 +128,7 @@ export const apiClient = {
     );
   },
 
-  /** Start full video generation */
+  /** 完成版の動画生成を開始する。 */
   startVideo(
     projectId: string,
     data: StartVideoRequest,
@@ -121,7 +140,7 @@ export const apiClient = {
     );
   },
 
-  /** Start teaser video generation */
+  /** ティーザー動画生成を開始する。 */
   startTeaser(
     projectId: string,
     data: StartVideoRequest,
@@ -133,12 +152,12 @@ export const apiClient = {
     );
   },
 
-  /** Get job status */
+  /** ジョブ状態を取得する。 */
   getJob(jobId: string): Promise<GetJobResponse> {
     return request<GetJobResponse>("GET", `/v1/jobs/${jobId}`);
   },
 
-  /** Get deliverables */
+  /** 成果物を取得する。 */
   getDeliverables(projectId: string): Promise<GetDeliverablesResponse> {
     return request<GetDeliverablesResponse>(
       "GET",

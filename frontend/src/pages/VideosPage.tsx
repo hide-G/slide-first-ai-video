@@ -4,19 +4,25 @@ import { apiClient } from "../api/client.js";
 import { JobProgress } from "../components/JobProgress.js";
 import { DeliverablesList } from "../components/DeliverablesList.js";
 import type { Job, GetDeliverablesResponse } from "../api/types.js";
+import { getErrorDescriptor } from "../i18n/errors.js";
+import { useLanguage } from "../i18n/LanguageContext.js";
+import { message, type MessageDescriptor } from "../i18n/messages.js";
 
 export function VideosPage() {
   const { id } = useParams<{ id: string }>();
+  const { format, t } = useLanguage();
   const [versionNumber, setVersionNumber] = useState("1");
   const [generating, setGenerating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<MessageDescriptor | null>(null);
   const [job, setJob] = useState<Job | null>(null);
   const [deliverables, setDeliverables] =
     useState<GetDeliverablesResponse | null>(null);
 
-  async function handleStartVideo(e: React.FormEvent) {
+  async function handleStartVideo(e: React.FormEvent): Promise<void> {
     e.preventDefault();
-    if (!id) return;
+    if (!id) {
+      return;
+    }
 
     try {
       setGenerating(true);
@@ -24,53 +30,58 @@ export function VideosPage() {
       const response = await apiClient.startVideo(id, {
         versionNumber: Number(versionNumber),
       });
-      pollJob(response.jobId);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "動画生成の開始に失敗しました");
+      void pollJob(response.jobId);
+    } catch (error) {
+      setError(getErrorDescriptor(error, message("errors.videosStart")));
       setGenerating(false);
     }
   }
 
-  async function pollJob(jobId: string) {
-    for (let i = 0; i < 120; i++) {
-      await new Promise((r) => setTimeout(r, 5000));
+  async function pollJob(jobId: string): Promise<void> {
+    for (let attempt = 0; attempt < 120; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5000));
       try {
         const jobData = await apiClient.getJob(jobId);
         setJob(jobData.job);
         if (jobData.job.status === "SUCCEEDED") {
           setGenerating(false);
-          const delivs = await apiClient.getDeliverables(id!);
-          setDeliverables(delivs);
+          const nextDeliverables = await apiClient.getDeliverables(id!);
+          setDeliverables(nextDeliverables);
           return;
         }
         if (jobData.job.status === "FAILED") {
-          setError(jobData.job.error || "動画生成に失敗しました");
+          setError(message("errors.videosGeneration"));
           setGenerating(false);
           return;
         }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "状態確認に失敗しました");
+      } catch (error) {
+        setError(getErrorDescriptor(error, message("errors.videosStatusCheck")));
         setGenerating(false);
         return;
       }
     }
-    setError("タイムアウト: 動画生成が完了しませんでした");
+
+    setError(message("errors.videosTimeout"));
     setGenerating(false);
   }
 
   return (
     <div>
-      <h1>動画生成</h1>
+      <h1>{t("videos.title")}</h1>
 
-      {error && <div style={{ color: "red", marginBottom: "1rem" }}>{error}</div>}
+      {error && (
+        <div role="alert" style={{ color: "red", marginBottom: "1rem" }}>
+          {format(error)}
+        </div>
+      )}
 
       <form onSubmit={handleStartVideo} style={{ marginBottom: "1rem" }}>
         <label>
-          バージョン番号:
+          {t("videos.versionNumber")}
           <input
             type="number"
             value={versionNumber}
-            onChange={(e) => setVersionNumber(e.target.value)}
+            onChange={(event) => setVersionNumber(event.target.value)}
             min="1"
             style={{ marginLeft: "0.5rem", padding: "0.3rem", width: "80px" }}
           />
@@ -80,7 +91,7 @@ export function VideosPage() {
           disabled={generating}
           style={{ marginLeft: "1rem" }}
         >
-          {generating ? "生成中..." : "動画生成を開始"}
+          {generating ? t("videos.generating") : t("videos.start")}
         </button>
       </form>
 
@@ -89,7 +100,7 @@ export function VideosPage() {
       {deliverables && <DeliverablesList deliverables={deliverables} />}
 
       <div style={{ marginTop: "1rem" }}>
-        <Link to={`/projects/${id}`}>← プロジェクトに戻る</Link>
+        <Link to={`/projects/${id}`}>{t("nav.backToProject")}</Link>
       </div>
     </div>
   );

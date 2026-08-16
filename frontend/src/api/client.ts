@@ -1,41 +1,46 @@
 import { fetchAuthSession } from "aws-amplify/auth";
-import { createLocalizedError } from "../i18n/errors.js";
 import type {
   CreateProjectRequest,
   CreateProjectResponse,
-  StartSlidesRequest,
-  StartSlidesResponse,
-  StartVideoRequest,
-  StartVideoResponse,
-  GetVersionResponse,
-  GetJobResponse,
-  GetDeliverablesResponse,
+  GenerateOutlineRequest,
+  GenerateOutlineResponse,
+  UpdateOutlineRequest,
+  GenerateDeckRequest,
+  GenerateDeckResponse,
+  SourceUploadUrlRequest,
+  SourceUploadUrlResponse,
+  RegisterSourceRequest,
+  RegisterSourceResponse,
+  UpdateOutputRequest,
+  GenerateNarrationRequest,
+  GenerateNarrationResponse,
+  UpdateNarrationRequest,
+  StartRenderRequest,
+  StartRenderResponse,
+  GetRenderResponse,
+  GetArtifactsResponse,
   ListProjectsResponse,
   ErrorResponse,
 } from "./types.js";
 
 let apiBaseUrl: string | undefined;
 
-/**
- * APIのオリジンを設定する。誤ってstageを含む値が渡されても、/v1はクライアント側で一度だけ付与する。
- */
 export function configureApiClient(apiEndpoint: string): void {
   const withoutTrailingSlashes = apiEndpoint.trim().replace(/\/+$/, "");
   if (!withoutTrailingSlashes) {
-    throw createLocalizedError("errors.apiEndpointEmpty");
+    throw new Error("API endpoint is empty");
   }
 
   apiBaseUrl = withoutTrailingSlashes.replace(/(?:\/v1)+$/i, "");
   if (!apiBaseUrl) {
-    throw createLocalizedError("errors.apiEndpointInvalid");
+    throw new Error("API endpoint format is invalid");
   }
 }
 
 function getApiBaseUrl(): string {
   if (!apiBaseUrl) {
-    throw createLocalizedError("errors.apiRuntimeConfigNotLoaded");
+    throw new Error("Runtime configuration has not been loaded");
   }
-
   return apiBaseUrl;
 }
 
@@ -57,7 +62,7 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
       return { Authorization: `Bearer ${idToken}` };
     }
   } catch {
-    // 未認証の場合はAuthorizationヘッダーを付与しない。
+    // Not authenticated - no header
   }
   return {};
 }
@@ -87,81 +92,68 @@ async function request<T>(
 }
 
 export const apiClient = {
-  /** プロジェクト一覧を取得する。 */
+  /** GET /projects */
   listProjects(): Promise<ListProjectsResponse> {
     return request<ListProjectsResponse>("GET", "/v1/projects");
   },
 
-  /** プロジェクトを作成する。 */
+  /** POST /projects */
   createProject(data: CreateProjectRequest): Promise<CreateProjectResponse> {
     return request<CreateProjectResponse>("POST", "/v1/projects", data);
   },
 
-  /** スライド生成を開始する。 */
-  startSlides(
-    projectId: string,
-    data: StartSlidesRequest,
-  ): Promise<StartSlidesResponse> {
-    return request<StartSlidesResponse>(
-      "POST",
-      `/v1/projects/${projectId}/slides`,
-      data,
-    );
+  /** POST /projects/{id}/outline */
+  generateOutline(projectId: string, data: GenerateOutlineRequest): Promise<GenerateOutlineResponse> {
+    return request<GenerateOutlineResponse>("POST", `/v1/projects/${projectId}/outline`, data);
   },
 
-  /** バージョン詳細を取得する。 */
-  getVersion(
-    projectId: string,
-    versionNumber: number,
-  ): Promise<GetVersionResponse> {
-    return request<GetVersionResponse>(
-      "GET",
-      `/v1/projects/${projectId}/versions/${versionNumber}`,
-    );
+  /** PUT /projects/{id}/outline */
+  updateOutline(projectId: string, data: UpdateOutlineRequest): Promise<void> {
+    return request<void>("PUT", `/v1/projects/${projectId}/outline`, data);
   },
 
-  /** バージョンを承認する。 */
-  approveVersion(projectId: string, versionNumber: number): Promise<void> {
-    return request<void>(
-      "POST",
-      `/v1/projects/${projectId}/versions/${versionNumber}/approve`,
-    );
+  /** POST /projects/{id}/deck */
+  generateDeck(projectId: string, data: GenerateDeckRequest): Promise<GenerateDeckResponse> {
+    return request<GenerateDeckResponse>("POST", `/v1/projects/${projectId}/deck`, data);
   },
 
-  /** 完成版の動画生成を開始する。 */
-  startVideo(
-    projectId: string,
-    data: StartVideoRequest,
-  ): Promise<StartVideoResponse> {
-    return request<StartVideoResponse>(
-      "POST",
-      `/v1/projects/${projectId}/videos`,
-      data,
-    );
+  /** POST /projects/{id}/source-upload-url */
+  getSourceUploadUrl(projectId: string, data: SourceUploadUrlRequest): Promise<SourceUploadUrlResponse> {
+    return request<SourceUploadUrlResponse>("POST", `/v1/projects/${projectId}/source-upload-url`, data);
   },
 
-  /** ティーザー動画生成を開始する。 */
-  startTeaser(
-    projectId: string,
-    data: StartVideoRequest,
-  ): Promise<StartVideoResponse> {
-    return request<StartVideoResponse>(
-      "POST",
-      `/v1/projects/${projectId}/videos/teaser`,
-      data,
-    );
+  /** POST /projects/{id}/source */
+  registerSource(projectId: string, data: RegisterSourceRequest): Promise<RegisterSourceResponse> {
+    return request<RegisterSourceResponse>("POST", `/v1/projects/${projectId}/source`, data);
   },
 
-  /** ジョブ状態を取得する。 */
-  getJob(jobId: string): Promise<GetJobResponse> {
-    return request<GetJobResponse>("GET", `/v1/jobs/${jobId}`);
+  /** PUT /projects/{id}/output */
+  updateOutput(projectId: string, data: UpdateOutputRequest): Promise<void> {
+    return request<void>("PUT", `/v1/projects/${projectId}/output`, data);
   },
 
-  /** 成果物を取得する。 */
-  getDeliverables(projectId: string): Promise<GetDeliverablesResponse> {
-    return request<GetDeliverablesResponse>(
-      "GET",
-      `/v1/projects/${projectId}/deliverables`,
-    );
+  /** POST /projects/{id}/narration */
+  generateNarration(projectId: string, data: GenerateNarrationRequest): Promise<GenerateNarrationResponse> {
+    return request<GenerateNarrationResponse>("POST", `/v1/projects/${projectId}/narration`, data);
+  },
+
+  /** PUT /projects/{id}/narration */
+  updateNarration(projectId: string, data: UpdateNarrationRequest): Promise<void> {
+    return request<void>("PUT", `/v1/projects/${projectId}/narration`, data);
+  },
+
+  /** POST /projects/{id}/renders */
+  startRender(projectId: string, data: StartRenderRequest): Promise<StartRenderResponse> {
+    return request<StartRenderResponse>("POST", `/v1/projects/${projectId}/renders`, data);
+  },
+
+  /** GET /projects/{id}/renders/{renderId} */
+  getRender(projectId: string, renderId: string): Promise<GetRenderResponse> {
+    return request<GetRenderResponse>("GET", `/v1/projects/${projectId}/renders/${renderId}`);
+  },
+
+  /** GET /projects/{id}/renders/{renderId}/artifacts */
+  getArtifacts(projectId: string, renderId: string): Promise<GetArtifactsResponse> {
+    return request<GetArtifactsResponse>("GET", `/v1/projects/${projectId}/renders/${renderId}/artifacts`);
   },
 };

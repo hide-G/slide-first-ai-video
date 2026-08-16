@@ -1,372 +1,566 @@
-import type { Job } from "../api/types.js";
-
 export const SUPPORTED_LOCALES = ["ja", "en"] as const;
 
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
 
-export type MessageParams = {
-  "app.title": undefined;
-  "app.tagline": undefined;
-  "language.switcherLabel": undefined;
-  "language.japanese": undefined;
-  "language.english": undefined;
-  "auth.checking": undefined;
-  "auth.logout": undefined;
-  "auth.signingOut": undefined;
-  "auth.logoutFailed": undefined;
-  "common.loading": undefined;
-  "common.status": undefined;
-  "common.error": undefined;
-  "nav.backToProject": undefined;
-  "projects.title": undefined;
-  "projects.namePlaceholder": undefined;
-  "projects.creating": undefined;
-  "projects.create": undefined;
-  "projects.empty": undefined;
-  "project.detailTitle": { id: string };
-  "project.videos": undefined;
-  "project.slides": undefined;
-  "project.slidesStarted": undefined;
-  "project.viewVersion": { version: number };
-  "project.theme": undefined;
-  "project.themePlaceholder": undefined;
-  "project.audience": undefined;
-  "project.audiencePlaceholder": undefined;
-  "project.duration": undefined;
-  "project.references": undefined;
-  "project.generating": undefined;
-  "project.startSlides": undefined;
-  "version.title": { version: string };
-  "version.notFound": undefined;
-  "version.approving": undefined;
-  "version.approve": undefined;
-  "version.approved": undefined;
-  "version.slidesMarkdown": undefined;
-  "videos.title": undefined;
-  "videos.versionNumber": undefined;
-  "videos.generating": undefined;
-  "videos.start": undefined;
-  "job.status": undefined;
-  "deliverables.title": undefined;
-  "deliverables.empty": undefined;
-  "deliverables.download": { filename: string };
-  "deliverables.type": { type: string };
-  "markdown.empty": undefined;
-  "video.unsupported": undefined;
-  "status.notSet": undefined;
-  "status.pending": undefined;
-  "status.running": undefined;
-  "status.succeeded": undefined;
-  "status.failed": undefined;
-  "status.cancelled": undefined;
-  "status.draft": undefined;
-  "status.projectCreated": undefined;
-  "status.slideGenerating": undefined;
-  "status.slideReady": undefined;
-  "status.slideApproved": undefined;
-  "status.videoGenerating": undefined;
-  "status.videoReady": undefined;
-  "status.unknown": { status: string };
-  "errors.rootNotFound": undefined;
-  "errors.runtimeConfigInvalid": undefined;
-  "errors.runtimeConfigMissingRequired": undefined;
-  "errors.runtimeConfigFetchFailed": { status: number };
-  "errors.runtimeConfigInvalidJson": undefined;
-  "errors.runtimeConfigUnknown": undefined;
-  "errors.applicationStartFailed": undefined;
-  "errors.applicationRetryGuidance": undefined;
-  "errors.apiEndpointEmpty": undefined;
-  "errors.apiEndpointInvalid": undefined;
-  "errors.apiRuntimeConfigNotLoaded": undefined;
-  "errors.projectsLoad": undefined;
-  "errors.projectsCreate": undefined;
-  "errors.slidesStart": undefined;
-  "errors.versionLoad": undefined;
-  "errors.versionApprove": undefined;
-  "errors.videosStart": undefined;
-  "errors.videosGeneration": undefined;
-  "errors.videosStatusCheck": undefined;
-  "errors.videosTimeout": undefined;
+export type MessageKey = keyof typeof jaMessages;
+
+type MessageCatalog = Record<MessageKey, string>;
+
+export type Translate = (key: MessageKey) => string;
+
+const jaMessages = {
+  // common
+  "common.skip": "本文へ移動",
+  "common.brandSub": "スライドを正本に、音声と字幕で動画化",
+  "common.uiLang": "UI表示言語",
+  "common.or": "または",
+  "common.logout": "ログアウト",
+  "common.home": "ホーム",
+  "common.open": "開く",
+  "common.remove": "削除",
+  "common.back": "戻る",
+  "common.backHome": "ホームへ戻る",
+  "common.loading": "読み込み中...",
+  "common.error": "エラー",
+
+  // login
+  "login.heading": "スライドを正本に、音声と字幕つき動画をつくる",
+  "login.lead": "生成AIでスライドの骨子を作る工程と、手持ちの資料を動画化する工程は独立しています。必要な側だけを使えます。",
+  "login.point1": "① スライド生成：文章と参考URLを渡し、骨子を確認・修正してからMarpスライドを作ります。",
+  "login.point2": "② 動画生成：PDFやPowerPointをそのままアップロードし、ナレーションと字幕を付けて書き出します。",
+  "login.point3": "③ 読み方の指定：英単語や固有名詞の読み、振り仮名、間の取り方をSSMLで調整できます。",
+  "login.formTitle": "ログイン",
+  "login.formSub": "社内アカウントまたはメールアドレスでログインします。",
+  "login.email": "メールアドレス",
+  "login.password": "パスワード",
+  "login.showPassword": "パスワードを表示する",
+  "login.submit": "ログイン",
+  "login.sso": "シングルサインオンでログイン",
+  "login.forgot": "パスワードを忘れた場合",
+  "login.signup": "アカウントを新規作成",
+
+  // home
+  "home.heading": "何をつくりますか",
+  "home.lead": "スライド生成と動画生成は独立した機能です。本アプリ以外で作ったPDFやPowerPointを、動画生成へ直接アップロードできます。",
+  "home.card1Kicker": "機能 ②",
+  "home.card1Title": "生成AIでスライドを作る",
+  "home.card1Body": "文章や参考文献のURLを渡すと、生成AIがスライドの骨子を作ります。内容を確認・加筆修正してからMarpでスライドを生成します。",
+  "home.card1Point1": "スライドの言語を日本語・英語から選択",
+  "home.card1Point2": "骨子をレビューして文章を編集",
+  "home.card1Point3": "Markdown・PDF・PowerPointで書き出し",
+  "home.card1Cta": "スライド作成をはじめる",
+  "home.card2Kicker": "機能 ③",
+  "home.card2Title": "資料から動画を作る",
+  "home.card2Body": "PDFまたはPowerPointをアップロードし、ナレーションと字幕を付けて動画にします。スライド生成を経由せず、単独で使えます。",
+  "home.card2Point1": "横型・縦型・正方形の出力サイズを選択",
+  "home.card2Point2": "ページごとのナレーション案を自動作成",
+  "home.card2Point3": "SSMLで読み方と振り仮名を指定",
+  "home.card2Cta": "動画作成をはじめる",
+  "home.recentTitle": "最近のプロジェクト",
+  "home.recentSub": "最近のプロジェクトを表示しています。",
+  "home.thName": "名前",
+  "home.thKind": "種別",
+  "home.thSize": "出力",
+  "home.thUpdated": "更新",
+  "home.thState": "状態",
+  "home.thAction": "操作",
+  "home.kindVideo": "動画",
+  "home.kindSlide": "スライド",
+  "home.stateDone": "完了",
+  "home.stateRunning": "生成中",
+  "home.stateDraft": "下書き",
+
+  // slide studio
+  "slide.heading": "② 生成AIでスライドを作る",
+  "slide.lead": "骨子を確認・修正してからスライドを生成します。生成AIの出力をそのまま採用しません。",
+  "slide.stepA": "入力と条件",
+  "slide.stepB": "骨子のレビューと編集",
+  "slide.stepC": "スライド生成と書き出し",
+  "slide.s1Title": "スライドの内容と条件を入力する",
+  "slide.s1Sub": "入力後、まず骨子だけを生成します。この時点ではスライドは作られません。",
+  "slide.langNote": "言語の考え方：画面の表示言語（ヘッダーの日本語 / English）と、これから作るスライドの言語は別に指定します。画面を英語にしたまま日本語のスライドを作れます。",
+  "slide.outputLang": "スライドの言語",
+  "slide.langJa": "日本語",
+  "slide.langJaHint": "本文・ナレーションを日本語で作成",
+  "slide.langEn": "English",
+  "slide.langEnHint": "本文・ナレーションを英語で作成",
+  "slide.topic": "タイトル・テーマ",
+  "slide.sourceText": "渡したい文章・要件",
+  "slide.sourcePlaceholder": "伝えたい内容、前提、必ず入れたい注意事項などを貼り付けます。",
+  "slide.sourceHint": "機密情報や資格情報は入力しないでください。",
+  "slide.refUrls": "参考文献のURL",
+  "slide.addUrl": "URLを追加",
+  "slide.refHint": "参照した内容は要約・言い換えして使い、出典を最終ページに記載します。",
+  "slide.audience": "対象読者",
+  "slide.audience1": "はじめて触る人",
+  "slide.audience2": "実務で使う開発者",
+  "slide.audience3": "意思決定者",
+  "slide.pages": "ページ数",
+  "slide.tone": "トーン",
+  "slide.tone1": "説明中心",
+  "slide.tone2": "講義・研修",
+  "slide.tone3": "紹介・告知",
+  "slide.theme": "デザインテーマ",
+  "slide.theme1": "ブルー基調（既定）",
+  "slide.theme2": "モノトーン",
+  "slide.theme3": "高コントラスト",
+  "slide.genOutline": "骨子を生成する",
+  "slide.s2Title": "骨子をレビューして修正する",
+  "slide.s2Sub": "スライドを生成する前の工程です。ここで確定した文章がスライドとナレーションの元になります。",
+  "slide.outlineList": "スライド一覧",
+  "slide.moveUp": "上へ",
+  "slide.moveDown": "下へ",
+  "slide.addSlide": "追加",
+  "slide.aiDraft": "生成AIの下書き",
+  "slide.slideTitle": "見出し",
+  "slide.slideBody": "本文（1行につき1項目）",
+  "slide.slideBodyHint": "加筆・削除・言い換えは自由に行えます。事実確認は必ず人が行ってください。",
+  "slide.slideNotes": "補足メモ（スライドには表示しない）",
+  "slide.regen": "このページだけAIに再提案させる",
+  "slide.factCheck": "出典との対応を確認する",
+  "slide.genDeck": "この骨子でスライドを生成する",
+  "slide.s3Title": "スライドを生成しました",
+  "slide.s3Sub": "サムネイルは表示イメージです。",
+  "slide.downloadTitle": "書き出し",
+  "slide.downloadSub": "同じ内容から3つの形式を書き出します。",
+  "slide.pptxNote": "PowerPointは拡張子だけでなく、実際にPowerPointで開けるファイルとして書き出します。",
+  "slide.backOutline": "骨子の編集に戻る",
+  "slide.toVideo": "この資料で動画を作る",
+
+  // video studio
+  "video.heading": "③ 資料から動画を作る",
+  "video.lead": "PDFまたはPowerPointを起点に、ナレーションと字幕を付けて書き出します。スライド作成機能を使わず、単独で利用できます。",
+  "video.stepA": "素材の読み込み",
+  "video.stepB": "出力設定",
+  "video.stepC": "ナレーションと読み方",
+  "video.stepD": "生成と書き出し",
+  "video.handoffTitle": "スライド作成から引き継ぎました",
+  "video.handoffNote": "スライド作成で確定した内容をそのまま読み込みました。差し替える場合は下からアップロードしてください。",
+  "video.uploadTitle": "資料をアップロードする",
+  "video.uploadSub": "PDF、または PowerPoint（.pptx）に対応します。",
+  "video.dropTitle": "ここにファイルをドラッグ、またはクリックして選択",
+  "video.dropHint": "1ファイル、最大50ページを想定",
+  "video.independentNote": "この画面は単独で使えます。他のツールで作ったスライドをここへアップロードして動画化できます。",
+  "video.pagesTitle": "読み込んだページ",
+  "video.pagesSub": "ページ数と、後で作るナレーションの数を一致させます。",
+  "video.toSettings": "出力設定へ進む",
+  "video.previewTitle": "プレビュー",
+  "video.previewSlide": "スライド表示領域",
+  "video.previewCaption": "ここに字幕が表示されます",
+  "video.sizeTitle": "画面サイズ",
+  "video.sizeSub": "配信先に合わせて選びます。同じ原稿から別サイズを追加で書き出せます。",
+  "video.sizeLegend": "出力する画面サイズ",
+  "video.size169": "横型 16:9",
+  "video.size169Hint": "1920×1080 / 通常の動画・研修資料",
+  "video.size916": "縦型 9:16",
+  "video.size916Hint": "1080×1920 / ショート動画・リール",
+  "video.size11": "正方形 1:1",
+  "video.size11Hint": "1080×1080 / タイムライン投稿",
+  "video.size45": "縦長 4:5",
+  "video.size45Hint": "1080×1350 / 縦長タイムライン",
+  "video.verticalNote": "縦型では16:9のスライドがそのままでは小さくなります。配置と拡大方法を指定してください。",
+  "video.vLayout": "スライドの配置",
+  "video.vLayout1": "上寄せ（下に字幕）",
+  "video.vLayout2": "中央（上下に余白）",
+  "video.vLayout3": "拡大して切り抜き",
+  "video.vBg": "余白の色",
+  "video.vBg1": "白",
+  "video.vBg2": "濃紺",
+  "video.vBg3": "スライドの色に合わせる",
+  "video.safeArea": "UIに隠れない範囲（セーフエリア）を表示する",
+  "video.fps": "フレームレート",
+  "video.subtitleTitle": "字幕",
+  "video.subtitleLegend": "字幕の出力方法",
+  "video.subBurn": "映像に焼き込む",
+  "video.subBurnHint": "どの環境でも同じ見た目になります",
+  "video.subSrt": "字幕ファイルを別に出す",
+  "video.subSrtHint": "SRTを同時に書き出します",
+  "video.subNone": "字幕なし",
+  "video.subNoneHint": "音声のみで構成します",
+  "video.subSize": "文字サイズ",
+  "video.subSizeS": "小",
+  "video.subSizeM": "中",
+  "video.subSizeL": "大（ショート動画向け）",
+  "video.subPos": "表示位置",
+  "video.subPosBottom": "下",
+  "video.subPosCenter": "中央下",
+  "video.subPosTop": "上",
+  "video.voiceTitle": "読み上げ音声",
+  "video.voiceId": "音声",
+  "video.engine": "エンジン",
+  "video.sampleRate": "サンプルレート",
+  "video.speechRate": "読み上げ速度",
+  "video.rateDefault": "100%（既定）",
+  "video.voiceTest": "この音声で短い文を試聴する",
+  "video.voiceTestHint": "音声とエンジンの組み合わせによって使えない指定があります。本番の生成前に短い文で確認できます。",
+  "video.toNarration": "ナレーション案を作る",
+  "video.narrTitle": "ナレーションを確認・編集する",
+  "video.narrSub": "生成AIがページごとに原稿案を作成しました。読み上げる文章は、ここで確定した内容が使われます。",
+  "video.pageListTitle": "ページ",
+  "video.aiDraft": "生成AIの下書き",
+  "video.inputMode": "原稿の記述方法",
+  "video.modePlain": "通常の文章",
+  "video.modePlainHint": "そのまま読み上げます",
+  "video.modeSsml": "SSMLで細かく指定",
+  "video.modeSsmlHint": "読み方・振り仮名・間を指定します",
+  "video.script": "読み上げ原稿",
+  "video.ssmlToolbar": "SSMLの挿入",
+  "video.ssmlSub": "読み替え",
+  "video.ssmlRuby": "振り仮名",
+  "video.ssmlPhoneme": "発音記号",
+  "video.ssmlSpell": "1文字ずつ読む",
+  "video.ssmlBreak": "間を入れる",
+  "video.ssmlRate": "速度",
+  "video.ssmlEmphasis": "強調",
+  "video.estHint": "推定時間の目安です。実際の尺は音声を生成したあとに実測値で確定します。",
+  "video.ssmlNote": "振り仮名は読み替えタグで指定します。音声とエンジンの組み合わせによって使えないタグがあるため、試聴で確認してください。",
+  "video.previewAudio": "この原稿を試聴する",
+  "video.regenScript": "AIに再提案させる",
+  "video.dictTitle": "読み方の辞書（資料全体に適用）",
+  "video.dictSub": "繰り返し出る英単語や固有名詞は、ページごとに書かずに辞書で統一します。",
+  "video.dictWord": "表記",
+  "video.dictRead": "読み方",
+  "video.dictMethod": "指定方法",
+  "video.dictSubTag": "読み替え",
+  "video.dictPhonemeTag": "発音記号",
+  "video.dictSpellTag": "1文字ずつ",
+  "video.dictAdd": "行を追加",
+  "video.generate": "動画を生成する",
+  "video.jobTitle": "生成の進行状況",
+  "video.jobSub": "工程ごとに進みます。途中で失敗した場合は、その工程だけを再実行します。",
+  "video.job1": "ページを画像に変換",
+  "video.job2": "ナレーション音声を合成",
+  "video.job3": "音声の長さを実測して字幕を作成",
+  "video.job4": "ページごとの動画を作成",
+  "video.job5": "全ページを連結して書き出し",
+  "video.jobWaiting": "開始待ち",
+  "video.resultTitle": "動画ができました",
+  "video.resultPreview": "完成した動画のプレビュー",
+  "video.resultCaption": "字幕つきで再生されます",
+  "video.resFile": "ファイル",
+  "video.resPages": "ページ数",
+  "video.resDuration": "長さ",
+  "video.resVideo": "映像",
+  "video.resAudio": "音声",
+  "video.dlMp4": "MP4をダウンロード",
+  "video.dlSrt": "字幕（SRT）",
+  "video.dlAudio": "音声ファイル",
+  "video.reuseNote": "原稿を変えていない場合、音声を作り直さずに別サイズの動画を書き出せます。",
+  "video.makeVertical": "同じ原稿で縦型（1080×1920）も書き出す",
+  "video.backNarration": "ナレーション編集に戻る",
+  "video.cheatsheetOpen": "SSMLチートシート",
+  "video.cheatsheetTitle": "Amazon Polly SSML チートシート",
+  "video.cheatsheetClose": "閉じる",
+  "video.cheatsheetMoveHelp": "見出しをドラッグすると移動できます。見出しを選んで矢印キーでも移動できます。右下をドラッグすると大きさを変えられます。",
+  "video.cheatsheetThPurpose": "用途",
+  "video.cheatsheetThTag": "タグと書き方",
+  "video.cheatsheetThSupport": "対応",
+  "video.cheatsheetThInsert": "挿入",
+  "video.cheatsheetInsert": "挿入",
+  "video.supportFull": "使える",
+  "video.supportPartial": "一部のみ",
+  "video.supportNone": "使えない",
+  "video.cheatsheetNote1": "ニューラル音声では、prosody の volume と rate は使えますが、pitch は使えません。標準音声ではすべて使えます。",
+  "video.cheatsheetNote2": "say-as の characters（1文字ずつ読む）は、ニューラル音声では該当の文だけ標準音声で合成されます。課金はニューラル音声として行われます。",
+  "video.cheatsheetNote3": "対応していないタグを使うとエラーになります。生成前に試聴で確認してください。",
+  "video.cheatsheetSource": "出典: Amazon Polly 公式ドキュメント「Supported SSML tags」",
+
+  // cost
+  "cost.sectionTitle": "工程別の費用",
+  "cost.sectionSub": "使用量から計算した推定額です。実際の請求額は、あとで集計して照合します。",
+  "cost.thStage": "工程",
+  "cost.thService": "サービス",
+  "cost.thUsage": "使用量",
+  "cost.thEstimate": "推定コスト",
+  "cost.total": "推定合計",
+  "cost.estimateBadge": "推定",
+  "cost.actualPending": "実績値: 集計待ち（反映まで最大24時間）",
+  "cost.unitNote": "表示している単価は画面確認用のサンプルです。実装時はAWS Price List APIから取得した単価を使い、計算に使った単価の取得日を記録します。",
+  "cost.disclaimer": "無料利用枠は考慮していません。日本円は請求時のレートによって変わります。",
+  "cost.deckEstimate": "このスライド生成にかかった推定コスト",
+  "cost.recentCost": "推定コスト",
+} as const;
+
+const enMessages: MessageCatalog = {
+  // common
+  "common.skip": "Skip to main content",
+  "common.brandSub": "Slides as the source of truth, with narration and captions",
+  "common.uiLang": "Interface language",
+  "common.or": "or",
+  "common.logout": "Sign out",
+  "common.home": "Home",
+  "common.open": "Open",
+  "common.remove": "Remove",
+  "common.back": "Back",
+  "common.backHome": "Back to home",
+  "common.loading": "Loading...",
+  "common.error": "Error",
+
+  // login
+  "login.heading": "Turn slides into narrated, captioned video",
+  "login.lead": "Generating slide outlines and turning documents into video are independent. Use only the part you need.",
+  "login.point1": "1. Slide generation: pass text and reference URLs, review the outline, then build the deck.",
+  "login.point2": "2. Video generation: upload a PDF or PowerPoint and export it with narration and captions.",
+  "login.point3": "3. Pronunciation control: adjust readings, furigana and pauses with SSML.",
+  "login.formTitle": "Sign in",
+  "login.formSub": "Use your organization account or email address.",
+  "login.email": "Email address",
+  "login.password": "Password",
+  "login.showPassword": "Show password",
+  "login.submit": "Sign in",
+  "login.sso": "Sign in with single sign-on",
+  "login.forgot": "Forgot your password",
+  "login.signup": "Create an account",
+
+  // home
+  "home.heading": "What would you like to make",
+  "home.lead": "Slide generation and video generation are separate. You can upload a PDF or PowerPoint made elsewhere straight into video generation.",
+  "home.card1Kicker": "Feature 2",
+  "home.card1Title": "Generate slides with AI",
+  "home.card1Body": "Provide text and reference URLs, and AI drafts a slide outline. Review and edit it before the deck is generated.",
+  "home.card1Point1": "Choose Japanese or English for the slides",
+  "home.card1Point2": "Review and edit the outline",
+  "home.card1Point3": "Export Markdown, PDF and PowerPoint",
+  "home.card1Cta": "Start creating slides",
+  "home.card2Kicker": "Feature 3",
+  "home.card2Title": "Turn a document into video",
+  "home.card2Body": "Upload a PDF or PowerPoint and export it as video with narration and captions. Works on its own, without slide generation.",
+  "home.card2Point1": "Pick landscape, vertical or square output",
+  "home.card2Point2": "Draft narration for each page automatically",
+  "home.card2Point3": "Control readings and furigana with SSML",
+  "home.card2Cta": "Start creating video",
+  "home.recentTitle": "Recent projects",
+  "home.recentSub": "Showing your recent projects.",
+  "home.thName": "Name",
+  "home.thKind": "Type",
+  "home.thSize": "Output",
+  "home.thUpdated": "Updated",
+  "home.thState": "Status",
+  "home.thAction": "Actions",
+  "home.kindVideo": "Video",
+  "home.kindSlide": "Slides",
+  "home.stateDone": "Done",
+  "home.stateRunning": "Running",
+  "home.stateDraft": "Draft",
+
+  // slide studio
+  "slide.heading": "2. Generate slides with AI",
+  "slide.lead": "Review and edit the outline before the deck is generated. AI output is never used as is.",
+  "slide.stepA": "Input and options",
+  "slide.stepB": "Review and edit outline",
+  "slide.stepC": "Generate and export",
+  "slide.s1Title": "Describe the content and options",
+  "slide.s1Sub": "Only the outline is generated first. No slides are built at this point.",
+  "slide.langNote": "About language: the interface language (Japanese / English in the header) is set separately from the language of the slides. You can keep the interface in English and still produce Japanese slides.",
+  "slide.outputLang": "Slide language",
+  "slide.langJa": "Japanese",
+  "slide.langJaHint": "Write body text and narration in Japanese",
+  "slide.langEn": "English",
+  "slide.langEnHint": "Write body text and narration in English",
+  "slide.topic": "Title or topic",
+  "slide.sourceText": "Source text and requirements",
+  "slide.sourcePlaceholder": "Paste what you want to convey, assumptions, and any required cautions.",
+  "slide.sourceHint": "Do not enter secrets or credentials.",
+  "slide.refUrls": "Reference URLs",
+  "slide.addUrl": "Add URL",
+  "slide.refHint": "References are summarized and paraphrased, with sources listed on the last page.",
+  "slide.audience": "Audience",
+  "slide.audience1": "First-time users",
+  "slide.audience2": "Working developers",
+  "slide.audience3": "Decision makers",
+  "slide.pages": "Number of pages",
+  "slide.tone": "Tone",
+  "slide.tone1": "Explanatory",
+  "slide.tone2": "Training",
+  "slide.tone3": "Announcement",
+  "slide.theme": "Design theme",
+  "slide.theme1": "Blue (default)",
+  "slide.theme2": "Monotone",
+  "slide.theme3": "High contrast",
+  "slide.genOutline": "Generate outline",
+  "slide.s2Title": "Review and edit the outline",
+  "slide.s2Sub": "This happens before slides are built. The text you confirm here drives both the deck and the narration.",
+  "slide.outlineList": "Slides",
+  "slide.moveUp": "Move up",
+  "slide.moveDown": "Move down",
+  "slide.addSlide": "Add",
+  "slide.aiDraft": "AI draft",
+  "slide.slideTitle": "Heading",
+  "slide.slideBody": "Body (one item per line)",
+  "slide.slideBodyHint": "Edit freely. A person must verify the facts.",
+  "slide.slideNotes": "Private notes (not shown on the slide)",
+  "slide.regen": "Ask AI to redraft this page",
+  "slide.factCheck": "Check against the sources",
+  "slide.genDeck": "Generate slides from this outline",
+  "slide.s3Title": "Slides generated",
+  "slide.s3Sub": "Thumbnails are illustrative.",
+  "slide.downloadTitle": "Export",
+  "slide.downloadSub": "Three formats from the same content.",
+  "slide.pptxNote": "PowerPoint is exported as a file that really opens in PowerPoint, not just a renamed file.",
+  "slide.backOutline": "Back to outline editing",
+  "slide.toVideo": "Make a video from this deck",
+
+  // video studio
+  "video.heading": "3. Turn a document into video",
+  "video.lead": "Start from a PDF or PowerPoint and export it with narration and captions. This works on its own, without the slide generator.",
+  "video.stepA": "Load source",
+  "video.stepB": "Output settings",
+  "video.stepC": "Narration and readings",
+  "video.stepD": "Generate and export",
+  "video.handoffTitle": "Carried over from slide creation",
+  "video.handoffNote": "The confirmed deck was loaded as is. Upload a file below to replace it.",
+  "video.uploadTitle": "Upload a document",
+  "video.uploadSub": "PDF or PowerPoint (.pptx) is supported.",
+  "video.dropTitle": "Drag a file here, or click to choose",
+  "video.dropHint": "One file, up to about 50 pages",
+  "video.independentNote": "This screen works on its own. Upload slides made in another tool and turn them into video.",
+  "video.pagesTitle": "Loaded pages",
+  "video.pagesSub": "The page count and the number of narration scripts are kept equal.",
+  "video.toSettings": "Continue to output settings",
+  "video.previewTitle": "Preview",
+  "video.previewSlide": "Slide area",
+  "video.previewCaption": "Captions appear here",
+  "video.sizeTitle": "Frame size",
+  "video.sizeSub": "Choose per destination. You can export another size later from the same script.",
+  "video.sizeLegend": "Output frame size",
+  "video.size169": "Landscape 16:9",
+  "video.size169Hint": "1920x1080 / standard video and training",
+  "video.size916": "Vertical 9:16",
+  "video.size916Hint": "1080x1920 / short-form video and reels",
+  "video.size11": "Square 1:1",
+  "video.size11Hint": "1080x1080 / timeline posts",
+  "video.size45": "Tall 4:5",
+  "video.size45Hint": "1080x1350 / tall timeline posts",
+  "video.verticalNote": "In vertical output, a 16:9 slide becomes small. Choose how it is placed and scaled.",
+  "video.vLayout": "Slide placement",
+  "video.vLayout1": "Top (captions below)",
+  "video.vLayout2": "Centered (padding above and below)",
+  "video.vLayout3": "Scale up and crop",
+  "video.vBg": "Padding color",
+  "video.vBg1": "White",
+  "video.vBg2": "Navy",
+  "video.vBg3": "Match the slide",
+  "video.safeArea": "Show the safe area not covered by platform UI",
+  "video.fps": "Frame rate",
+  "video.subtitleTitle": "Captions",
+  "video.subtitleLegend": "How captions are delivered",
+  "video.subBurn": "Burn into the video",
+  "video.subBurnHint": "Looks the same everywhere",
+  "video.subSrt": "Export a separate caption file",
+  "video.subSrtHint": "An SRT file is written alongside",
+  "video.subNone": "No captions",
+  "video.subNoneHint": "Audio only",
+  "video.subSize": "Text size",
+  "video.subSizeS": "Small",
+  "video.subSizeM": "Medium",
+  "video.subSizeL": "Large (for short-form video)",
+  "video.subPos": "Position",
+  "video.subPosBottom": "Bottom",
+  "video.subPosCenter": "Lower center",
+  "video.subPosTop": "Top",
+  "video.voiceTitle": "Narration voice",
+  "video.voiceId": "Voice",
+  "video.engine": "Engine",
+  "video.sampleRate": "Sample rate",
+  "video.speechRate": "Speaking rate",
+  "video.rateDefault": "100% (default)",
+  "video.voiceTest": "Preview a short line with this voice",
+  "video.voiceTestHint": "Some settings are not accepted by every voice and engine combination. Check with a short line before the full run.",
+  "video.toNarration": "Draft the narration",
+  "video.narrTitle": "Review and edit the narration",
+  "video.narrSub": "AI drafted a script per page. The text you confirm here is what gets spoken.",
+  "video.pageListTitle": "Pages",
+  "video.aiDraft": "AI draft",
+  "video.inputMode": "Script format",
+  "video.modePlain": "Plain text",
+  "video.modePlainHint": "Spoken as written",
+  "video.modeSsml": "SSML for fine control",
+  "video.modeSsmlHint": "Set readings, furigana and pauses",
+  "video.script": "Narration script",
+  "video.ssmlToolbar": "Insert SSML",
+  "video.ssmlSub": "Reading",
+  "video.ssmlRuby": "Furigana",
+  "video.ssmlPhoneme": "Phonemes",
+  "video.ssmlSpell": "Spell out",
+  "video.ssmlBreak": "Pause",
+  "video.ssmlRate": "Rate",
+  "video.ssmlEmphasis": "Emphasis",
+  "video.estHint": "This is an estimate. The final length is set from the measured audio.",
+  "video.ssmlNote": "Furigana is expressed with the reading tag. Some tags are rejected by certain voice and engine combinations, so preview before the full run.",
+  "video.previewAudio": "Preview this script",
+  "video.regenScript": "Ask AI to redraft",
+  "video.dictTitle": "Pronunciation dictionary (applies to the whole document)",
+  "video.dictSub": "Define recurring terms once here instead of repeating them on every page.",
+  "video.dictWord": "Written form",
+  "video.dictRead": "Reading",
+  "video.dictMethod": "Method",
+  "video.dictSubTag": "Reading",
+  "video.dictPhonemeTag": "Phonemes",
+  "video.dictSpellTag": "Spell out",
+  "video.dictAdd": "Add row",
+  "video.generate": "Generate the video",
+  "video.jobTitle": "Generation progress",
+  "video.jobSub": "Stages run in order. If one fails, only that stage is retried.",
+  "video.job1": "Convert pages to images",
+  "video.job2": "Synthesize narration audio",
+  "video.job3": "Measure audio length and build captions",
+  "video.job4": "Render one clip per page",
+  "video.job5": "Join all pages and export",
+  "video.jobWaiting": "Waiting to start",
+  "video.resultTitle": "Your video is ready",
+  "video.resultPreview": "Preview of the finished video",
+  "video.resultCaption": "Plays with captions",
+  "video.resFile": "File",
+  "video.resPages": "Pages",
+  "video.resDuration": "Length",
+  "video.resVideo": "Video",
+  "video.resAudio": "Audio",
+  "video.dlMp4": "Download MP4",
+  "video.dlSrt": "Captions (SRT)",
+  "video.dlAudio": "Audio files",
+  "video.reuseNote": "If the script is unchanged, another size can be exported without redoing the audio.",
+  "video.makeVertical": "Also export vertical (1080x1920) from this script",
+  "video.backNarration": "Back to narration editing",
+  "video.cheatsheetOpen": "SSML cheat sheet",
+  "video.cheatsheetTitle": "Amazon Polly SSML cheat sheet",
+  "video.cheatsheetClose": "Close",
+  "video.cheatsheetMoveHelp": "Drag the header to move this panel. Focus the header and use arrow keys to move it. Drag the lower right corner to resize.",
+  "video.cheatsheetThPurpose": "Purpose",
+  "video.cheatsheetThTag": "Tag and syntax",
+  "video.cheatsheetThSupport": "Support",
+  "video.cheatsheetThInsert": "Insert",
+  "video.cheatsheetInsert": "Insert",
+  "video.supportFull": "Supported",
+  "video.supportPartial": "Partial",
+  "video.supportNone": "Not supported",
+  "video.cheatsheetNote1": "Neural voices support the volume and rate attributes of prosody but not pitch. Standard voices support all of them.",
+  "video.cheatsheetNote2": "With neural voices, say-as characters causes the affected sentence to be synthesized with the related standard voice, and it is still billed as a neural voice.",
+  "video.cheatsheetNote3": "Using an unsupported tag returns an error. Preview before the full run.",
+  "video.cheatsheetSource": "Source: Amazon Polly documentation, Supported SSML tags",
+
+  // cost
+  "cost.sectionTitle": "Cost per stage",
+  "cost.sectionSub": "Estimated from measured usage. Actual charges are reconciled later.",
+  "cost.thStage": "Stage",
+  "cost.thService": "Service",
+  "cost.thUsage": "Usage",
+  "cost.thEstimate": "Estimated cost",
+  "cost.total": "Estimated total",
+  "cost.estimateBadge": "Estimate",
+  "cost.actualPending": "Actual: pending (up to 24 hours to appear)",
+  "cost.unitNote": "The unit prices shown are placeholders. The implementation reads unit prices from the AWS Price List API and records the date they were fetched.",
+  "cost.disclaimer": "Free tier is not applied. Local currency depends on the exchange rate at billing time.",
+  "cost.deckEstimate": "Estimated cost of generating this deck",
+  "cost.recentCost": "Est. cost",
 };
 
-export type MessageKey = keyof MessageParams;
-
-type MessageFormatter<Key extends MessageKey> =
-  MessageParams[Key] extends undefined
-    ? () => string
-    : (params: MessageParams[Key]) => string;
-
-export type MessageCatalog = {
-  [Key in MessageKey]: MessageFormatter<Key>;
+export const messages: Record<Locale, MessageCatalog> = {
+  ja: jaMessages,
+  en: enMessages,
 };
-
-export type MessageArguments<Key extends MessageKey> =
-  MessageParams[Key] extends undefined ? [] : [params: MessageParams[Key]];
-
-export type MessageDescriptor = {
-  [Key in MessageKey]: MessageParams[Key] extends undefined
-    ? { key: Key }
-    : { key: Key; params: MessageParams[Key] };
-}[MessageKey];
-
-export type Translate = <Key extends MessageKey>(
-  key: Key,
-  ...args: MessageArguments<Key>
-) => string;
-
-export const messages = {
-  ja: {
-    "app.title": () => "スライド動画生成 | Slide-First AI Video",
-    "app.tagline": () => "スライドから動画を自動生成",
-    "language.switcherLabel": () => "表示言語",
-    "language.japanese": () => "日本語",
-    "language.english": () => "English",
-    "auth.checking": () => "認証状態を確認しています...",
-    "auth.logout": () => "ログアウト",
-    "auth.signingOut": () => "ログアウト中...",
-    "auth.logoutFailed": () =>
-      "ログアウトに失敗しました。時間をおいて再度お試しください。",
-    "common.loading": () => "読み込み中...",
-    "common.status": () => "状態",
-    "common.error": () => "エラー",
-    "nav.backToProject": () => "← プロジェクトに戻る",
-    "projects.title": () => "プロジェクト",
-    "projects.namePlaceholder": () => "プロジェクト名を入力",
-    "projects.creating": () => "作成中...",
-    "projects.create": () => "プロジェクト作成",
-    "projects.empty": () =>
-      "プロジェクトがありません。上のフォームから作成してください。",
-    "project.detailTitle": ({ id }) => `プロジェクト: ${id}`,
-    "project.videos": () => "動画一覧",
-    "project.slides": () => "スライド生成",
-    "project.slidesStarted": () => "スライド生成を開始しました",
-    "project.viewVersion": ({ version }) => `バージョン ${version} を確認`,
-    "project.theme": () => "テーマ:",
-    "project.themePlaceholder": () => "例: AWS CDK、サーバーレス",
-    "project.audience": () => "対象者:",
-    "project.audiencePlaceholder": () => "例: エンジニア初心者",
-    "project.duration": () => "持ち時間（秒）:",
-    "project.references": () => "参照URL（1行に1つ）:",
-    "project.generating": () => "生成中...",
-    "project.startSlides": () => "スライド生成を開始",
-    "version.title": ({ version }) => `バージョン ${version}`,
-    "version.notFound": () => "データが見つかりません",
-    "version.approving": () => "承認中...",
-    "version.approve": () => "このバージョンを承認する",
-    "version.approved": () => "✅ 承認済み - 動画生成が可能です",
-    "version.slidesMarkdown": () => "スライド（Marp Markdown）",
-    "videos.title": () => "動画生成",
-    "videos.versionNumber": () => "バージョン番号:",
-    "videos.generating": () => "生成中...",
-    "videos.start": () => "動画生成を開始",
-    "job.status": () => "ジョブ状態",
-    "deliverables.title": () => "成果物",
-    "deliverables.empty": () => "成果物はまだありません。",
-    "deliverables.download": ({ filename }) => `${filename} をダウンロード`,
-    "deliverables.type": ({ type }) => `種別: ${type}`,
-    "markdown.empty": () => "表示できる内容がありません。",
-    "video.unsupported": () => "このブラウザは動画の再生に対応していません。",
-    "status.notSet": () => "未設定",
-    "status.pending": () => "待機中",
-    "status.running": () => "実行中",
-    "status.succeeded": () => "完了",
-    "status.failed": () => "失敗",
-    "status.cancelled": () => "キャンセル",
-    "status.draft": () => "下書き",
-    "status.projectCreated": () => "作成済み",
-    "status.slideGenerating": () => "スライド生成中",
-    "status.slideReady": () => "スライド確認待ち",
-    "status.slideApproved": () => "スライド承認済み",
-    "status.videoGenerating": () => "動画生成中",
-    "status.videoReady": () => "動画完成",
-    "status.unknown": ({ status }) => `不明な状態（${status}）`,
-    "errors.rootNotFound": () => "アプリケーションの描画先が見つかりません。",
-    "errors.runtimeConfigInvalid": () => "実行時設定の形式が不正です。",
-    "errors.runtimeConfigMissingRequired": () =>
-      "実行時設定にAPIまたはCognitoの必須項目がありません。",
-    "errors.runtimeConfigFetchFailed": ({ status }) =>
-      `実行時設定の取得に失敗しました（HTTP ${status}）。`,
-    "errors.runtimeConfigInvalidJson": () =>
-      "実行時設定のJSONを解析できませんでした。",
-    "errors.runtimeConfigUnknown": () =>
-      "実行時設定の取得中に不明なエラーが発生しました。",
-    "errors.applicationStartFailed": () =>
-      "アプリケーションを開始できませんでした",
-    "errors.applicationRetryGuidance": () =>
-      "ページを再読み込みし、解決しない場合は管理者に連絡してください。",
-    "errors.apiEndpointEmpty": () => "APIエンドポイントが空です。",
-    "errors.apiEndpointInvalid": () => "APIエンドポイントの形式が不正です。",
-    "errors.apiRuntimeConfigNotLoaded": () =>
-      "実行時設定が読み込まれていないため、APIを呼び出せません。",
-    "errors.projectsLoad": () => "プロジェクトの読み込みに失敗しました。",
-    "errors.projectsCreate": () => "プロジェクトの作成に失敗しました。",
-    "errors.slidesStart": () => "スライド生成の開始に失敗しました。",
-    "errors.versionLoad": () => "バージョン情報の読み込みに失敗しました。",
-    "errors.versionApprove": () => "バージョンの承認に失敗しました。",
-    "errors.videosStart": () => "動画生成の開始に失敗しました。",
-    "errors.videosGeneration": () => "動画生成に失敗しました。",
-    "errors.videosStatusCheck": () => "動画生成の状態確認に失敗しました。",
-    "errors.videosTimeout": () => "動画生成が時間内に完了しませんでした。",
-  },
-  en: {
-    "app.title": () => "Slide-First AI Video",
-    "app.tagline": () => "Generate videos from slides automatically",
-    "language.switcherLabel": () => "Display language",
-    "language.japanese": () => "日本語",
-    "language.english": () => "English",
-    "auth.checking": () => "Checking your authentication status...",
-    "auth.logout": () => "Sign out",
-    "auth.signingOut": () => "Signing out...",
-    "auth.logoutFailed": () => "Could not sign out. Please try again shortly.",
-    "common.loading": () => "Loading...",
-    "common.status": () => "Status",
-    "common.error": () => "Error",
-    "nav.backToProject": () => "← Back to project",
-    "projects.title": () => "Projects",
-    "projects.namePlaceholder": () => "Enter a project name",
-    "projects.creating": () => "Creating...",
-    "projects.create": () => "Create project",
-    "projects.empty": () => "No projects yet. Create one using the form above.",
-    "project.detailTitle": ({ id }) => `Project: ${id}`,
-    "project.videos": () => "Videos",
-    "project.slides": () => "Generate slides",
-    "project.slidesStarted": () => "Slide generation has started.",
-    "project.viewVersion": ({ version }) => `View version ${version}`,
-    "project.theme": () => "Theme:",
-    "project.themePlaceholder": () => "Example: AWS CDK, serverless",
-    "project.audience": () => "Audience:",
-    "project.audiencePlaceholder": () => "Example: entry-level engineers",
-    "project.duration": () => "Duration (seconds):",
-    "project.references": () => "Reference URLs (one per line):",
-    "project.generating": () => "Generating...",
-    "project.startSlides": () => "Start slide generation",
-    "version.title": ({ version }) => `Version ${version}`,
-    "version.notFound": () => "Data was not found.",
-    "version.approving": () => "Approving...",
-    "version.approve": () => "Approve this version",
-    "version.approved": () => "✅ Approved - ready for video generation",
-    "version.slidesMarkdown": () => "Slides (Marp Markdown)",
-    "videos.title": () => "Generate video",
-    "videos.versionNumber": () => "Version number:",
-    "videos.generating": () => "Generating...",
-    "videos.start": () => "Start video generation",
-    "job.status": () => "Job status",
-    "deliverables.title": () => "Deliverables",
-    "deliverables.empty": () => "No deliverables are available yet.",
-    "deliverables.download": ({ filename }) => `Download ${filename}`,
-    "deliverables.type": ({ type }) => `Type: ${type}`,
-    "markdown.empty": () => "No content is available.",
-    "video.unsupported": () =>
-      "Your browser does not support the video tag.",
-    "status.notSet": () => "Not set",
-    "status.pending": () => "Pending",
-    "status.running": () => "Running",
-    "status.succeeded": () => "Succeeded",
-    "status.failed": () => "Failed",
-    "status.cancelled": () => "Cancelled",
-    "status.draft": () => "Draft",
-    "status.projectCreated": () => "Created",
-    "status.slideGenerating": () => "Generating slides",
-    "status.slideReady": () => "Slides ready for review",
-    "status.slideApproved": () => "Slides approved",
-    "status.videoGenerating": () => "Generating video",
-    "status.videoReady": () => "Video ready",
-    "status.unknown": ({ status }) => `Unknown status (${status})`,
-    "errors.rootNotFound": () => "The application root element was not found.",
-    "errors.runtimeConfigInvalid": () => "The runtime configuration format is invalid.",
-    "errors.runtimeConfigMissingRequired": () =>
-      "The runtime configuration is missing required API or Cognito values.",
-    "errors.runtimeConfigFetchFailed": ({ status }) =>
-      `Could not load the runtime configuration (HTTP ${status}).`,
-    "errors.runtimeConfigInvalidJson": () =>
-      "Could not parse the runtime configuration JSON.",
-    "errors.runtimeConfigUnknown": () =>
-      "An unknown error occurred while loading the runtime configuration.",
-    "errors.applicationStartFailed": () => "Could not start the application",
-    "errors.applicationRetryGuidance": () =>
-      "Reload the page and contact an administrator if the problem persists.",
-    "errors.apiEndpointEmpty": () => "The API endpoint is empty.",
-    "errors.apiEndpointInvalid": () => "The API endpoint format is invalid.",
-    "errors.apiRuntimeConfigNotLoaded": () =>
-      "The runtime configuration has not been loaded, so the API cannot be called.",
-    "errors.projectsLoad": () => "Could not load projects.",
-    "errors.projectsCreate": () => "Could not create the project.",
-    "errors.slidesStart": () => "Could not start slide generation.",
-    "errors.versionLoad": () => "Could not load version information.",
-    "errors.versionApprove": () => "Could not approve the version.",
-    "errors.videosStart": () => "Could not start video generation.",
-    "errors.videosGeneration": () => "Video generation failed.",
-    "errors.videosStatusCheck": () =>
-      "Could not check the video generation status.",
-    "errors.videosTimeout": () =>
-      "Video generation did not finish within the expected time.",
-  },
-} satisfies Record<Locale, MessageCatalog>;
-
-export function message<Key extends MessageKey>(
-  key: Key,
-  ...args: MessageArguments<Key>
-): Extract<MessageDescriptor, { key: Key }> {
-  return (args.length === 0 ? { key } : { key, params: args[0] }) as Extract<
-    MessageDescriptor,
-    { key: Key }
-  >;
-}
 
 export function createTranslate(locale: Locale): Translate {
-  return ((key: MessageKey, ...args: unknown[]) => {
-    const formatter = messages[locale][key] as (params?: unknown) => string;
-    return formatter(args[0]);
-  }) as Translate;
-}
-
-export function formatMessage(
-  locale: Locale,
-  descriptor: MessageDescriptor,
-): string {
-  const formatter = messages[locale][descriptor.key] as (
-    params?: unknown,
-  ) => string;
-  return formatter("params" in descriptor ? descriptor.params : undefined);
-}
-
-type StaticStatusMessageKey = Exclude<
-  Extract<MessageKey, `status.${string}`>,
-  "status.notSet" | "status.unknown"
->;
-
-const statusMessageKeys: Record<string, StaticStatusMessageKey> = {
-  PENDING: "status.pending",
-  RUNNING: "status.running",
-  SUCCEEDED: "status.succeeded",
-  FAILED: "status.failed",
-  CANCELLED: "status.cancelled",
-  DRAFT: "status.draft",
-  PROJECT_CREATED: "status.projectCreated",
-  SLIDE_GENERATING: "status.slideGenerating",
-  SLIDE_READY: "status.slideReady",
-  SLIDE_APPROVED: "status.slideApproved",
-  VIDEO_GENERATING: "status.videoGenerating",
-  VIDEO_READY: "status.videoReady",
-};
-
-const jobStatusMessageKeys = {
-  PENDING: "status.pending",
-  RUNNING: "status.running",
-  SUCCEEDED: "status.succeeded",
-  FAILED: "status.failed",
-  CANCELLED: "status.cancelled",
-} as const satisfies Record<Job["status"], StaticStatusMessageKey>;
-
-export function statusMessage(status: string | undefined): MessageDescriptor {
-  if (!status) {
-    return message("status.notSet");
-  }
-
-  const key = statusMessageKeys[status];
-  return key ? message(key) : message("status.unknown", { status });
-}
-
-export function jobStatusMessage(status: Job["status"]): MessageDescriptor {
-  return message(jobStatusMessageKeys[status]);
+  return (key: MessageKey) => {
+    return messages[locale][key] ?? messages.ja[key] ?? key;
+  };
 }

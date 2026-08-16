@@ -1,55 +1,65 @@
 /**
- * Duration calculation utilities.
+ * Duration calculation utilities for the new pipeline model.
  *
- * From the design document:
- * - durationMs = measuredAudioMs + leadInMs + leadOutMs
- * - startMs = cumulative sum of previous slides' durationMs
+ * In the new architecture:
+ * - Each page has an audioDurationSec (float, measured by ffprobe)
+ * - Total video duration = sum of all audioDurationSec values
+ * - Each page's start time = cumulative sum of preceding pages' audioDurationSec
+ *
+ * All values are in seconds (not milliseconds).
  */
 
-export interface SlideTiming {
-  measuredAudioMs: number;
-  leadInMs: number;
-  leadOutMs: number;
-}
+import type { Page } from "@slide-first/shared-types";
 
-export interface SlideTimingResult {
-  durationMs: number;
-  startMs: number;
-}
-
-/**
- * Calculate the total duration for a single slide.
- * durationMs = measuredAudioMs + leadInMs + leadOutMs
- */
-export function calculateDurationMs(timing: SlideTiming): number {
-  return timing.measuredAudioMs + timing.leadInMs + timing.leadOutMs;
+export interface PageTiming {
+  pageNumber: number;
+  audioDurationSec: number;
+  startSec: number;
+  endSec: number;
 }
 
 /**
- * Calculate the start position for a slide given the cumulative duration of all preceding slides.
+ * Calculate the total duration of all pages in seconds.
  */
-export function calculateStartMs(precedingDurations: number[]): number {
-  return precedingDurations.reduce((sum, d) => sum + d, 0);
+export function totalDurationSec(pages: Pick<Page, "audioDurationSec">[]): number {
+  return pages.reduce((sum, page) => sum + page.audioDurationSec, 0);
 }
 
 /**
- * Calculate duration and start time for all slides.
- * Returns an array of { durationMs, startMs } for each slide.
+ * Calculate cumulative timings for all pages.
+ * Returns an array with startSec and endSec for each page.
  */
-export function calculateSlideDurations(
-  slides: SlideTiming[],
-): SlideTimingResult[] {
-  const results: SlideTimingResult[] = [];
-  let cumulativeMs = 0;
+export function calculatePageTimings(
+  pages: Pick<Page, "pageNumber" | "audioDurationSec">[],
+): PageTiming[] {
+  const timings: PageTiming[] = [];
+  let cumulative = 0;
 
-  for (const slide of slides) {
-    const durationMs = calculateDurationMs(slide);
-    results.push({
-      durationMs,
-      startMs: cumulativeMs,
+  for (const page of pages) {
+    const startSec = cumulative;
+    const endSec = cumulative + page.audioDurationSec;
+    timings.push({
+      pageNumber: page.pageNumber,
+      audioDurationSec: page.audioDurationSec,
+      startSec,
+      endSec,
     });
-    cumulativeMs += durationMs;
+    cumulative = endSec;
   }
 
-  return results;
+  return timings;
+}
+
+/**
+ * Get the start time in seconds for a specific page index (0-based).
+ */
+export function pageStartSec(
+  pages: Pick<Page, "audioDurationSec">[],
+  pageIndex: number,
+): number {
+  let cumulative = 0;
+  for (let i = 0; i < pageIndex && i < pages.length; i++) {
+    cumulative += pages[i].audioDurationSec;
+  }
+  return cumulative;
 }

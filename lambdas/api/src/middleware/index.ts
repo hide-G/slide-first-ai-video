@@ -1,13 +1,31 @@
-export { extractUserId } from "./auth.js";
+export { extractUserId, requireAuth, verifyProjectOwnership } from "./auth.js";
 export { extractIdempotencyKey } from "./idempotency.js";
 export {
   validateBody,
   CreateProjectSchema,
-  StartSlidesSchema,
-  StartVideoSchema,
+  GenerateOutlineSchema,
+  SaveOutlineSchema,
+  GenerateDeckSchema,
+  SourceUploadUrlSchema,
+  RegisterSourceSchema,
+  SaveOutputSchema,
+  GenerateNarrationSchema,
+  SaveNarrationSchema,
+  StartRenderSchema,
   ValidationError,
 } from "./validation.js";
-export type { CreateProjectInput, StartSlidesInput, StartVideoInput } from "./validation.js";
+export type {
+  CreateProjectInput,
+  GenerateOutlineInput,
+  SaveOutlineInput,
+  GenerateDeckInput,
+  SourceUploadUrlInput,
+  RegisterSourceInput,
+  SaveOutputInput,
+  GenerateNarrationInput,
+  SaveNarrationInput,
+  StartRenderInput,
+} from "./validation.js";
 export {
   buildErrorResponse,
   buildResponse,

@@ -1,100 +1,186 @@
 /**
- * API types for the frontend.
- * Re-exports relevant types from shared-types where possible,
- * and defines frontend-specific API types.
+ * API types for the frontend matching all 13 API endpoints.
  */
 
 export interface Project {
   projectId: string;
   userId: string;
   title: string;
-  description?: string;
-  status?: string;
+  kind: "slide" | "video";
+  status: "draft" | "running" | "done";
+  output?: string;
+  estimatedCost?: number;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface Version {
+export interface OutlinePage {
+  title: string;
+  body: string;
+  notes: string;
+}
+
+export interface Outline {
+  contentLang: "ja" | "en";
+  pages: OutlinePage[];
+}
+
+export interface OutputSettings {
+  aspect: "16:9" | "9:16" | "1:1" | "4:5";
+  fps: 30 | 60;
+  subtitleMode: "burn" | "srt" | "none";
+  subtitleSize?: "S" | "M" | "L";
+  subtitlePosition?: "bottom" | "center-bottom" | "top";
+  voiceId: string;
+  engine: "neural" | "standard";
+  sampleRate: number;
+  speechRate: number;
+  verticalLayout?: string;
+  verticalBg?: string;
+  safeArea?: boolean;
+}
+
+export interface NarrationPage {
+  pageIndex: number;
+  mode: "plain" | "ssml";
+  script: string;
+}
+
+export interface DictionaryEntry {
+  word: string;
+  reading: string;
+  method: "sub" | "phoneme" | "spell";
+}
+
+export interface Narration {
+  pages: NarrationPage[];
+  dictionary: DictionaryEntry[];
+}
+
+export interface RenderStage {
+  name: string;
+  state: "wait" | "running" | "done" | "failed";
+}
+
+export interface Render {
+  renderId: string;
   projectId: string;
-  versionNumber: number;
-  deckMarkdownKey: string;
-  manifestKey?: string;
-  status: string;
-  createdAt: string;
-  updatedAt: string;
+  status: "pending" | "running" | "done" | "failed";
+  stages: RenderStage[];
+  progress: number;
 }
 
-export interface Job {
-  jobId: string;
-  projectId: string;
-  versionNumber: number;
-  type: "RENDER" | "GENERATE" | "EXPORT";
-  status: "PENDING" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELLED";
-  executionArn?: string;
-  error?: string;
-  createdAt: string;
-  updatedAt: string;
+export interface CostEntry {
+  stage: string;
+  service: string;
+  usage: string;
+  estimate: string;
 }
 
+export interface Artifact {
+  type: "mp4" | "srt" | "audio" | "markdown" | "pdf" | "pptx";
+  url: string;
+  filename: string;
+  metadata?: Record<string, string>;
+}
+
+// Request types
 export interface CreateProjectRequest {
   title: string;
-  theme?: string;
-  audience?: string;
-  duration?: number;
-  urls?: string[];
+  kind: "slide" | "video";
+}
+
+export interface GenerateOutlineRequest {
+  contentLang: "ja" | "en";
+  topic: string;
+  sourceText: string;
+  referenceUrls: string[];
+  audience: string;
+  pages: number;
+  tone: string;
+  theme: string;
+}
+
+export interface UpdateOutlineRequest {
+  pages: OutlinePage[];
+}
+
+export interface GenerateDeckRequest {
+  format: ("markdown" | "pdf" | "pptx")[];
+}
+
+export interface SourceUploadUrlRequest {
+  filename: string;
+  contentType: string;
+}
+
+export interface RegisterSourceRequest {
+  s3Key: string;
+  pageCount: number;
+}
+
+export interface UpdateOutputRequest {
+  settings: OutputSettings;
+}
+
+export interface GenerateNarrationRequest {
+  pageCount: number;
+}
+
+export interface UpdateNarrationRequest {
+  narration: Narration;
+}
+
+export interface StartRenderRequest {
+  outputSettings: OutputSettings;
+  narration: Narration;
+}
+
+// Response types
+export interface ListProjectsResponse {
+  projects: Project[];
 }
 
 export interface CreateProjectResponse {
   project: Project;
 }
 
-export interface StartSlidesRequest {
-  theme?: string;
-  audience?: string;
-  duration?: number;
-  urls?: string[];
+export interface GenerateOutlineResponse {
+  outline: Outline;
+  costs: CostEntry[];
 }
 
-export interface StartSlidesResponse {
-  jobId: string;
-  projectId: string;
-  versionNumber: number;
+export interface GenerateDeckResponse {
+  artifacts: Artifact[];
+  costs: CostEntry[];
 }
 
-export interface StartVideoRequest {
-  versionNumber: number;
-  outputTypes?: string[];
+export interface SourceUploadUrlResponse {
+  uploadUrl: string;
+  s3Key: string;
 }
 
-export interface StartVideoResponse {
-  jobId: string;
-  projectId: string;
-  status: string;
+export interface RegisterSourceResponse {
+  pageCount: number;
+  thumbnails: string[];
 }
 
-export interface GetVersionResponse {
-  version: Version;
-  markdownContent?: string;
+export interface GenerateNarrationResponse {
+  narration: Narration;
 }
 
-export interface GetJobResponse {
-  job: Job;
+export interface StartRenderResponse {
+  render: Render;
 }
 
-export interface Deliverable {
-  key: string;
-  type: string;
-  url: string;
-  filename: string;
+export interface GetRenderResponse {
+  render: Render;
 }
 
-export interface GetDeliverablesResponse {
-  deliverables: Deliverable[];
-}
-
-export interface ListProjectsResponse {
-  projects: Project[];
-  nextToken?: string;
+export interface GetArtifactsResponse {
+  artifacts: Artifact[];
+  costs: CostEntry[];
+  totalCost: string;
 }
 
 export interface ErrorResponse {

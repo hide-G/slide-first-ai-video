@@ -1,103 +1,140 @@
 import { describe, it, expect } from "vitest";
 import {
-  buildBucketName,
-  buildProjectPrefix,
-  buildVersionPrefix,
-  buildSlideImageKey,
-  buildAudioKey,
-  buildSpeechMarksKey,
-  buildManifestKey,
-  buildOutputKey,
-  buildCaptionsKey,
+  inputSourceKey,
+  deckKey,
+  pageImageKey,
+  audioKey,
+  captionsSrtKey,
+  clipKey,
+  outputVideoKey,
+  manifestKey,
+  projectPrefix,
+  pageKeys,
+  renderKeys,
 } from "./s3-keys.js";
 
 describe("S3 key builders", () => {
-  const bucketParams = {
-    productSlug: "ltvideo",
-    purpose: "projects",
-    env: "dev",
-    accountId: "000000000000",
-    region: "us-east-1",
-  };
+  const params = { userId: "user-123", projectId: "proj-456" };
 
-  const keyParams = {
-    userId: "user-123",
-    projectId: "proj-456",
-    versionNumber: 1,
-  };
+  describe("inputSourceKey", () => {
+    it("builds PDF input key", () => {
+      expect(inputSourceKey(params, "pdf")).toBe(
+        "users/user-123/projects/proj-456/input/source.pdf",
+      );
+    });
 
-  describe("buildBucketName", () => {
-    it("builds bucket name from components", () => {
-      expect(buildBucketName(bucketParams)).toBe(
-        "ltvideo-projects-dev-000000000000-us-east-1",
+    it("builds PPTX input key", () => {
+      expect(inputSourceKey(params, "pptx")).toBe(
+        "users/user-123/projects/proj-456/input/source.pptx",
       );
     });
   });
 
-  describe("buildProjectPrefix", () => {
-    it("builds project prefix", () => {
-      expect(buildProjectPrefix(keyParams)).toBe("user-123/proj-456/");
-    });
-  });
-
-  describe("buildVersionPrefix", () => {
-    it("builds version prefix with zero-padded version number", () => {
-      expect(buildVersionPrefix(keyParams)).toBe(
-        "user-123/proj-456/versions/v0001/",
+  describe("deckKey", () => {
+    it("builds deck key for md", () => {
+      expect(deckKey(params, "md")).toBe(
+        "users/user-123/projects/proj-456/deck/deck.md",
       );
     });
 
-    it("handles large version numbers", () => {
-      expect(buildVersionPrefix({ ...keyParams, versionNumber: 42 })).toBe(
-        "user-123/proj-456/versions/v0042/",
+    it("builds deck key for pdf", () => {
+      expect(deckKey(params, "pdf")).toBe(
+        "users/user-123/projects/proj-456/deck/deck.pdf",
       );
     });
   });
 
-  describe("buildSlideImageKey", () => {
-    it("builds slide image key with zero-padded slide number", () => {
-      expect(buildSlideImageKey(keyParams, 1)).toBe(
-        "user-123/proj-456/versions/v0001/slides/deck.001.png",
+  describe("pageImageKey", () => {
+    it("builds page image key with zero-padded number", () => {
+      expect(pageImageKey(params, 1)).toBe(
+        "users/user-123/projects/proj-456/pages/page-001.png",
+      );
+    });
+
+    it("handles larger page numbers", () => {
+      expect(pageImageKey(params, 12)).toBe(
+        "users/user-123/projects/proj-456/pages/page-012.png",
       );
     });
   });
 
-  describe("buildAudioKey", () => {
-    it("builds audio key", () => {
-      expect(buildAudioKey(keyParams, 3)).toBe(
-        "user-123/proj-456/versions/v0001/audio/slide-003.pcm",
+  describe("audioKey", () => {
+    it("builds audio key as MP3", () => {
+      expect(audioKey(params, 3)).toBe(
+        "users/user-123/projects/proj-456/audio/page-003.mp3",
       );
     });
   });
 
-  describe("buildSpeechMarksKey", () => {
-    it("builds speech marks key", () => {
-      expect(buildSpeechMarksKey(keyParams, 1)).toBe(
-        "user-123/proj-456/versions/v0001/audio/slide-001-marks.json",
+  describe("captionsSrtKey", () => {
+    it("builds captions SRT key", () => {
+      expect(captionsSrtKey(params)).toBe(
+        "users/user-123/projects/proj-456/captions/captions.srt",
       );
     });
   });
 
-  describe("buildManifestKey", () => {
-    it("builds manifest key", () => {
-      expect(buildManifestKey(keyParams)).toBe(
-        "user-123/proj-456/versions/v0001/video/video-manifest.json",
+  describe("clipKey", () => {
+    it("builds clip key for page", () => {
+      expect(clipKey(params, 5)).toBe(
+        "users/user-123/projects/proj-456/clips/page-005.mp4",
       );
     });
   });
 
-  describe("buildOutputKey", () => {
-    it("builds output key", () => {
-      expect(buildOutputKey(keyParams, "lt-full-16x9")).toBe(
-        "user-123/proj-456/versions/v0001/output/lt-full-16x9.mp4",
+  describe("outputVideoKey", () => {
+    it("builds output video key with renderId", () => {
+      expect(outputVideoKey(params, "render-abc")).toBe(
+        "users/user-123/projects/proj-456/output/render-abc/video.mp4",
       );
     });
   });
 
-  describe("buildCaptionsKey", () => {
-    it("builds captions key", () => {
-      expect(buildCaptionsKey(keyParams, "full.ja.vtt")).toBe(
-        "user-123/proj-456/versions/v0001/captions/full.ja.vtt",
+  describe("manifestKey", () => {
+    it("builds manifest key at project root", () => {
+      expect(manifestKey(params)).toBe(
+        "users/user-123/projects/proj-456/manifest.json",
+      );
+    });
+  });
+
+  describe("projectPrefix", () => {
+    it("builds project prefix with trailing slash", () => {
+      expect(projectPrefix(params)).toBe(
+        "users/user-123/projects/proj-456/",
+      );
+    });
+  });
+
+  describe("pageKeys", () => {
+    it("returns image, audio, and clip keys for a page", () => {
+      const keys = pageKeys(params, 2);
+      expect(keys).toEqual({
+        image: "users/user-123/projects/proj-456/pages/page-002.png",
+        audio: "users/user-123/projects/proj-456/audio/page-002.mp3",
+        clip: "users/user-123/projects/proj-456/clips/page-002.mp4",
+      });
+    });
+  });
+
+  describe("renderKeys", () => {
+    it("returns all keys for a complete render", () => {
+      const keys = renderKeys(params, "render-xyz", 3);
+      expect(keys.manifest).toBe(
+        "users/user-123/projects/proj-456/manifest.json",
+      );
+      expect(keys.captionsSrt).toBe(
+        "users/user-123/projects/proj-456/captions/captions.srt",
+      );
+      expect(keys.outputVideo).toBe(
+        "users/user-123/projects/proj-456/output/render-xyz/video.mp4",
+      );
+      expect(keys.pages).toHaveLength(3);
+      expect(keys.pages[0].image).toBe(
+        "users/user-123/projects/proj-456/pages/page-001.png",
+      );
+      expect(keys.pages[2].clip).toBe(
+        "users/user-123/projects/proj-456/clips/page-003.mp4",
       );
     });
   });

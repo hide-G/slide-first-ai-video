@@ -1,5 +1,3 @@
-import { createLocalizedError } from "./i18n/errors.js";
-
 export interface RuntimeConfig {
   apiEndpoint: string;
   cognitoUserPoolId: string;
@@ -12,7 +10,7 @@ function isNonEmptyString(value: unknown): value is string {
 
 function validateRuntimeConfig(value: unknown): RuntimeConfig {
   if (typeof value !== "object" || value === null) {
-    throw createLocalizedError("errors.runtimeConfigInvalid");
+    throw new Error("Runtime configuration format is invalid");
   }
 
   const config = value as Record<string, unknown>;
@@ -21,7 +19,7 @@ function validateRuntimeConfig(value: unknown): RuntimeConfig {
     !isNonEmptyString(config.cognitoUserPoolId) ||
     !isNonEmptyString(config.cognitoUserPoolClientId)
   ) {
-    throw createLocalizedError("errors.runtimeConfigMissingRequired");
+    throw new Error("Runtime configuration is missing required API or Cognito values");
   }
 
   return {
@@ -36,7 +34,6 @@ function getLocalDevelopmentFallback(): RuntimeConfig | undefined {
     return undefined;
   }
 
-  // Vite開発サーバーでのみ、明示されたローカル設定をフォールバックとして許可する。
   const fallback = {
     apiEndpoint: import.meta.env.VITE_API_ENDPOINT,
     cognitoUserPoolId: import.meta.env.VITE_COGNITO_USER_POOL_ID,
@@ -57,16 +54,14 @@ export async function loadRuntimeConfig(): Promise<RuntimeConfig> {
     });
 
     if (!response.ok) {
-      throw createLocalizedError("errors.runtimeConfigFetchFailed", {
-        status: response.status,
-      });
+      throw new Error(`Could not load runtime configuration (HTTP ${response.status})`);
     }
 
     let value: unknown;
     try {
       value = await response.json();
     } catch {
-      throw createLocalizedError("errors.runtimeConfigInvalidJson");
+      throw new Error("Could not parse runtime configuration JSON");
     }
 
     return validateRuntimeConfig(value);
@@ -80,6 +75,6 @@ export async function loadRuntimeConfig(): Promise<RuntimeConfig> {
       throw error;
     }
 
-    throw createLocalizedError("errors.runtimeConfigUnknown");
+    throw new Error("Unknown error loading runtime configuration");
   }
 }

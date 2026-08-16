@@ -2,7 +2,7 @@
   "name": "@slide-first/renderer-ffmpeg",
   "version": "0.1.0",
   "private": true,
-  "description": "FFmpeg-based VideoRenderer implementation (fallback renderer)",
+  "description": "FFmpeg command builders for clip and concat stages",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -26,7 +26,6 @@
     "vitest": "3.1.4",
     "eslint": "9.28.0",
     "@eslint/js": "9.28.0",
-    "typescript-eslint": "8.33.0",
-    "@slide-first/renderer-contract-tests": "workspace:*"
+    "typescript-eslint": "8.33.0"
   }
 }

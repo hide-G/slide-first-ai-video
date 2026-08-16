@@ -1,20 +1,22 @@
+# Stage 1: Pages - PDF/PPTX to PNG rasterization
+# Requires: poppler-utils (pdftoppm), libreoffice (for PPTX), fonts
+FROM public.ecr.aws/lambda/nodejs:22 AS builder
+
+WORKDIR /app
+COPY package.json tsconfig.json tsconfig.build.json ./
+COPY src/ ./src/
+RUN npm install && npm run build
+
 FROM public.ecr.aws/lambda/nodejs:22
 
-# Install Chromium dependencies and Noto Sans CJK fonts
-RUN dnf install -y \
-    chromium \
-    google-noto-sans-cjk-fonts \
+# Install poppler-utils for pdftoppm and LibreOffice for PPTX conversion
+RUN dnf install -y poppler-utils libreoffice-core libreoffice-impress \
+    google-noto-sans-japanese-fonts google-noto-serif-japanese-fonts \
     && dnf clean all
 
-# Install marp-cli globally
-RUN npm install -g @marp-team/marp-cli
+WORKDIR ${LAMBDA_TASK_ROOT}
+COPY --from=builder /app/dist/ ./dist/
+COPY --from=builder /app/node_modules/ ./node_modules/
+COPY --from=builder /app/package.json ./
 
-# Set Chromium path for Marp
-ENV CHROME_PATH=/usr/bin/chromium-browser
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
-
-# Copy function code
-COPY dist/ ${LAMBDA_TASK_ROOT}/
-
-# Set the handler
-CMD ["index.handler"]
+CMD ["dist/index.handler"]

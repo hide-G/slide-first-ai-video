@@ -6,12 +6,8 @@ const authMocks = vi.hoisted(() => ({
   useAuth: vi.fn(),
 }));
 
-const i18nMocks = vi.hoisted(() => ({
-  setLanguage: vi.fn(),
-}));
-
 vi.mock("aws-amplify/utils", () => ({
-  I18n: i18nMocks,
+  I18n: { putVocabularies: vi.fn(), setLanguage: vi.fn() },
 }));
 
 vi.mock("@aws-amplify/ui-react", () => ({
@@ -23,23 +19,19 @@ vi.mock("./hooks/useAuth.js", () => ({
 }));
 
 vi.mock("./pages/LoginPage.js", () => ({
-  LoginPage: () => <div>ログイン画面</div>,
+  LoginPage: () => <div data-testid="login">Login Page</div>,
 }));
 
-vi.mock("./pages/ProjectsPage.js", () => ({
-  ProjectsPage: () => <div>保護されたプロジェクト画面</div>,
+vi.mock("./pages/HomePage.js", () => ({
+  HomePage: () => <div data-testid="home">Home Page</div>,
 }));
 
-vi.mock("./pages/ProjectDetailPage.js", () => ({
-  ProjectDetailPage: () => <div>プロジェクト詳細画面</div>,
+vi.mock("./pages/SlideStudioPage.js", () => ({
+  SlideStudioPage: () => <div data-testid="slide-studio">Slide Studio</div>,
 }));
 
-vi.mock("./pages/VersionPage.js", () => ({
-  VersionPage: () => <div>バージョン画面</div>,
-}));
-
-vi.mock("./pages/VideosPage.js", () => ({
-  VideosPage: () => <div>動画画面</div>,
+vi.mock("./pages/VideoStudioPage.js", () => ({
+  VideoStudioPage: () => <div data-testid="video-studio">Video Studio</div>,
 }));
 
 import { App } from "./App.js";
@@ -47,18 +39,16 @@ import { LanguageProvider } from "./i18n/LanguageContext.js";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
-describe("Appの認証ガード", () => {
+describe("App routing", () => {
   let container: HTMLDivElement;
   let root: Root;
 
   beforeEach(() => {
     authMocks.useAuth.mockReset();
-    i18nMocks.setLanguage.mockReset();
     window.localStorage.clear();
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
-    window.history.replaceState({}, "", "/projects");
   });
 
   afterEach(async () => {
@@ -78,44 +68,88 @@ describe("Appの認証ガード", () => {
     });
   }
 
-  it("認証確認中は保護画面ではなくローディングを表示する", async () => {
+  it("shows loading state during auth check", async () => {
     authMocks.useAuth.mockReturnValue({
       isAuthenticated: false,
       isLoading: true,
       signOut: vi.fn(),
+      username: null,
     });
 
+    window.history.replaceState({}, "", "/home");
     await renderApp();
 
-    expect(container.querySelector('[role="status"]')?.textContent).toContain(
-      "認証状態を確認しています...",
-    );
-    expect(container.textContent).not.toContain("保護されたプロジェクト画面");
+    expect(container.querySelector('[role="status"]')).not.toBeNull();
   });
 
-  it("未認証で/projectsを直接開くと/loginへ置換遷移する", async () => {
+  it("redirects unauthenticated user to /login", async () => {
     authMocks.useAuth.mockReturnValue({
       isAuthenticated: false,
       isLoading: false,
       signOut: vi.fn(),
+      username: null,
     });
 
+    window.history.replaceState({}, "", "/home");
     await renderApp();
 
     expect(window.location.pathname).toBe("/login");
-    expect(container.textContent).toContain("ログイン画面");
-    expect(container.textContent).not.toContain("保護されたプロジェクト画面");
+    expect(container.querySelector('[data-testid="login"]')).not.toBeNull();
   });
 
-  it("認証済みの場合だけ保護画面を表示する", async () => {
+  it("shows Home page for authenticated user at /home", async () => {
     authMocks.useAuth.mockReturnValue({
       isAuthenticated: true,
       isLoading: false,
       signOut: vi.fn(),
+      username: "test-user",
     });
 
+    window.history.replaceState({}, "", "/home");
     await renderApp();
 
-    expect(container.textContent).toContain("保護されたプロジェクト画面");
+    expect(container.querySelector('[data-testid="home"]')).not.toBeNull();
+  });
+
+  it("shows Slide Studio for authenticated user at /slide-studio", async () => {
+    authMocks.useAuth.mockReturnValue({
+      isAuthenticated: true,
+      isLoading: false,
+      signOut: vi.fn(),
+      username: "test-user",
+    });
+
+    window.history.replaceState({}, "", "/slide-studio");
+    await renderApp();
+
+    expect(container.querySelector('[data-testid="slide-studio"]')).not.toBeNull();
+  });
+
+  it("shows Video Studio for authenticated user at /video-studio", async () => {
+    authMocks.useAuth.mockReturnValue({
+      isAuthenticated: true,
+      isLoading: false,
+      signOut: vi.fn(),
+      username: "test-user",
+    });
+
+    window.history.replaceState({}, "", "/video-studio");
+    await renderApp();
+
+    expect(container.querySelector('[data-testid="video-studio"]')).not.toBeNull();
+  });
+
+  it("redirects / to /home for authenticated user", async () => {
+    authMocks.useAuth.mockReturnValue({
+      isAuthenticated: true,
+      isLoading: false,
+      signOut: vi.fn(),
+      username: "test-user",
+    });
+
+    window.history.replaceState({}, "", "/");
+    await renderApp();
+
+    expect(window.location.pathname).toBe("/home");
   });
 });

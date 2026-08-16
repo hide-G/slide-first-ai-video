@@ -7,12 +7,9 @@ import {
   useState,
   type PropsWithChildren,
 } from "react";
-import { setAuthenticatorLocale } from "./authenticator.js";
 import {
   createTranslate,
-  formatMessage,
   type Locale,
-  type MessageDescriptor,
   type Translate,
 } from "./messages.js";
 import {
@@ -25,7 +22,6 @@ interface LanguageContextValue {
   locale: Locale;
   setLocale: (locale: Locale) => void;
   t: Translate;
-  format: (descriptor: MessageDescriptor) => string;
 }
 
 interface LanguageProviderProps extends PropsWithChildren {
@@ -39,7 +35,6 @@ const LanguageContext = createContext<LanguageContextValue | undefined>(
 function applyLocale(locale: Locale): void {
   persistLocale(locale);
   updateDocumentLocale(locale);
-  setAuthenticatorLocale(locale);
 }
 
 export function LanguageProvider({
@@ -60,13 +55,9 @@ export function LanguageProvider({
   }, []);
 
   const t = useMemo(() => createTranslate(locale), [locale]);
-  const format = useCallback(
-    (descriptor: MessageDescriptor) => formatMessage(locale, descriptor),
-    [locale],
-  );
   const value = useMemo(
-    () => ({ locale, setLocale, t, format }),
-    [format, locale, setLocale, t],
+    () => ({ locale, setLocale, t }),
+    [locale, setLocale, t],
   );
 
   return (
@@ -79,7 +70,7 @@ export function LanguageProvider({
 export function useLanguage(): LanguageContextValue {
   const context = useContext(LanguageContext);
   if (!context) {
-    throw new Error("LanguageProvider内でuseLanguageを使用してください。");
+    throw new Error("useLanguage must be used within LanguageProvider");
   }
 
   return context;

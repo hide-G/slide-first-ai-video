@@ -6,27 +6,103 @@ import { z } from "zod";
 
 export const CreateProjectSchema = z.object({
   title: z.string().min(1).max(200),
-  theme: z.string().min(1).max(100).optional(),
-  audience: z.string().min(1).max(200).optional(),
-  duration: z.number().positive().optional(),
-  urls: z.array(z.string().url()).max(10).optional(),
+  contentLanguage: z.string().min(1).max(10).optional(),
 });
 
-export const StartSlidesSchema = z.object({
-  theme: z.string().min(1).max(100).optional(),
+export const GenerateOutlineSchema = z.object({
+  topic: z.string().min(1).max(500),
+  sourceText: z.string().max(50000).optional(),
+  referenceUrls: z.array(z.string().url()).max(10).optional(),
   audience: z.string().min(1).max(200).optional(),
-  duration: z.number().positive().optional(),
-  urls: z.array(z.string().url()).max(10).optional(),
+  pages: z.number().int().min(1).max(50).optional(),
+  tone: z.string().min(1).max(100).optional(),
+  theme: z.string().min(1).max(100).optional(),
+  contentLanguage: z.string().min(1).max(10).optional(),
 });
 
-export const StartVideoSchema = z.object({
-  versionNumber: z.number().int().positive(),
-  outputTypes: z.array(z.string()).min(1).optional(),
+export const SaveOutlineSchema = z.object({
+  outline: z.array(
+    z.object({
+      pageNumber: z.number().int().positive(),
+      title: z.string().min(1),
+      bullets: z.array(z.string()).optional(),
+      presenterNotes: z.string().optional(),
+    }),
+  ),
+});
+
+export const GenerateDeckSchema = z.object({
+  theme: z.string().min(1).max(100).optional(),
+});
+
+export const SourceUploadUrlSchema = z.object({
+  fileName: z.string().min(1).max(255),
+  contentType: z.string().min(1).max(100),
+});
+
+export const RegisterSourceSchema = z.object({
+  kind: z.enum(["generated", "uploaded"]),
+  fileKey: z.string().min(1),
+  pageCount: z.number().int().positive(),
+});
+
+export const SaveOutputSchema = z.object({
+  aspect: z.enum(["16:9", "9:16", "1:1", "4:5"]),
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  fps: z.number().int().positive(),
+  captions: z.enum(["burn", "srt", "none"]),
+  verticalLayout: z.string().nullable().optional(),
+  padColor: z.string().nullable().optional(),
+});
+
+export const GenerateNarrationSchema = z.object({
+  voiceId: z.string().min(1).optional(),
+  engine: z.string().min(1).optional(),
+  languageCode: z.string().min(1).optional(),
+});
+
+export const SaveNarrationSchema = z.object({
+  scripts: z.array(
+    z.object({
+      pageNumber: z.number().int().positive(),
+      mode: z.enum(["plain", "ssml"]),
+      text: z.string(),
+    }),
+  ),
+  lexicon: z
+    .array(
+      z.object({
+        written: z.string().min(1),
+        reading: z.string().min(1),
+        method: z.enum(["sub", "phoneme", "spell"]),
+      }),
+    )
+    .optional(),
+  voice: z
+    .object({
+      id: z.string().min(1),
+      engine: z.string().min(1),
+      languageCode: z.string().min(1),
+      sampleRate: z.string().min(1),
+    })
+    .optional(),
+});
+
+export const StartRenderSchema = z.object({
+  startFromStage: z.enum(["pages", "audio", "captions", "clips", "concat"]).optional(),
 });
 
 export type CreateProjectInput = z.infer<typeof CreateProjectSchema>;
-export type StartSlidesInput = z.infer<typeof StartSlidesSchema>;
-export type StartVideoInput = z.infer<typeof StartVideoSchema>;
+export type GenerateOutlineInput = z.infer<typeof GenerateOutlineSchema>;
+export type SaveOutlineInput = z.infer<typeof SaveOutlineSchema>;
+export type GenerateDeckInput = z.infer<typeof GenerateDeckSchema>;
+export type SourceUploadUrlInput = z.infer<typeof SourceUploadUrlSchema>;
+export type RegisterSourceInput = z.infer<typeof RegisterSourceSchema>;
+export type SaveOutputInput = z.infer<typeof SaveOutputSchema>;
+export type GenerateNarrationInput = z.infer<typeof GenerateNarrationSchema>;
+export type SaveNarrationInput = z.infer<typeof SaveNarrationSchema>;
+export type StartRenderInput = z.infer<typeof StartRenderSchema>;
 
 /**
  * Validate a request body against a zod schema.

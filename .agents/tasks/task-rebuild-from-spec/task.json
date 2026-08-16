@@ -1,0 +1,14 @@
+{
+  "task_id": "task-rebuild-from-spec",
+  "task_description": "Rebuild slide-first-ai-video from scratch per 実装指示プロンプト.md specification. Implement new data contract, 5-stage video pipeline, 11 API endpoints, and 4-screen frontend matching mockups exactly.",
+  "status": "completed",
+  "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003", "FEAT-004", "FEAT-005", "FEAT-006", "FEAT-007"],
+  "blocked_reason": null,
+  "verification": {
+    "build": "pass",
+    "tests": "pass",
+    "test_quality": "pass",
+    "docker_build": "skipped",
+    "summary": "pnpm build succeeds (all packages compile). pnpm test passes 298 tests across 12 workspace packages. All 5 v2 review issues fixed: marp-render/polly-worker event shape aligned to s3Bucket/s3Prefix, Map states removed (single Task invocations for audio/clips), XML-escaping added for plain text before SSML wrapping, and presigned URL ContentLength removed."
+  }
+}

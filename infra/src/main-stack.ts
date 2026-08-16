@@ -4,13 +4,11 @@ import { StorageConstruct } from "../lib/storage-construct.js";
 import { AuthConstruct } from "../lib/auth-construct.js";
 import { MarpLambdaConstruct } from "../lib/marp-lambda-construct.js";
 import { PollyWorkerConstruct } from "../lib/polly-worker-construct.js";
-import { CompositionBuilderConstruct } from "../lib/composition-builder-construct.js";
 import { SlideGeneratorConstruct } from "../lib/slide-generator-construct.js";
+import { CaptionWorkerConstruct } from "../lib/caption-worker-construct.js";
+import { ClipWorkerConstruct } from "../lib/clip-worker-construct.js";
+import { ConcatWorkerConstruct } from "../lib/concat-worker-construct.js";
 import { RenderStateMachineConstruct } from "../lib/render-state-machine-construct.js";
-import { ContentStateMachineConstruct } from "../lib/content-state-machine-construct.js";
-import { TeaserGeneratorConstruct } from "../lib/teaser-generator-construct.js";
-import { TeaserCompositionBuilderConstruct } from "../lib/teaser-composition-builder-construct.js";
-import { TeaserStateMachineConstruct } from "../lib/teaser-state-machine-construct.js";
 import { ApiConstruct } from "../lib/api-construct.js";
 import { DeliveryConstruct } from "../lib/delivery-construct.js";
 import { FrontendConstruct } from "../lib/frontend-construct.js";
@@ -22,7 +20,7 @@ export interface MainStackProps extends cdk.StackProps {
 
 /**
  * Main CDK stack for the slide-first AI video application.
- * Composes all infrastructure constructs.
+ * Composes all infrastructure constructs for the 5-stage render pipeline.
  */
 export class MainStack extends cdk.Stack {
   public readonly productSlug: string;
@@ -50,32 +48,21 @@ export class MainStack extends cdk.Stack {
       environment: props.envName,
     });
 
-    // Marp Lambda: DockerImageFunction for rendering
+    // Marp Lambda: Node.js Lambda for page rendering
     const marpLambda = new MarpLambdaConstruct(this, "MarpLambda", {
       productSlug: props.productSlug,
       environment: props.envName,
       projectBucket: storage.projectBucket,
     });
 
-    // Polly Worker Lambda
+    // Polly Worker Lambda: TTS audio generation
     const pollyWorker = new PollyWorkerConstruct(this, "PollyWorker", {
       productSlug: props.productSlug,
       environment: props.envName,
       projectBucket: storage.projectBucket,
     });
 
-    // Composition Builder Lambda
-    const compositionBuilder = new CompositionBuilderConstruct(
-      this,
-      "CompositionBuilder",
-      {
-        productSlug: props.productSlug,
-        environment: props.envName,
-        projectBucket: storage.projectBucket,
-      },
-    );
-
-    // Slide Generator Lambda (Bedrock Converse API)
+    // Slide Generator Lambda: Bedrock Converse API for outline + narration
     const slideGenerator = new SlideGeneratorConstruct(
       this,
       "SlideGenerator",
@@ -86,7 +73,28 @@ export class MainStack extends cdk.Stack {
       },
     );
 
-    // Render State Machine (must be created before Content SM)
+    // Caption Worker Lambda: SRT generation
+    const captionWorker = new CaptionWorkerConstruct(this, "CaptionWorker", {
+      productSlug: props.productSlug,
+      environment: props.envName,
+      projectBucket: storage.projectBucket,
+    });
+
+    // Clip Worker Lambda: per-page video clip generation
+    const clipWorker = new ClipWorkerConstruct(this, "ClipWorker", {
+      productSlug: props.productSlug,
+      environment: props.envName,
+      projectBucket: storage.projectBucket,
+    });
+
+    // Concat Worker Lambda: final video concatenation
+    const concatWorker = new ConcatWorkerConstruct(this, "ConcatWorker", {
+      productSlug: props.productSlug,
+      environment: props.envName,
+      projectBucket: storage.projectBucket,
+    });
+
+    // 5-stage Render Pipeline State Machine
     const renderStateMachine = new RenderStateMachineConstruct(
       this,
       "RenderSM",
@@ -94,59 +102,11 @@ export class MainStack extends cdk.Stack {
         productSlug: props.productSlug,
         environment: props.envName,
         projectBucket: storage.projectBucket,
-      },
-    );
-
-    // Content State Machine
-    const contentStateMachine = new ContentStateMachineConstruct(
-      this,
-      "ContentSM",
-      {
-        productSlug: props.productSlug,
-        environment: props.envName,
-        slideGeneratorLambda: slideGenerator.handler,
         marpLambda: marpLambda.handler,
         pollyWorkerLambda: pollyWorker.handler,
-        compositionBuilderLambda: compositionBuilder.handler,
-        renderStateMachine: renderStateMachine.stateMachine,
-        table: storage.table,
-      },
-    );
-
-    // Teaser Generator Lambda (Bedrock slide selection + hook/post generation)
-    const teaserGenerator = new TeaserGeneratorConstruct(
-      this,
-      "TeaserGenerator",
-      {
-        productSlug: props.productSlug,
-        environment: props.envName,
-        projectBucket: storage.projectBucket,
-      },
-    );
-
-    // Teaser Composition Builder Lambda
-    const teaserCompositionBuilder = new TeaserCompositionBuilderConstruct(
-      this,
-      "TeaserCompositionBuilder",
-      {
-        productSlug: props.productSlug,
-        environment: props.envName,
-        projectBucket: storage.projectBucket,
-      },
-    );
-
-    // Teaser State Machine
-    const teaserStateMachine = new TeaserStateMachineConstruct(
-      this,
-      "TeaserSM",
-      {
-        productSlug: props.productSlug,
-        environment: props.envName,
-        teaserGeneratorLambda: teaserGenerator.handler,
-        pollyWorkerLambda: pollyWorker.handler,
-        teaserCompositionBuilderLambda: teaserCompositionBuilder.handler,
-        renderStateMachine: renderStateMachine.stateMachine,
-        projectBucket: storage.projectBucket,
+        captionWorkerLambda: captionWorker.handler,
+        clipWorkerLambda: clipWorker.handler,
+        concatWorkerLambda: concatWorker.handler,
       },
     );
 
@@ -157,13 +117,12 @@ export class MainStack extends cdk.Stack {
       userPool: auth.userPool,
       table: storage.table,
       projectBucket: storage.projectBucket,
-      contentStateMachine: contentStateMachine.stateMachine,
       renderStateMachine: renderStateMachine.stateMachine,
-      teaserStateMachine: teaserStateMachine.stateMachine,
-      approvalQueue: contentStateMachine.approvalQueue,
+      slideGeneratorLambda: slideGenerator.handler,
+      marpLambda: marpLambda.handler,
     });
 
-    // Delivery: CloudFront distribution
+    // Delivery: CloudFront distribution for content
     new DeliveryConstruct(this, "Delivery", {
       productSlug: props.productSlug,
       environment: props.envName,
@@ -174,7 +133,6 @@ export class MainStack extends cdk.Stack {
     new FrontendConstruct(this, "Frontend", {
       productSlug: props.productSlug,
       environment: props.envName,
-      // APIクライアントが/v1を付与するため、stageを含まないオリジンだけを配布する。
       apiEndpoint: cdk.Fn.join("", [
         "https://",
         api.api.restApiId,

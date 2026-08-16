@@ -2,7 +2,7 @@
   "name": "@slide-first/lambda-marp-render",
   "version": "0.1.0",
   "private": true,
-  "description": "Marp rendering Lambda function (Docker-free)",
+  "description": "Stage 1: Pages - PDF/PPTX to PNG rasterization Lambda",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
@@ -13,10 +13,7 @@
   "dependencies": {
     "@slide-first/shared-types": "workspace:*",
     "@slide-first/core": "workspace:*",
-    "@aws-sdk/client-s3": "^3.600.0",
-    "@marp-team/marp-core": "^4.1.0",
-    "@sparticuz/chromium": "^131.0.0",
-    "puppeteer-core": "^23.0.0"
+    "@aws-sdk/client-s3": "^3.600.0"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.145",

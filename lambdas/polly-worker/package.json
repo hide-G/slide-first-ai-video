@@ -2,7 +2,7 @@
   "name": "@slide-first/lambda-polly-worker",
   "version": "0.1.0",
   "private": true,
-  "description": "Amazon Polly TTS worker Lambda function",
+  "description": "Stage 2: Audio - Amazon Polly TTS synthesis Lambda",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {

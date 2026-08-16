@@ -9,16 +9,23 @@ export interface RenderStateMachineConstructProps {
   productSlug: string;
   environment: string;
   projectBucket: s3.Bucket;
+  marpLambda: lambda.IFunction;
+  pollyWorkerLambda: lambda.IFunction;
+  captionWorkerLambda: lambda.IFunction;
+  clipWorkerLambda: lambda.IFunction;
+  concatWorkerLambda: lambda.IFunction;
 }
 
 /**
- * Render State Machine: Step Functions Standard state machine for the render pipeline.
- * Flow: Plan -> Map (parallel chunk rendering) -> Assemble
- * Render Lambda: 10240MB memory, 4096MB ephemeral storage, 15 min timeout.
+ * 5-stage Render Pipeline State Machine.
+ * Stages: pages -> audio -> captions -> clips -> concat
+ *
+ * Supports partial retry via `startFromStage` input parameter.
+ * A Choice state at the beginning routes execution to the requested starting stage,
+ * skipping earlier stages that have already completed.
  */
 export class RenderStateMachineConstruct extends Construct {
   public readonly stateMachine: sfn.StateMachine;
-  public readonly renderLambda: lambda.Function;
 
   constructor(
     scope: Construct,
@@ -29,88 +36,137 @@ export class RenderStateMachineConstruct extends Construct {
 
     const { productSlug, environment } = props;
 
-    // Render Lambda: high-memory function for video rendering
-    this.renderLambda = new lambda.Function(this, "RenderHandler", {
-      functionName: `${productSlug}-${environment}-renderer`,
-      runtime: lambda.Runtime.NODEJS_22_X,
-      handler: "index.handler",
-      code: lambda.Code.fromAsset("../lambdas/render-worker/dist"),
-      memorySize: 10240,
-      ephemeralStorageSize: cdk.Size.mebibytes(4096),
-      timeout: cdk.Duration.minutes(15),
-      environment: {
-        BUCKET_NAME: props.projectBucket.bucketName,
-      },
-    });
-
-    // Grant S3 read/write access
-    props.projectBucket.grantReadWrite(this.renderLambda);
-
-    // Step 1: Invoke render Lambda with Action=plan
-    const planStep = new tasks.LambdaInvoke(this, "RenderPlan", {
-      lambdaFunction: this.renderLambda,
+    // Stage 1: Pages (Marp render - generates PNG images per page)
+    const pagesStage = new tasks.LambdaInvoke(this, "PagesStage", {
+      lambdaFunction: props.marpLambda,
       payload: sfn.TaskInput.fromObject({
-        action: "plan",
-        "input.$": "$",
+        "stage": "pages",
+        "projectId.$": "$.projectId",
+        "userId.$": "$.userId",
+        "renderId.$": "$.renderId",
+        "s3Bucket.$": "$.s3Bucket",
+        "s3Prefix.$": "$.s3Prefix",
       }),
-      resultPath: "$.planResult",
+      resultPath: "$.pagesResult",
       retryOnServiceExceptions: true,
+      comment: "Render slide pages to PNG images",
     });
-    planStep.addRetry({
+    pagesStage.addRetry({
       errors: ["Lambda.ServiceException", "Lambda.TooManyRequestsException"],
       interval: cdk.Duration.seconds(5),
       maxAttempts: 2,
       backoffRate: 2,
     });
 
-    // Step 2: Map state over chunks -> Invoke render Lambda with Action=renderChunk
-    const renderChunk = new tasks.LambdaInvoke(this, "RenderChunk", {
-      lambdaFunction: this.renderLambda,
+    // Stage 2: Audio (Polly - single invocation, processes all pages)
+    const audioStage = new tasks.LambdaInvoke(this, "AudioStage", {
+      lambdaFunction: props.pollyWorkerLambda,
       payload: sfn.TaskInput.fromObject({
-        action: "renderChunk",
-        "chunk.$": "$",
+        "stage": "audio",
+        "projectId.$": "$.projectId",
+        "userId.$": "$.userId",
+        "renderId.$": "$.renderId",
+        "s3Bucket.$": "$.s3Bucket",
+        "s3Prefix.$": "$.s3Prefix",
       }),
-      resultPath: "$.chunkResult",
+      resultPath: "$.audioResult",
       retryOnServiceExceptions: true,
+      comment: "Synthesize speech audio for all pages",
     });
-    renderChunk.addRetry({
+    audioStage.addRetry({
+      errors: ["Lambda.ServiceException", "Lambda.TooManyRequestsException"],
+      interval: cdk.Duration.seconds(3),
+      maxAttempts: 3,
+      backoffRate: 2,
+    });
+
+    // Stage 3: Captions (generate SRT from audio timings)
+    const captionsStage = new tasks.LambdaInvoke(this, "CaptionsStage", {
+      lambdaFunction: props.captionWorkerLambda,
+      payload: sfn.TaskInput.fromObject({
+        "stage": "captions",
+        "projectId.$": "$.projectId",
+        "userId.$": "$.userId",
+        "renderId.$": "$.renderId",
+        "s3Bucket.$": "$.s3Bucket",
+        "s3Prefix.$": "$.s3Prefix",
+      }),
+      resultPath: "$.captionsResult",
+      retryOnServiceExceptions: true,
+      comment: "Generate SRT captions from audio timings",
+    });
+    captionsStage.addRetry({
       errors: ["Lambda.ServiceException", "Lambda.TooManyRequestsException"],
       interval: cdk.Duration.seconds(5),
       maxAttempts: 2,
       backoffRate: 2,
     });
 
-    const mapChunks = new sfn.Map(this, "MapRenderChunks", {
-      itemsPath: "$.planResult.Payload.chunks",
-      resultPath: "$.chunkResults",
-      maxConcurrency: 10,
-    });
-    mapChunks.itemProcessor(renderChunk);
-
-    // Step 3: Invoke render Lambda with Action=assemble
-    const assembleStep = new tasks.LambdaInvoke(this, "RenderAssemble", {
-      lambdaFunction: this.renderLambda,
+    // Stage 4: Clips (single invocation, processes all pages)
+    const clipsStage = new tasks.LambdaInvoke(this, "ClipsStage", {
+      lambdaFunction: props.clipWorkerLambda,
       payload: sfn.TaskInput.fromObject({
-        action: "assemble",
-        "chunkResults.$": "$.chunkResults",
-        "planResult.$": "$.planResult",
+        "stage": "clips",
+        "projectId.$": "$.projectId",
+        "userId.$": "$.userId",
+        "renderId.$": "$.renderId",
+        "s3Bucket.$": "$.s3Bucket",
+        "s3Prefix.$": "$.s3Prefix",
       }),
-      resultPath: "$.assembleResult",
+      resultPath: "$.clipsResult",
       retryOnServiceExceptions: true,
+      comment: "Generate video clips for all pages",
     });
-    assembleStep.addRetry({
+    clipsStage.addRetry({
       errors: ["Lambda.ServiceException", "Lambda.TooManyRequestsException"],
       interval: cdk.Duration.seconds(5),
       maxAttempts: 2,
       backoffRate: 2,
     });
 
-    // Chain steps
-    const definition = planStep.next(mapChunks).next(assembleStep);
+    // Stage 5: Concat (concatenate all clips into final video)
+    const concatStage = new tasks.LambdaInvoke(this, "ConcatStage", {
+      lambdaFunction: props.concatWorkerLambda,
+      payload: sfn.TaskInput.fromObject({
+        "stage": "concat",
+        "projectId.$": "$.projectId",
+        "userId.$": "$.userId",
+        "renderId.$": "$.renderId",
+        "s3Bucket.$": "$.s3Bucket",
+        "s3Prefix.$": "$.s3Prefix",
+      }),
+      resultPath: "$.concatResult",
+      retryOnServiceExceptions: true,
+      comment: "Concatenate clips into final video",
+    });
+    concatStage.addRetry({
+      errors: ["Lambda.ServiceException", "Lambda.TooManyRequestsException"],
+      interval: cdk.Duration.seconds(5),
+      maxAttempts: 2,
+      backoffRate: 2,
+    });
+
+    // Chain stages: pages -> audio -> captions -> clips -> concat
+    pagesStage.next(audioStage);
+    audioStage.next(captionsStage);
+    captionsStage.next(clipsStage);
+    clipsStage.next(concatStage);
+
+    // Choice state to route to the correct starting stage based on startFromStage
+    const stageChoice = new sfn.Choice(this, "ChooseStartStage", {
+      comment: "Route to the requested starting stage (skip completed stages)",
+    });
+
+    stageChoice
+      .when(sfn.Condition.stringEquals("$.startFromStage", "concat"), concatStage)
+      .when(sfn.Condition.stringEquals("$.startFromStage", "clips"), clipsStage)
+      .when(sfn.Condition.stringEquals("$.startFromStage", "captions"), captionsStage)
+      .when(sfn.Condition.stringEquals("$.startFromStage", "audio"), audioStage)
+      .otherwise(pagesStage);
 
     this.stateMachine = new sfn.StateMachine(this, "RenderStateMachine", {
       stateMachineName: `${productSlug}-${environment}-render-pipeline`,
-      definitionBody: sfn.DefinitionBody.fromChainable(definition),
+      definitionBody: sfn.DefinitionBody.fromChainable(stageChoice),
       stateMachineType: sfn.StateMachineType.STANDARD,
       timeout: cdk.Duration.hours(2),
     });

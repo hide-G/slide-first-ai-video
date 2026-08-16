@@ -1,47 +1,58 @@
-export type {
-  VideoRenderer,
-  RenderInput,
-  RenderPlan,
-  ChunkResult,
-  RenderOutput,
-} from "./video-renderer.js";
+// Manifest schema and types
+export {
+  SourceKind,
+  ScriptMode,
+  LexiconMethod,
+  StageStatus,
+  AspectRatio,
+  CaptionsOption,
+  CostActualStatus,
+  SourceSchema,
+  VoiceSchema,
+  OutputSchema,
+  LexiconEntrySchema,
+  ScriptSchema,
+  PageSchema,
+  StagesSchema,
+  CostStageEntrySchema,
+  CostActualSchema,
+  CostSchema,
+  ManifestSchema,
+} from "./manifest.js";
 
 export type {
-  VideoManifest,
-  VoiceConfig,
-  OutputConfig,
-  CaptionsConfig,
-  ManifestSlide,
-  TransitionType,
-  SlideImportance,
-} from "./video-manifest.js";
+  Source,
+  Voice,
+  Output,
+  LexiconEntry,
+  Script,
+  Page,
+  Stages,
+  CostStageEntry,
+  CostActual,
+  Cost,
+  Manifest,
+} from "./manifest.js";
 
-export type {
-  Project,
-  Version,
-  Job,
-  JobStatus,
-} from "./project.js";
+// Invariant validation
+export {
+  validateInvariants,
+  TOLERANCES,
+} from "./invariants.js";
 
-export type {
-  CreateProjectRequest,
-  CreateProjectResponse,
-  StartRenderRequest,
-  StartRenderResponse,
-  GetVersionResponse,
-  GetJobStatusResponse,
-  ListProjectsResponse,
-  ErrorResponse,
-} from "./api.js";
+export type { InvariantViolation } from "./invariants.js";
 
-export type {
-  TeaserConfig,
-  HookTextCandidate,
-  SelectedSlide,
-  PostText,
-  TeaserGenerationResult,
-  SlideCardLayout,
-  TeaserGeneratorEvent,
-  TeaserCompositionBuilderEvent,
-  TeaserCompositionBuilderResult,
-} from "./teaser.js";
+// S3 key builders
+export {
+  inputSourceKey,
+  deckKey,
+  pageImageKey,
+  audioKey,
+  captionsSrtKey,
+  clipKey,
+  outputVideoKey,
+  manifestKey,
+  projectPrefix,
+} from "./s3-keys.js";
+
+export type { S3KeyParams } from "./s3-keys.js";

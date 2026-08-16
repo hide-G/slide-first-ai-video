@@ -4,8 +4,10 @@
  * and returns structured array with slide metadata.
  */
 
-import type { SlideImportance } from "@slide-first/shared-types";
 import type { ParsedSlide, SlideMetadata } from "./parser.js";
+
+/** Slide importance level for content prioritization */
+type SlideImportance = "HIGH" | "MEDIUM" | "LOW";
 
 /** Structured slide note with metadata */
 export interface SlideNoteEntry {

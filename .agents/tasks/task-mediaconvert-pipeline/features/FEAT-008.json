@@ -1,0 +1,28 @@
+{
+  "id": "FEAT-008",
+  "type": "fix",
+  "description": "Address review findings: increase Lambda timeout to 900s, add DescribeEndpoints call, fix silent polling exhaustion, add IAM permission for DescribeEndpoints.",
+  "status": "completed",
+  "steps": [
+    "Fix silent polling exhaustion: throw error after polling loop exhausts MAX_POLL_ATTEMPTS without terminal status",
+    "Add DescribeEndpoints call in Lambda at startup to resolve account-specific MediaConvert endpoint",
+    "Update CDK construct: increase timeout to 900s, add mediaconvert:DescribeEndpoints IAM permission",
+    "Update tests to cover new behavior (polling exhaustion throws, DescribeEndpoints mock)",
+    "Verify with pnpm build && pnpm test && cdk synth"
+  ],
+  "acceptance_criteria": [
+    "Lambda timeout is 900s in CDK construct",
+    "Lambda has mediaconvert:DescribeEndpoints IAM permission",
+    "Lambda calls DescribeEndpoints at runtime to get account-specific endpoint",
+    "Polling loop throws error when MAX_POLL_ATTEMPTS exhausted",
+    "Tests pass covering polling exhaustion error path",
+    "pnpm build && pnpm test pass",
+    "cdk synth succeeds"
+  ],
+  "verification": [
+    "source $NVM_DIR/nvm.sh && cd /projects/sandbox/slide-first-ai-video && pnpm build && pnpm test",
+    "source $NVM_DIR/nvm.sh && cd /projects/sandbox/slide-first-ai-video/infra && npx --yes aws-cdk@2 synth"
+  ],
+  "blocked_reason": null,
+  "findings": "All 4 review issues fixed. Lambda timeout increased to 900s, MAX_POLL_ATTEMPTS reduced to 85 (fits within timeout). DescribeEndpoints called at runtime with caching; env var MEDIACONVERT_ENDPOINT still works as override. Polling exhaustion now throws an error caught by the try/catch which sets stages.video=failed. All 143 tests pass across all packages. CDK synth confirms timeout=900 and DescribeEndpoints permission in template."
+}

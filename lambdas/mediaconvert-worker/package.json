@@ -1,8 +1,8 @@
 {
-  "name": "@slide-first/lambda-caption-worker",
+  "name": "@slide-first/lambda-mediaconvert-worker",
   "version": "0.1.0",
   "private": true,
-  "description": "Stage 3: Captions - SRT generation Lambda",
+  "description": "Stage 4: Video - MediaConvert job submission Lambda",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
@@ -13,6 +13,7 @@
   "dependencies": {
     "@slide-first/shared-types": "workspace:*",
     "@slide-first/core": "workspace:*",
+    "@aws-sdk/client-mediaconvert": "^3.600.0",
     "@aws-sdk/client-s3": "^3.600.0"
   },
   "devDependencies": {
@@ -20,9 +21,6 @@
     "@types/node": "22.15.21",
     "esbuild": "0.28.2",
     "typescript": "5.8.3",
-    "vitest": "3.1.4",
-    "eslint": "9.28.0",
-    "@eslint/js": "9.28.0",
-    "typescript-eslint": "8.33.0"
+    "vitest": "3.1.4"
   }
 }

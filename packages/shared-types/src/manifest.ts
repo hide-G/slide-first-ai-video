@@ -70,7 +70,7 @@ export const PageSchema = z.object({
   script: ScriptSchema,
   audioKey: z.string().min(1),
   audioDurationSec: z.number().nonnegative(),
-  clipKey: z.string().min(1),
+  frameAlignedDurationMs: z.number().nonnegative(),
 });
 export type Page = z.infer<typeof PageSchema>;
 
@@ -78,8 +78,7 @@ export const StagesSchema = z.object({
   pages: StageStatus,
   audio: StageStatus,
   captions: StageStatus,
-  clips: StageStatus,
-  concat: StageStatus,
+  video: StageStatus,
 });
 export type Stages = z.infer<typeof StagesSchema>;
 

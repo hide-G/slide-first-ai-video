@@ -21,7 +21,6 @@ import {
   pageImageKey,
   audioKey,
   captionsSrtKey,
-  clipKey,
   outputVideoKey,
   manifestKey,
   projectPrefix,
@@ -38,7 +37,6 @@ export {
   pageImageKey,
   audioKey,
   captionsSrtKey,
-  clipKey,
   outputVideoKey,
   manifestKey,
   projectPrefix,
@@ -51,11 +49,10 @@ export {
 export function pageKeys(
   params: S3KeyParams,
   pageNumber: number,
-): { image: string; audio: string; clip: string } {
+): { image: string; audio: string } {
   return {
     image: pageImageKey(params, pageNumber),
     audio: audioKey(params, pageNumber),
-    clip: clipKey(params, pageNumber),
   };
 }
 
@@ -70,7 +67,7 @@ export function renderKeys(
   manifest: string;
   captionsSrt: string;
   outputVideo: string;
-  pages: { image: string; audio: string; clip: string }[];
+  pages: { image: string; audio: string }[];
 } {
   const pages = Array.from({ length: pageCount }, (_, i) =>
     pageKeys(params, i + 1),

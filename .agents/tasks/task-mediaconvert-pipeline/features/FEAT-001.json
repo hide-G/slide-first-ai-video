@@ -1,0 +1,29 @@
+{
+  "id": "FEAT-001",
+  "type": "chore",
+  "description": "Setup: create branch, install deps, confirm baseline builds. Then implement Tasks 1-3: caption-worker esbuild bundle, frame alignment function in packages/core, PCM duration calc + WAV header in packages/core.",
+  "status": "completed",
+  "steps": [
+    "Create branch feat/mediaconvert-pipeline from main",
+    "Run pnpm install and pnpm build to verify current state compiles (tests may fail due to ffmpeg deps)",
+    "TASK 1 - caption-worker esbuild bundle: Change lambdas/caption-worker/package.json build script from 'tsc -p tsconfig.build.json' to an esbuild script that bundles src/index.ts into dist/index.js as a single CJS file. External: @aws-sdk/* (provided by Lambda runtime). Inline all workspace deps (@slide-first/shared-types, @slide-first/core). Add esbuild as devDependency. The CDK construct (infra/lib/caption-worker-construct.ts) already uses Code.fromAsset('../lambdas/caption-worker/dist') with handler 'index.handler', which will work with the single bundled file.",
+    "TASK 2 - Frame alignment function: Create packages/core/src/frame-alignment.ts with function alignToFrame(audioDurationMs: number, fps: number): number. Formula: frameMs = 1000/fps (for 30fps = 33.3333...), frames = Math.ceil(audioDurationMs / frameMs), result = Math.round(frames * frameMs). Also provide alignToFrameFromSec(audioDurationSec: number, fps: number): number that converts sec to ms first. Export from packages/core/src/index.ts. Add unit tests in packages/core/src/frame-alignment.test.ts verifying: 25176ms at 30fps -> 25200ms, 27840ms at 30fps -> 27867ms (ceil(27840/33.3333)=836 frames, 836*33.3333=27866.67, rounded=27867).",
+    "TASK 3 - PCM duration and WAV header: Create packages/core/src/wav.ts with: (a) calculatePcmDurationSec(pcmByteLength: number, sampleRate: number, bitsPerSample: number, channels: number): number = pcmByteLength / (bitsPerSample/8 * channels * sampleRate). (b) createWavHeader(pcmByteLength: number, sampleRate: number, bitsPerSample: number, channels: number): Buffer that creates a 44-byte RIFF/WAVE header. Export from packages/core/src/index.ts. Add unit test verifying: sampleRate=24000, 16bit, mono, data=1209600 bytes -> duration = 1209600 / (2*24000) = 25.2 seconds exactly.",
+    "Run pnpm build && pnpm test to verify all pass",
+    "Commit with message: 'feat: task 1-3 caption-worker esbuild bundle, frame alignment, WAV/PCM utils'"
+  ],
+  "acceptance_criteria": [
+    "pnpm build succeeds across all packages",
+    "lambdas/caption-worker/dist/ contains only index.js (single bundled file) after build",
+    "Frame alignment test: alignToFrame(25176, 30) returns 25200",
+    "Frame alignment test: alignToFrame(27840, 30) returns 27867",
+    "WAV test: calculatePcmDurationSec(1209600, 24000, 16, 1) returns 25.2",
+    "createWavHeader produces a valid 44-byte WAV header",
+    "pnpm test passes"
+  ],
+  "verification": [
+    "source $NVM_DIR/nvm.sh && cd /projects/sandbox/slide-first-ai-video && pnpm install && pnpm build && pnpm test"
+  ],
+  "blocked_reason": null,
+  "findings": "All three tasks completed successfully. Build and test pass. caption-worker dist contains single index.js with no @slide-first requires. esbuild 0.28.2 already available as root devDependency and resolves via pnpm hoisting - added explicit devDependency in caption-worker package.json. Frame alignment tests: alignToFrame(25176, 30)=25200, alignToFrame(27840, 30)=27867. WAV tests: calculatePcmDurationSec(1209600, 24000, 16, 1)=25.2. All 69 core tests pass, all 44 infra tests pass."
+}

@@ -1,0 +1,30 @@
+{
+  "id": "FEAT-004",
+  "type": "feat",
+  "description": "Task 9: CDK changes - add mediaconvert-worker construct, MediaConvert IAM role, PassRole permission, update state machine to 4-stage (pages -> audio -> captions -> video).",
+  "status": "completed",
+  "steps": [
+    "Create infra/lib/mediaconvert-worker-construct.ts: Lambda Function using Code.fromAsset('../lambdas/mediaconvert-worker/dist') with handler index.handler, nodejs22.x, 512MB memory, 300s timeout. Pass environment vars: BUCKET_NAME, MEDIACONVERT_ROLE_ARN, MEDIACONVERT_ENDPOINT (optional). Grant S3 read/write. Grant mediaconvert:CreateJob, mediaconvert:GetJob permissions.",
+    "Create MediaConvert IAM service role in CDK (either in a new construct or within main-stack): Role with principal mediaconvert.amazonaws.com. Permissions: s3:GetObject, s3:PutObject on the project bucket. This role ARN is passed to the mediaconvert-worker as MEDIACONVERT_ROLE_ARN env var.",
+    "Add iam:PassRole permission to the mediaconvert-worker Lambda's execution role, restricted to the MediaConvert service role ARN only.",
+    "Update infra/lib/render-state-machine-construct.ts: Remove clip-worker and concat-worker references. Change to 4 stages: pages -> audio -> captions -> video. The video stage invokes mediaconvert-worker Lambda. Update props interface to accept mediaconvertWorkerLambda instead of clipWorkerLambda/concatWorkerLambda. Update the Choice state routing accordingly (remove clips/concat options, add video).",
+    "Update infra/src/main-stack.ts: Remove ClipWorkerConstruct and ConcatWorkerConstruct imports and instantiation. Add MediaConvertWorkerConstruct (new). Update RenderStateMachineConstruct props to pass mediaconvertWorkerLambda. Remove clip-worker-construct.ts and concat-worker-construct.ts from infra/lib/.",
+    "Run pnpm build && pnpm test",
+    "Verify with: cd infra && npx --yes aws-cdk@2 synth (set CDK_DEFAULT_ACCOUNT and CDK_DEFAULT_REGION env vars)",
+    "Commit with message: 'feat: task 9 CDK mediaconvert-worker, IAM role, PassRole, 4-stage state machine'"
+  ],
+  "acceptance_criteria": [
+    "cdk synth succeeds",
+    "Generated CloudFormation template includes MediaConvert IAM role with s3:GetObject and s3:PutObject on project bucket",
+    "PassRole permission on the Lambda execution role targets only the MediaConvert role ARN",
+    "State machine definition has 4 stages: pages, audio, captions, video",
+    "No references to clip-worker or concat-worker in infra code",
+    "pnpm build and pnpm test pass"
+  ],
+  "verification": [
+    "source $NVM_DIR/nvm.sh && cd /projects/sandbox/slide-first-ai-video && pnpm build && pnpm test",
+    "source $NVM_DIR/nvm.sh && cd /projects/sandbox/slide-first-ai-video/infra && npx --yes aws-cdk@2 synth 2>&1 | tail -20"
+  ],
+  "blocked_reason": null,
+  "findings": "Task 9 completed successfully. Created infra/lib/mediaconvert-worker-construct.ts with: (1) MediaConvert IAM service role (mediaconvert.amazonaws.com principal) with s3:GetObject, s3:PutObject on bucket objects and s3:ListBucket on bucket. (2) Lambda function (nodejs22.x, 512MB, 300s timeout) using Code.fromAsset('../lambdas/mediaconvert-worker/dist') with BUCKET_NAME and MEDIACONVERT_ROLE_ARN env vars. (3) mediaconvert:CreateJob and mediaconvert:GetJob permissions. (4) iam:PassRole restricted to only the MediaConvert service role ARN. Updated render-state-machine-construct.ts props to include mediaconvertWorkerLambda and wired it to VideoStage (replacing captionWorkerLambda placeholder). Updated main-stack.ts to instantiate MediaConvertWorkerConstruct and pass handler to state machine. CDK synth passes, template shows all 4 stages (pages, audio, captions, video) in state machine, MediaConvert role with correct permissions, PassRole restricted correctly. All 289 tests pass across 12 packages."
+}

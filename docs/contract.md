@@ -10,9 +10,8 @@ s3://<bucket>/users/{userId}/projects/{projectId}/
   input/source.pdf | input/source.pptx
   deck/deck.md, deck/deck.pdf, deck/deck.pptx
   pages/page-001.png, page-002.png, ...
-  audio/page-001.mp3, page-002.mp3, ...
+  audio/page-001.wav, page-002.wav, ...
   captions/captions.srt
-  clips/page-001.mp4, page-002.mp4, ...
   output/{renderId}/video.mp4
   manifest.json
 ```
@@ -24,10 +23,9 @@ s3://<bucket>/users/{userId}/projects/{projectId}/
 | `input/` | Original uploaded source file (PDF or PPTX) |
 | `deck/` | Generated/converted deck files (Markdown, PDF, PPTX) |
 | `pages/` | PNG images extracted from the deck (one per page) |
-| `audio/` | MP3 narration audio for each page |
+| `audio/` | WAV narration audio for each page (PCM with RIFF header) |
 | `captions/` | SRT subtitle file |
-| `clips/` | MP4 video clip for each page (image + audio) |
-| `output/{renderId}/` | Final concatenated video |
+| `output/{renderId}/` | Final video produced by MediaConvert |
 
 ### Naming Conventions
 
@@ -73,17 +71,16 @@ The `manifest.json` file is the single source of truth for project state.
       "pageNumber": 1,
       "imageKey": "pages/page-001.png",
       "script": { "mode": "plain", "text": "This slide covers..." },
-      "audioKey": "audio/page-001.mp3",
-      "audioDurationSec": 27.912,
-      "clipKey": "clips/page-001.mp4"
+      "audioKey": "audio/page-001.wav",
+      "audioDurationSec": 25.2,
+      "frameAlignedDurationMs": 25200
     }
   ],
   "stages": {
     "pages": "done",
     "audio": "done",
     "captions": "done",
-    "clips": "running",
-    "concat": "pending"
+    "video": "running"
   },
   "cost": {
     "currency": "USD",
@@ -94,9 +91,15 @@ The `manifest.json` file is the single source of truth for project state.
         "service": "polly",
         "usage": { "billedCharacters": 921 },
         "estimatedCost": 0.0147
+      },
+      {
+        "stage": "video",
+        "service": "mediaconvert",
+        "usage": { "durationSec": 120, "resolution": "1080p" },
+        "estimatedCost": 0.0180
       }
     ],
-    "estimatedTotal": 0.0412,
+    "estimatedTotal": 0.0328,
     "actual": { "status": "pending", "amount": null, "reconciledAt": null }
   }
 }
@@ -165,9 +168,9 @@ The `manifest.json` file is the single source of truth for project state.
 | `imageKey` | string | S3 key of the page PNG |
 | `script.mode` | `"plain"` or `"ssml"` | Script format |
 | `script.text` | string | Narration text |
-| `audioKey` | string | S3 key of the audio MP3 |
-| `audioDurationSec` | number | Duration measured by ffprobe |
-| `clipKey` | string | S3 key of the page video |
+| `audioKey` | string | S3 key of the audio WAV |
+| `audioDurationSec` | number | Duration calculated from PCM byte length |
+| `frameAlignedDurationMs` | number | Duration rounded up to frame boundary (ms) |
 
 #### `stages`
 
@@ -176,10 +179,9 @@ Each stage has one of these statuses: `"pending"`, `"running"`, `"done"`, `"fail
 | Stage | Description |
 | --- | --- |
 | `pages` | PDF to PNG extraction |
-| `audio` | TTS narration generation |
+| `audio` | TTS narration generation (Polly PCM to WAV) |
 | `captions` | SRT subtitle generation |
-| `clips` | Per-page video assembly |
-| `concat` | Final video concatenation |
+| `video` | Final video assembly (MediaConvert) |
 
 #### `cost` (optional)
 
@@ -203,25 +205,27 @@ These invariants must never be violated:
 
 1. **Page count consistency**: `pages.length === source.pageCount`
 2. **Script completeness**: All `script.text` must be non-empty before the audio stage starts
-3. **Audio duration accuracy**: `audioDurationSec` must come from ffprobe measurement only - never estimates
-4. **Page video duration**: Each page video duration must match its `audioDurationSec` (tolerance: 0.05 seconds)
-5. **Total video duration**: Final video duration must match the sum of all `audioDurationSec` (tolerance: 0.2 seconds)
-6. **Subtitle timecodes**: Generated from cumulative `audioDurationSec` values - no alternative estimation allowed
-7. **No display estimates in manifest**: Screen-displayed estimated durations are for UI only and must not be written to `manifest.json`
+3. **Audio duration accuracy**: `audioDurationSec` must come from PCM byte-length calculation only (pcmBytes / (2 * sampleRate) for 16-bit mono)
+4. **Frame alignment**: `frameAlignedDurationMs >= audioDurationSec * 1000` for every page
+5. **Frame excess limit**: `frameAlignedDurationMs - audioDurationSec * 1000 <= 34ms` per page (one frame at 30fps)
+6. **Total duration**: Sum of `frameAlignedDurationMs` must be within 50ms of expected total
+7. **Subtitle timecodes**: Generated from cumulative `frameAlignedDurationMs` values (not audioDurationSec)
+8. **No display estimates in manifest**: Screen-displayed estimated durations are for UI only and must not be written to `manifest.json`
 
 ### Runtime Enforcement
 
-Invariants 1-3 are validated by `validateInvariants()` from `@slide-first/shared-types`.
-Invariants 4-6 are enforced at pipeline stage boundaries using ffprobe measurements.
-Invariant 7 is a development guideline.
+Invariants 1-5 are validated by `validateInvariants()` from `@slide-first/shared-types`.
+Invariant 6 is enforced at the video assembly stage boundary.
+Invariant 7 is enforced by the SRT generator in `@slide-first/core`.
+Invariant 8 is a development guideline.
 
 ### Tolerance Constants
 
 ```typescript
 import { TOLERANCES } from "@slide-first/shared-types";
 
-TOLERANCES.PAGE_DURATION_SEC  // 0.05 seconds
-TOLERANCES.TOTAL_DURATION_SEC // 0.2 seconds
+TOLERANCES.TOTAL_DURATION_MS  // 50 milliseconds (total video duration drift)
+TOLERANCES.FRAME_EXCESS_MS   // 34 milliseconds (per-page frame alignment excess)
 ```
 
 ## Implementation

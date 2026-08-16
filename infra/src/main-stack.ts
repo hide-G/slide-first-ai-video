@@ -6,8 +6,7 @@ import { MarpLambdaConstruct } from "../lib/marp-lambda-construct.js";
 import { PollyWorkerConstruct } from "../lib/polly-worker-construct.js";
 import { SlideGeneratorConstruct } from "../lib/slide-generator-construct.js";
 import { CaptionWorkerConstruct } from "../lib/caption-worker-construct.js";
-import { ClipWorkerConstruct } from "../lib/clip-worker-construct.js";
-import { ConcatWorkerConstruct } from "../lib/concat-worker-construct.js";
+import { MediaConvertWorkerConstruct } from "../lib/mediaconvert-worker-construct.js";
 import { RenderStateMachineConstruct } from "../lib/render-state-machine-construct.js";
 import { ApiConstruct } from "../lib/api-construct.js";
 import { DeliveryConstruct } from "../lib/delivery-construct.js";
@@ -80,21 +79,18 @@ export class MainStack extends cdk.Stack {
       projectBucket: storage.projectBucket,
     });
 
-    // Clip Worker Lambda: per-page video clip generation
-    const clipWorker = new ClipWorkerConstruct(this, "ClipWorker", {
-      productSlug: props.productSlug,
-      environment: props.envName,
-      projectBucket: storage.projectBucket,
-    });
+    // MediaConvert Worker Lambda: Video rendering via AWS MediaConvert
+    const mediaconvertWorker = new MediaConvertWorkerConstruct(
+      this,
+      "MediaConvertWorker",
+      {
+        productSlug: props.productSlug,
+        environment: props.envName,
+        projectBucket: storage.projectBucket,
+      },
+    );
 
-    // Concat Worker Lambda: final video concatenation
-    const concatWorker = new ConcatWorkerConstruct(this, "ConcatWorker", {
-      productSlug: props.productSlug,
-      environment: props.envName,
-      projectBucket: storage.projectBucket,
-    });
-
-    // 5-stage Render Pipeline State Machine
+    // 4-stage Render Pipeline State Machine (pages -> audio -> captions -> video)
     const renderStateMachine = new RenderStateMachineConstruct(
       this,
       "RenderSM",
@@ -105,8 +101,7 @@ export class MainStack extends cdk.Stack {
         marpLambda: marpLambda.handler,
         pollyWorkerLambda: pollyWorker.handler,
         captionWorkerLambda: captionWorker.handler,
-        clipWorkerLambda: clipWorker.handler,
-        concatWorkerLambda: concatWorker.handler,
+        mediaconvertWorkerLambda: mediaconvertWorker.handler,
       },
     );
 

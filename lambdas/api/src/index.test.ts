@@ -236,6 +236,40 @@ describe("API Router", () => {
     expect(body.source.kind).toBe("uploaded");
   });
 
+  it("rejects .pptx in POST /projects/{id}/source with PPTX_NOT_SUPPORTED", async () => {
+    mockDynamoSend.mockResolvedValueOnce({
+      Item: { projectId: "proj-001", userId: "user-123", status: "DRAFT" },
+    });
+
+    const event = makeEvent("POST", "/projects/proj-001/source", {
+      body: JSON.stringify({ kind: "uploaded", fileKey: "users/user-123/projects/proj-001/input/source.pptx", pageCount: 10 }),
+    });
+    const result = await handler(event, mockContext);
+
+    expect(result.statusCode).toBe(400);
+    const body = JSON.parse(result.body);
+    expect(body.error).toBe("PPTX_NOT_SUPPORTED");
+    expect(body.message).toContain("PowerPoint");
+    expect(body.message).toContain("PDF");
+  });
+
+  it("rejects .pptx in POST /projects/{id}/source-upload-url with PPTX_NOT_SUPPORTED", async () => {
+    mockDynamoSend.mockResolvedValueOnce({
+      Item: { projectId: "proj-001", userId: "user-123", status: "DRAFT" },
+    });
+
+    const event = makeEvent("POST", "/projects/proj-001/source-upload-url", {
+      body: JSON.stringify({ fileName: "slides.pptx", contentType: "application/vnd.openxmlformats-officedocument.presentationml.presentation" }),
+    });
+    const result = await handler(event, mockContext);
+
+    expect(result.statusCode).toBe(400);
+    const body = JSON.parse(result.body);
+    expect(body.error).toBe("PPTX_NOT_SUPPORTED");
+    expect(body.message).toContain("PowerPoint");
+    expect(body.message).toContain("PDF");
+  });
+
   it("routes PUT /projects/{id}/output (save output settings)", async () => {
     mockDynamoSend.mockResolvedValueOnce({
       Item: { projectId: "proj-001", userId: "user-123", status: "DRAFT" },

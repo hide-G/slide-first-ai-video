@@ -199,30 +199,6 @@ describe("MainStack - Lambda Functions", () => {
     });
   });
 
-  it("creates Clip Worker Lambda with 10240MB memory and 4096MB ephemeral storage", () => {
-    const template = createTestStack();
-
-    template.hasResourceProperties("AWS::Lambda::Function", {
-      FunctionName: "testapp-dev-clip-worker",
-      Runtime: "nodejs22.x",
-      MemorySize: 10240,
-      Timeout: 900,
-      EphemeralStorage: { Size: 4096 },
-    });
-  });
-
-  it("creates Concat Worker Lambda with 10240MB memory and 4096MB ephemeral storage", () => {
-    const template = createTestStack();
-
-    template.hasResourceProperties("AWS::Lambda::Function", {
-      FunctionName: "testapp-dev-concat-worker",
-      Runtime: "nodejs22.x",
-      MemorySize: 10240,
-      Timeout: 900,
-      EphemeralStorage: { Size: 4096 },
-    });
-  });
-
   it("creates Slide Generator Lambda with 1024MB memory", () => {
     const template = createTestStack();
 
@@ -323,7 +299,7 @@ describe("MainStack - API Gateway", () => {
 });
 
 describe("MainStack - Step Functions", () => {
-  it("creates 5-stage Render Pipeline state machine", () => {
+  it("creates 4-stage Render Pipeline state machine", () => {
     const template = createTestStack();
 
     template.hasResourceProperties("AWS::StepFunctions::StateMachine", {
@@ -337,7 +313,7 @@ describe("MainStack - Step Functions", () => {
     template.resourceCountIs("AWS::StepFunctions::StateMachine", 1);
   });
 
-  it("render pipeline has single Task states for audio and clip processing (no Map states)", () => {
+  it("render pipeline has single Task states for audio processing (no Map states)", () => {
     const template = createTestStack();
 
     const stateMachines = template.findResources(
@@ -356,15 +332,13 @@ describe("MainStack - Step Functions", () => {
       stateMachines[smKeys[0]].Properties.DefinitionString["Fn::Join"][1];
     const definitionStr = definition.join("");
 
-    // Verify single Task states for audio and clips (no Map)
+    // Verify single Task states for audio (no Map)
     expect(definitionStr).toContain("AudioStage");
-    expect(definitionStr).toContain("ClipsStage");
     // Map states should NOT exist
     expect(definitionStr).not.toContain("AudioMapPages");
-    expect(definitionStr).not.toContain("ClipsMapPages");
   });
 
-  it("render pipeline includes all 5 stages: pages, audio, captions, clips, concat", () => {
+  it("render pipeline includes all 4 stages: pages, audio, captions, video", () => {
     const template = createTestStack();
 
     const stateMachines = template.findResources(
@@ -384,8 +358,7 @@ describe("MainStack - Step Functions", () => {
     expect(definitionStr).toContain("PagesStage");
     expect(definitionStr).toContain("AudioStage");
     expect(definitionStr).toContain("CaptionsStage");
-    expect(definitionStr).toContain("ClipsStage");
-    expect(definitionStr).toContain("ConcatStage");
+    expect(definitionStr).toContain("VideoStage");
   });
 });
 
@@ -557,32 +530,6 @@ describe("MainStack - Environment Variables", () => {
 
     template.hasResourceProperties("AWS::Lambda::Function", {
       FunctionName: "testapp-dev-caption-worker",
-      Environment: {
-        Variables: Match.objectLike({
-          BUCKET_NAME: Match.anyValue(),
-        }),
-      },
-    });
-  });
-
-  it("Clip Worker has BUCKET_NAME env var", () => {
-    const template = createTestStack();
-
-    template.hasResourceProperties("AWS::Lambda::Function", {
-      FunctionName: "testapp-dev-clip-worker",
-      Environment: {
-        Variables: Match.objectLike({
-          BUCKET_NAME: Match.anyValue(),
-        }),
-      },
-    });
-  });
-
-  it("Concat Worker has BUCKET_NAME env var", () => {
-    const template = createTestStack();
-
-    template.hasResourceProperties("AWS::Lambda::Function", {
-      FunctionName: "testapp-dev-concat-worker",
       Environment: {
         Variables: Match.objectLike({
           BUCKET_NAME: Match.anyValue(),

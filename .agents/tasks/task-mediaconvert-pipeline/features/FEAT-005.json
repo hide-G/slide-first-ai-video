@@ -1,0 +1,29 @@
+{
+  "id": "FEAT-005",
+  "type": "feat",
+  "description": "Tasks 10-12: marp-render implementation - generateDeck action with Marp Core + Chromium + JP font, pages stage with browser-based pdf.js rasterization, and proper packaging with assets and pruned node_modules.",
+  "status": "completed",
+  "steps": [
+    "TASK 10 - marp-render generateDeck: Completely rewrite lambdas/marp-render/src/index.ts. Remove pdftoppm/libreoffice usage. Implement two actions dispatched by event: (a) action:'generateDeck' - uses @marp-team/marp-core to generate HTML from markdown, then uses puppeteer-core + @sparticuz/chromium to render PDF, PNG per page, and PPTX. Chromium launch follows design doc section 2.2 exactly (chromium.args, chromium.executablePath(), chromium.headless, defaultViewport 1920x1080). Japanese font via base64 @font-face CSS using noto-sans-jp-japanese-400-normal.woff2 loaded from assets/noto-sans-jp.woff2. Include font verification check (measureText comparison). Call document.fonts.ready after setContent. (b) stage:'pages' - PDF rasterization using browser-based pdf.js (task 11).",
+    "TASK 11 - marp-render pages stage (pdf.js rasterization): In the 'pages' handler, download PDF from S3, then use Chromium + pdf.js to rasterize each page to 1920x1080 PNG. Use page.evaluate() to run pdf.js inside Chromium browser context. Load pdf.min.mjs and pdf.worker.min.mjs from assets/ directory via Blob URLs. Calculate scale = 1920 / viewport.width (where viewport at scale=1 is typically 1440pt wide for 1920px PDF). Output PNG per page, upload to S3.",
+    "TASK 12 - marp-render packaging: (a) Update lambdas/marp-render/package.json: add dependencies @sparticuz/chromium@133.0.0, puppeteer-core@24.2.0, @marp-team/marp-core@4.1.0, pdfjs-dist@4.10.38, @fontsource/noto-sans-jp@5.2.5. (b) Change build script to: esbuild bundle src/index.ts -> dist/index.js with --external:@sparticuz/chromium --external:puppeteer-core --format=cjs --platform=node --target=node22. (c) Add a post-build step that: copies assets (noto-sans-jp.woff2, pdf.min.mjs, pdf.worker.min.mjs) into dist/assets/, copies node_modules/@sparticuz/chromium and node_modules/puppeteer-core (and their deps) into dist/node_modules/, removes @napi-rs (36MB), @fontsource (82MB), pdfjs-dist (35MB), and all *.map files from dist/node_modules/. (d) Update infra/lib/marp-lambda-construct.ts to use Code.fromAsset('../lambdas/marp-render/dist') - it already does this. Ensure the construct has correct memory (3008MB), ephemeral storage (2048MB), timeout (5min).",
+    "Run pnpm install && pnpm build && pnpm test",
+    "Commit with message: 'feat: task 10-12 marp-render with Marp Core, pdf.js rasterization, proper packaging'"
+  ],
+  "acceptance_criteria": [
+    "lambdas/marp-render/dist/ contains index.js, assets/ (3 files: noto-sans-jp.woff2, pdf.min.mjs, pdf.worker.min.mjs), and node_modules/ (with @sparticuz/chromium and puppeteer-core)",
+    "No @napi-rs, @fontsource, pdfjs-dist, or *.map files in dist/node_modules/",
+    "Total dist/ size under 200MB",
+    "No pdftoppm or libreoffice references in marp-render code",
+    "marp-render handler dispatches on action:'generateDeck' and stage:'pages'",
+    "pnpm build and pnpm test pass"
+  ],
+  "verification": [
+    "source $NVM_DIR/nvm.sh && cd /projects/sandbox/slide-first-ai-video && pnpm install && pnpm build && pnpm test",
+    "ls /projects/sandbox/slide-first-ai-video/lambdas/marp-render/dist/",
+    "ls /projects/sandbox/slide-first-ai-video/lambdas/marp-render/dist/assets/ 2>/dev/null",
+    "du -sh /projects/sandbox/slide-first-ai-video/lambdas/marp-render/dist/ 2>/dev/null"
+  ],
+  "blocked_reason": null,
+  "findings": "Tasks 10-12 completed successfully. marp-render fully rewritten: (1) Handler dispatches on action:'generateDeck' (Marp Core + Chromium for PDF/PNG/PPTX) and stage:'pages' (pdf.js browser rasterization). (2) Chromium launch config matches design doc section 2.2 exactly. (3) JP font loaded as base64 @font-face CSS with measureText verification. (4) pdf.js runs in browser context via Blob URLs as specified. (5) PPTX generated via pptxgenjs with slide images. (6) Build uses esbuild with externals for @sparticuz/chromium and puppeteer-core, copies assets (3 files: noto-sans-jp.woff2, pdf.min.mjs, pdf.worker.min.mjs) and pruned node_modules (27 packages, no @napi-rs/@fontsource/pdfjs-dist/@puppeteer-browsers/zod/@types). (7) dist size: 98MB, well under 200MB limit. (8) Zero @slide-first/ requires remain in bundle. (9) No pdftoppm/libreoffice/ffmpeg references. (10) CDK synth passes, asset correctly contains index.js + assets/ + node_modules/. All 294 tests pass."
+}

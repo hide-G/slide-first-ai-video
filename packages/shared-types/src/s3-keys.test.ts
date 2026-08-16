@@ -5,7 +5,6 @@ import {
   pageImageKey,
   audioKey,
   captionsSrtKey,
-  clipKey,
   outputVideoKey,
   manifestKey,
   projectPrefix,
@@ -69,15 +68,15 @@ describe("S3 key builders", () => {
   });
 
   describe("audioKey", () => {
-    it("generates correct audio key", () => {
+    it("generates correct audio key with .wav extension", () => {
       expect(audioKey(params, 1)).toBe(
-        "users/u_0001/projects/p_0001/audio/page-001.mp3"
+        "users/u_0001/projects/p_0001/audio/page-001.wav"
       );
     });
 
     it("handles page 5", () => {
       expect(audioKey(params, 5)).toBe(
-        "users/u_0001/projects/p_0001/audio/page-005.mp3"
+        "users/u_0001/projects/p_0001/audio/page-005.wav"
       );
     });
   });
@@ -86,14 +85,6 @@ describe("S3 key builders", () => {
     it("generates correct captions key", () => {
       expect(captionsSrtKey(params)).toBe(
         "users/u_0001/projects/p_0001/captions/captions.srt"
-      );
-    });
-  });
-
-  describe("clipKey", () => {
-    it("generates correct clip key", () => {
-      expect(clipKey(params, 3)).toBe(
-        "users/u_0001/projects/p_0001/clips/page-003.mp4"
       );
     });
   });

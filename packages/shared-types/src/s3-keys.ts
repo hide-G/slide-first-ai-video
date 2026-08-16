@@ -46,19 +46,13 @@ export function pageImageKey(params: S3KeyParams, pageNumber: number): string {
 // --- Audio ---
 
 export function audioKey(params: S3KeyParams, pageNumber: number): string {
-  return `${prefix(params)}/audio/page-${padPage(pageNumber)}.mp3`;
+  return `${prefix(params)}/audio/page-${padPage(pageNumber)}.wav`;
 }
 
 // --- Captions ---
 
 export function captionsSrtKey(params: S3KeyParams): string {
   return `${prefix(params)}/captions/captions.srt`;
-}
-
-// --- Clips ---
-
-export function clipKey(params: S3KeyParams, pageNumber: number): string {
-  return `${prefix(params)}/clips/page-${padPage(pageNumber)}.mp4`;
 }
 
 // --- Output ---

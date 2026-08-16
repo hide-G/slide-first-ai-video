@@ -4,11 +4,11 @@
  * For each page in the manifest:
  * 1. Apply lexicon substitutions to script text
  * 2. Wrap in SSML (mode='ssml') or XML-escape then wrap (mode='plain')
- * 3. Call Polly SynthesizeSpeech (OutputFormat: mp3)
+ * 3. Call Polly SynthesizeSpeech (OutputFormat: pcm)
  * 4. Record x-amzn-RequestCharacters for cost
- * 5. Upload MP3 to S3
- * 6. Measure duration with ffprobe
- * 7. Write audioDurationSec to manifest page entry
+ * 5. Calculate audioDurationSec from PCM byte length
+ * 6. Prepend WAV header and upload to S3
+ * 7. Compute frameAlignedDurationMs and write to manifest page entry
  *
  * Uses script hash check: skip synthesis if hash unchanged and audio exists (section 12).
  */
@@ -21,15 +21,10 @@ import {
   type LanguageCode,
 } from "@aws-sdk/client-polly";
 import { S3Client, GetObjectCommand, PutObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { writeFile, mkdir } from "node:fs/promises";
-import { join } from "node:path";
 import type { Manifest, LexiconEntry } from "@slide-first/shared-types";
 import { audioKey } from "@slide-first/shared-types";
-import { computeScriptHash } from "@slide-first/core";
+import { computeScriptHash, calculatePcmDurationSec, createWavHeader, alignToFrameFromSec } from "@slide-first/core";
 
-const execFileAsync = promisify(execFile);
 const pollyClient = new PollyClient({});
 const s3Client = new S3Client({});
 
@@ -71,8 +66,6 @@ export const handler = async (event: AudioEvent): Promise<AudioResult> => {
     await writeManifest(bucket, manifestKey, manifest);
 
     const keyParams = { userId: manifest.userId, projectId: manifest.projectId };
-    const tmpDir = "/tmp/audio-work";
-    await mkdir(tmpDir, { recursive: true });
 
     // 3. Process each page
     for (const page of manifest.pages) {
@@ -98,12 +91,12 @@ export const handler = async (event: AudioEvent): Promise<AudioResult> => {
         // (In production, hash would be stored in manifest; simplified here)
       }
 
-      // Call Polly SynthesizeSpeech
+      // Call Polly SynthesizeSpeech with PCM output
       const response = await pollyClient.send(
         new SynthesizeSpeechCommand({
           Text: ssml,
           TextType: "ssml",
-          OutputFormat: "mp3",
+          OutputFormat: "pcm",
           VoiceId: manifest.voice.id as VoiceId,
           Engine: manifest.voice.engine as Engine,
           SampleRate: manifest.voice.sampleRate,
@@ -115,35 +108,35 @@ export const handler = async (event: AudioEvent): Promise<AudioResult> => {
       const requestChars = response.RequestCharacters ?? 0;
       totalCharacters += requestChars;
 
-      // Get audio buffer
-      const audioBuffer = await streamToBuffer(response.AudioStream);
+      // Get PCM buffer
+      const pcmBuffer = await streamToBuffer(response.AudioStream);
 
-      // Upload MP3 to S3
+      // Calculate audioDurationSec from PCM byte length
+      // Polly PCM is 16-bit signed mono at the configured sample rate
+      const sampleRate = parseInt(manifest.voice.sampleRate, 10);
+      const audioDurationSec = calculatePcmDurationSec(pcmBuffer.length, sampleRate, 16, 1);
+
+      // Prepend WAV header
+      const wavHeader = createWavHeader(pcmBuffer.length, sampleRate, 16, 1);
+      const wavBuffer = Buffer.concat([wavHeader, pcmBuffer]);
+
+      // Upload WAV to S3
       await s3Client.send(
         new PutObjectCommand({
           Bucket: bucket,
           Key: s3Key,
-          Body: audioBuffer,
-          ContentType: "audio/mpeg",
+          Body: wavBuffer,
+          ContentType: "audio/wav",
         }),
       );
 
-      // Measure duration with ffprobe
-      const tmpPath = join(tmpDir, `page-${String(page.pageNumber).padStart(3, "0")}.mp3`);
-      await writeFile(tmpPath, audioBuffer);
-      const { stdout } = await execFileAsync("ffprobe", [
-        "-v", "error",
-        "-show_entries", "format=duration",
-        "-of", "csv=p=0",
-        tmpPath,
-      ]);
-      const duration = parseFloat(stdout.trim());
-      if (isNaN(duration) || duration <= 0) {
-        throw new Error(`Failed to measure duration for page ${page.pageNumber}`);
-      }
+      // Compute frameAlignedDurationMs
+      const fps = manifest.output.fps;
+      const frameAlignedDurationMs = alignToFrameFromSec(audioDurationSec, fps);
 
       // Update manifest page entry
-      page.audioDurationSec = duration;
+      page.audioDurationSec = audioDurationSec;
+      page.frameAlignedDurationMs = frameAlignedDurationMs;
     }
 
     // 4. Update stage to done

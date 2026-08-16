@@ -1,0 +1,30 @@
+{
+  "id": "FEAT-002",
+  "type": "feat",
+  "description": "Tasks 4-6: polly-worker PCM+WAV output, contract update (frameAlignedDurationMs, .wav audioKey, tolerance revision), caption-worker use frameAlignedDurationMs for timecodes.",
+  "status": "completed",
+  "steps": [
+    "TASK 4 - polly-worker PCM+WAV: Modify lambdas/polly-worker/src/index.ts to: (a) Change Polly OutputFormat from 'mp3' to 'pcm'. (b) Remove ffprobe duration measurement (execFile call). (c) Calculate audioDurationSec from PCM byte length: pcmBytes / (2 * 24000) since Polly PCM is 16-bit mono at 24000Hz. (d) Prepend WAV header using createWavHeader from @slide-first/core before uploading. (e) Change ContentType to 'audio/wav'. (f) Change S3 key extension from .mp3 to .wav (update audioKey usage). Remove the import of execFile/promisify.",
+    "TASK 5 - Contract update: (a) In packages/shared-types/src/manifest.ts, add 'frameAlignedDurationMs' as z.number().nonnegative() to PageSchema. Remove 'clipKey' from PageSchema (clips stage is being removed). (b) Change StagesSchema: remove 'clips' and 'concat', add 'video' stage. (c) In packages/shared-types/src/s3-keys.ts, change audioKey extension from .mp3 to .wav. Remove clipKey function. (d) Update packages/shared-types/src/invariants.ts: change TOLERANCES to match new spec (TOTAL_DURATION_MS: 50 for overall, FRAME_EXCESS_MS: 34 for per-page). Update validateInvariants to check frameAlignedDurationMs >= audioDurationSec*1000 and excess <= 34ms. (e) Update packages/shared-types/src/index.ts exports accordingly. (f) Update packages/core/src/s3-keys.ts if it re-exports clipKey - remove it. (g) Update docs/contract.md with new schema (frameAlignedDurationMs, .wav audioKey, video stage instead of clips+concat, new tolerances, MediaConvert cost entry). (h) Update all tests that reference the old schema (manifest.test.ts, invariants.test.ts, s3-keys.test.ts).",
+    "TASK 6 - caption-worker frameAlignedDurationMs: Modify packages/core/src/captions/srt-generator.ts to use frameAlignedDurationMs (in ms) for timecodes instead of audioDurationSec. Update the Page type usage: timings should be computed from cumulative frameAlignedDurationMs values. Update packages/core/src/duration.ts to add a function for frame-aligned timing calculations. Update the caption-worker handler to pass frameAlignedDurationMs to the SRT generator. Update related tests.",
+    "Fix all downstream compilation errors from schema changes (polly-worker test, caption-worker test, clip-worker references, concat-worker references, api handler references to stages.clips/concat, renderer-ffmpeg usage in concat-worker, etc.)",
+    "Run pnpm build && pnpm test",
+    "Commit with message: 'feat: task 4-6 polly WAV output, contract update, caption timecodes from frameAlignedDurationMs'"
+  ],
+  "acceptance_criteria": [
+    "polly-worker no longer calls ffprobe or execFile",
+    "polly-worker outputs .wav files and calculates audioDurationSec from PCM bytes",
+    "PageSchema includes frameAlignedDurationMs, no longer includes clipKey",
+    "StagesSchema has pages/audio/captions/video (not clips/concat)",
+    "audioKey() returns .wav extension",
+    "TOLERANCES updated: TOTAL_DURATION_MS=50, FRAME_EXCESS_MS=34",
+    "SRT generator uses frameAlignedDurationMs for timecodes",
+    "docs/contract.md is updated",
+    "pnpm build and pnpm test pass"
+  ],
+  "verification": [
+    "source $NVM_DIR/nvm.sh && cd /projects/sandbox/slide-first-ai-video && pnpm build && pnpm test"
+  ],
+  "blocked_reason": null,
+  "findings": "All tasks 4-6 completed. Build and all tests pass (326 tests across 14 packages). Key changes: (1) polly-worker now outputs PCM and prepends WAV header, calculates audioDurationSec from pcmBytes/(2*24000), computes frameAlignedDurationMs via alignToFrameFromSec. (2) PageSchema now has frameAlignedDurationMs, no clipKey. StagesSchema has pages/audio/captions/video (not clips/concat). audioKey returns .wav. TOLERANCES: TOTAL_DURATION_MS=50, FRAME_EXCESS_MS=34. (3) SRT generator uses cumulative frameAlignedDurationMs for timecodes. (4) clip-worker and concat-worker stubbed as deprecated (will be removed in FEAT-003). (5) API StartRenderSchema updated to video stage. (6) docs/contract.md fully updated."
+}

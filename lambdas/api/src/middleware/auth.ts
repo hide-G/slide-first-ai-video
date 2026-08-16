@@ -7,6 +7,7 @@
 import type { APIGatewayProxyEvent } from "aws-lambda";
 import { UnauthorizedError, ForbiddenError } from "./errors.js";
 import { getProjectByUser } from "../db/index.js";
+import type { ProjectRecord } from "../db/projects.js";
 
 /**
  * Extract authenticated Cognito user's sub claim.
@@ -36,9 +37,11 @@ export function requireAuth(event: APIGatewayProxyEvent): string {
 export async function verifyProjectOwnership(
   projectId: string,
   userId: string,
-): Promise<void> {
+): Promise<ProjectRecord> {
   const project = await getProjectByUser(userId, projectId);
   if (!project) {
     throw new ForbiddenError("Project not found or access denied");
   }
+  // 取得したレコードを返す。呼び出し側が再度読み直さずに使えるようにする
+  return project;
 }

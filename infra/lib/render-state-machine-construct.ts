@@ -124,10 +124,31 @@ export class RenderStateMachineConstruct extends Construct {
       backoffRate: 2,
     });
 
-    // Chain stages: pages -> audio -> captions -> video
-    pagesStage.next(audioStage);
-    audioStage.next(captionsStage);
-    captionsStage.next(videoStage);
+    /*
+      各工程は失敗しても例外を投げず { success: false, error } を返す実装のため、
+      Lambdaの呼び出し自体は成功扱いになる。判定を入れないと、
+      工程1が失敗しても実行全体が SUCCEEDED になり「完了したのに動画が無い」状態になる。
+      工程ごとに success を確認し、false なら実行を失敗させる。
+    */
+    const renderFailed = new sfn.Fail(this, "RenderFailed", {
+      error: "StageFailed",
+      cause:
+        "A render stage returned success=false. Check the stage result in the execution output and the Lambda logs.",
+    });
+
+    const renderSucceeded = new sfn.Succeed(this, "RenderSucceeded");
+
+    /** 工程の結果を確認し、失敗なら実行を止める */
+    const checkStage = (id: string, resultPath: string, onSuccess: sfn.IChainable) =>
+      new sfn.Choice(this, id, { comment: "Fail the execution when the stage reports success=false" })
+        .when(sfn.Condition.booleanEquals(`${resultPath}.Payload.success`, false), renderFailed)
+        .otherwise(onSuccess);
+
+    // Chain stages: pages -> audio -> captions -> video（各工程の後に成否を確認する）
+    videoStage.next(checkStage("CheckVideoStage", "$.videoResult", renderSucceeded));
+    captionsStage.next(checkStage("CheckCaptionsStage", "$.captionsResult", videoStage));
+    audioStage.next(checkStage("CheckAudioStage", "$.audioResult", captionsStage));
+    pagesStage.next(checkStage("CheckPagesStage", "$.pagesResult", audioStage));
 
     // Choice state to route to the correct starting stage based on startFromStage
     const stageChoice = new sfn.Choice(this, "ChooseStartStage", {

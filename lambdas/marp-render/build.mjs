@@ -66,12 +66,15 @@ const distNodeModules = join(DIST, "node_modules");
 await mkdir(distNodeModules, { recursive: true });
 
 // Exclusion list - packages already bundled by esbuild or not needed at runtime
+// 注意: puppeteer-core が宣言する依存は除外しないこと。
+// 以前 @puppeteer/browsers を「バイナリのダウンロード専用だから不要」として除外したところ、
+// puppeteer-core の ChromeLauncher.js が読み込み時に import するため実行時に次のエラーになった。
+//   Cannot find package '@puppeteer/browsers' imported from .../puppeteer/node/ChromeLauncher.js
+// 除外して良いのは、esbuildがバンドル済みのものと、実行時に一切読み込まれないものだけ。
 const excludePatterns = [
   "@napi-rs",
   "@fontsource",
   "pdfjs-dist",
-  // @puppeteer/browsers is only for downloading browser binaries; @sparticuz/chromium provides the binary
-  "@puppeteer/browsers",
   // zod is already bundled by esbuild (via @slide-first/shared-types)
   "zod",
   // @types packages are not needed at runtime
@@ -200,6 +203,34 @@ if (symlinks.length > 0) {
     console.warn(`  ${s}`);
   }
 }
+
+// 5.5 同梱した各パッケージの宣言済み依存が dist/node_modules に揃っているかを検証する
+// 依存漏れは実行時の Cannot find package で初めて分かるため、ビルド時に落とす
+const missingDeps = [];
+for (const pkgName of collected) {
+  const pkgJsonPath = join(distNodeModules, pkgName, "package.json");
+  if (!existsSync(pkgJsonPath)) continue;
+
+  const pkgJson = JSON.parse(await readFile(pkgJsonPath, "utf-8"));
+  // optionalDependencies は欠けても動く前提なので対象外
+  for (const dep of Object.keys(pkgJson.dependencies || {})) {
+    if (shouldExclude(dep)) continue;
+    if (!existsSync(join(distNodeModules, dep))) {
+      missingDeps.push(`${pkgName} -> ${dep}`);
+    }
+  }
+}
+
+if (missingDeps.length > 0) {
+  console.error(`[marp-render] ERROR: ${missingDeps.length} 件の依存が同梱されていません`);
+  for (const m of missingDeps) {
+    console.error(`  ${m}`);
+  }
+  console.error("[marp-render] 除外リストを見直すか、収集処理を修正してください");
+  process.exit(1);
+}
+
+console.log(`[marp-render] dependency check passed (${collected.size} packages)`);
 
 // 6. Report final size
 // du はWindowsに存在しないため、Nodeでサイズを集計する（開発機はWindows 10のためシェル依存を避ける）

@@ -112,6 +112,12 @@ export async function updateProject(
   };
 
   for (const [key, value] of Object.entries(updates)) {
+    // 未指定の項目は更新対象から外す。
+    // undefined を渡すと DynamoDB 側で値が落ち、参照だけが残った
+    // UpdateExpression になって "expression attribute value ... is not defined" で失敗する。
+    // voice のような任意項目を省略した呼び出しがこれに該当した。
+    if (value === undefined) continue;
+
     updateExpression += `, #${key} = :${key}`;
     expressionNames[`#${key}`] = key;
     expressionValues[`:${key}`] = value;

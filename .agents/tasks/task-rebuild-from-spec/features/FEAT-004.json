@@ -2,7 +2,7 @@
   "id": "FEAT-004",
   "type": "feat",
   "description": "Rebuild the API Lambda to match section 5's 11 endpoints exactly, implement stage orchestration with partial retry (Task #8-9 from spec), and update CDK infrastructure to match the new architecture. Remove teaser-related constructs and add new stage workers.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Rewrite lambdas/api/src/index.ts routes to match section 5 exactly: POST /projects, POST /projects/{id}/outline, PUT /projects/{id}/outline, POST /projects/{id}/deck, POST /projects/{id}/source-upload-url, POST /projects/{id}/source, PUT /projects/{id}/output, POST /projects/{id}/narration, PUT /projects/{id}/narration, POST /projects/{id}/renders, GET /projects/{id}/renders/{renderId}, GET /projects/{id}/renders/{renderId}/artifacts",
     "Rewrite lambdas/api/src/handlers/ to implement each endpoint: projects.ts (create/list), outline.ts (generate via Bedrock, save confirmed), deck.ts (generate slides via Marp), source.ts (presigned URL + register), output.ts (save output settings), narration.ts (generate AI drafts, save confirmed + lexicon), renders.ts (start render pipeline, get status, get artifacts with presigned URLs)",
@@ -35,5 +35,5 @@
     "source /root/.nvm/nvm.sh && cd /projects/sandbox/slide-first-ai-video && pnpm test"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "All 273 tests pass (46 shared-types + 47 core + 23 frontend + 22 renderer-ffmpeg + 3 marp-render + 5 polly-worker + 5 caption-worker + 5 clip-worker + 8 concat-worker + 50 slide-generator + 15 api + 44 infra). CDK synth works via test suite Template.fromStack. Removed content-state-machine-construct and its approval queue since the new architecture uses direct API triggers instead of callback token pattern. API has 13 protected methods (the spec's 11 + GET /projects for list + extra verb variants for outline/narration). pnpm-lock.yaml updated to add @aws-sdk/client-lambda."
 }

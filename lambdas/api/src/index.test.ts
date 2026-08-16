@@ -287,9 +287,27 @@ describe("API Router", () => {
   });
 
   it("routes POST /projects/{id}/renders (start render)", async () => {
-    mockDynamoSend.mockResolvedValueOnce({
-      Item: { projectId: "proj-001", userId: "user-123", status: "NARRATION_CONFIRMED" },
-    });
+    // レンダリング開始前に manifest.json をS3へ書き出すため、
+    // source と narration が揃ったプロジェクトを2回返す（所有者確認と manifest 組み立て）
+    const readyProject = {
+      projectId: "proj-001",
+      userId: "user-123",
+      status: "NARRATION_CONFIRMED",
+      contentLanguage: "ja-JP",
+      source: {
+        kind: "uploaded",
+        fileKey: "users/user-123/projects/proj-001/input/source.pdf",
+        pageCount: 2,
+      },
+      output: { aspect: "16:9", fps: 30, captions: "burn" },
+      narration: [
+        { pageNumber: 1, mode: "plain", text: "1ページ目の原稿です。" },
+        { pageNumber: 2, mode: "plain", text: "2ページ目の原稿です。" },
+      ],
+      lexicon: [],
+    };
+
+    mockDynamoSend.mockResolvedValueOnce({ Item: readyProject });
     mockDynamoSend.mockResolvedValueOnce({});
 
     const event = makeEvent("POST", "/projects/proj-001/renders", {
@@ -301,6 +319,30 @@ describe("API Router", () => {
     const body = JSON.parse(result.body);
     expect(body.renderId).toBe("01TESTROUTERID00001");
     expect(body.status).toBe("RUNNING");
+  });
+
+  it("rejects starting a render when narration is missing", async () => {
+    const incompleteProject = {
+      projectId: "proj-001",
+      userId: "user-123",
+      status: "OUTPUT_CONFIGURED",
+      source: {
+        kind: "uploaded",
+        fileKey: "users/user-123/projects/proj-001/input/source.pdf",
+        pageCount: 2,
+      },
+      // narration が無い状態
+    };
+
+    mockDynamoSend.mockResolvedValueOnce({ Item: incompleteProject });
+
+    const event = makeEvent("POST", "/projects/proj-001/renders", {
+      body: JSON.stringify({}),
+    });
+    const result = await handler(event, mockContext);
+
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body).error).toBe("NARRATION_REQUIRED");
   });
 
   it("routes GET /projects/{id}/renders/{renderId} (render status)", async () => {

@@ -1,6 +1,8 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { Amplify } from "aws-amplify";
+// 画面デザイン。mockup/assets/mockup.css と同じクラス設計を使う
+import "./styles.css";
 import { getAmplifyConfig } from "./amplify-config.js";
 import { configureApiClient } from "./api/client.js";
 import { App } from "./App.js";

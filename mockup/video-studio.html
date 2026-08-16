@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>動画作成 | Slide-First AI Video</title>
+    <link rel="stylesheet" href="assets/mockup.css" />
+  </head>
+  <body data-page="video-studio" data-i18n-title="video.title">
+    <a class="skip-link" href="#main" data-i18n="common.skip">本文へ移動</a>
+
+    <header class="app-header">
+      <a class="brand" href="home.html">
+        <span class="brand-mark" aria-hidden="true">SF</span>
+        <span class="brand-text">
+          <strong>Slide-First AI Video</strong>
+          <span class="brand-sub" data-i18n="common.brandSub">スライドを正本に、音声と字幕で動画化</span>
+        </span>
+      </a>
+      <div class="header-right">
+        <span class="badge badge-mock" data-i18n="common.mockBadge">画面モックアップ</span>
+        <div class="lang-toggle" role="group" data-i18n-aria-label="common.uiLang" aria-label="UI表示言語">
+          <button type="button" class="lang-btn" data-lang="ja" aria-pressed="true">日本語</button>
+          <button type="button" class="lang-btn" data-lang="en" aria-pressed="false">English</button>
+        </div>
+        <div class="user-menu">
+          <span class="avatar" aria-hidden="true">HG</span>
+          <a class="header-link" href="home.html" data-i18n="common.home">ホーム</a>
+          <a class="header-link" href="index.html" data-i18n="common.logout">ログアウト</a>
+        </div>
+      </div>
+    </header>
+
+    <main id="main" class="page">
+      <div class="page-head">
+        <h1 data-i18n="video.heading">③ 資料から動画を作る</h1>
+        <p data-i18n="video.lead">
+          PDFまたはPowerPointを起点に、ナレーションと字幕を付けて書き出します。スライド作成機能を使わず、単独で利用できます。
+        </p>
+      </div>
+
+      <ol class="steps" data-steps>
+        <li aria-current="step">
+          <button type="button" class="step-btn" data-step-target="step-1">
+            <span class="step-num">1</span><span data-i18n="video.stepA">素材の読み込み</span>
+          </button>
+        </li>
+        <li>
+          <button type="button" class="step-btn" data-step-target="step-2">
+            <span class="step-num">2</span><span data-i18n="video.stepB">出力設定</span>
+          </button>
+        </li>
+        <li>
+          <button type="button" class="step-btn" data-step-target="step-3">
+            <span class="step-num">3</span><span data-i18n="video.stepC">ナレーションと読み方</span>
+          </button>
+        </li>
+        <li>
+          <button type="button" class="step-btn" data-step-target="step-4">
+            <span class="step-num">4</span><span data-i18n="video.stepD">生成と書き出し</span>
+          </button>
+        </li>
+      </ol>
+
+      <!-- ステップ1: 素材 -->
+      <section class="step-panel" id="step-1" data-step-panel>
+        <div class="card" id="handoff-card" hidden>
+          <h2 data-i18n="video.handoffTitle">スライド作成から引き継ぎました</h2>
+          <p class="card-sub">kiro-crew-introduction-ja / deck.pdf</p>
+          <p class="note" data-i18n="video.handoffNote">
+            スライド作成で確定した内容をそのまま読み込みました。差し替える場合は下からアップロードしてください。
+          </p>
+        </div>
+
+        <div class="card">
+          <h2 data-i18n="video.uploadTitle">資料をアップロードする</h2>
+          <p class="card-sub" data-i18n="video.uploadSub">PDF、または PowerPoint（.pptx）に対応します。</p>
+
+          <button
+            type="button"
+            id="drop-zone"
+            class="btn btn-ghost btn-block"
+            style="flex-direction: column; padding: 34px; border-style: dashed"
+            data-mock-toast="video.toastUpload"
+          >
+            <strong data-i18n="video.dropTitle">ここにファイルをドラッグ、またはクリックして選択</strong>
+            <span class="hint" data-i18n="video.dropHint">1ファイル、最大50ページを想定</span>
+          </button>
+
+          <p class="note note-warn" style="margin-top: 16px" data-i18n="video.independentNote">
+            この画面は単独で使えます。他のツールで作ったスライドをここへアップロードして動画化できます。
+          </p>
+        </div>
+
+        <div class="card">
+          <h2 data-i18n="video.pagesTitle">読み込んだページ</h2>
+          <p class="card-sub" data-i18n="video.pagesSub">ページ数と、後で作るナレーションの数を一致させます。</p>
+          <div class="thumb-grid" id="source-thumbs"></div>
+        </div>
+
+        <div class="step-actions">
+          <a class="btn btn-ghost spacer" href="home.html" data-i18n="common.backHome">ホームへ戻る</a>
+          <button type="button" class="btn btn-primary" data-step-target="step-2" data-i18n="video.toSettings">出力設定へ進む</button>
+        </div>
+      </section>
+
+      <!-- ステップ2: 出力設定 -->
+      <section class="step-panel" id="step-2" data-step-panel hidden>
+        <div class="split-preview">
+          <div>
+            <div class="card">
+              <h2 data-i18n="video.sizeTitle">画面サイズ</h2>
+              <p class="card-sub" data-i18n="video.sizeSub">配信先に合わせて選びます。同じ原稿から別サイズを追加で書き出せます。</p>
+
+              <fieldset class="option-cards">
+                <legend class="visually-hidden" data-i18n="video.sizeLegend">出力する画面サイズ</legend>
+                <label class="option-card">
+                  <input type="radio" name="aspect" value="16:9" data-aspect="16 / 9" data-dim="1920×1080 / 16:9" checked />
+                  <span>
+                    <strong data-i18n="video.size169">横型 16:9</strong>
+                    <span data-i18n="video.size169Hint">1920×1080 / 通常の動画・研修資料</span>
+                  </span>
+                </label>
+                <label class="option-card">
+                  <input type="radio" name="aspect" value="9:16" data-aspect="9 / 16" data-dim="1080×1920 / 9:16" data-vertical="true" />
+                  <span>
+                    <strong data-i18n="video.size916">縦型 9:16</strong>
+                    <span data-i18n="video.size916Hint">1080×1920 / ショート動画・リール</span>
+                  </span>
+                </label>
+                <label class="option-card">
+                  <input type="radio" name="aspect" value="1:1" data-aspect="1 / 1" data-dim="1080×1080 / 1:1" />
+                  <span>
+                    <strong data-i18n="video.size11">正方形 1:1</strong>
+                    <span data-i18n="video.size11Hint">1080×1080 / タイムライン投稿</span>
+                  </span>
+                </label>
+                <label class="option-card">
+                  <input type="radio" name="aspect" value="4:5" data-aspect="4 / 5" data-dim="1080×1350 / 4:5" data-vertical="true" />
+                  <span>
+                    <strong data-i18n="video.size45">縦長 4:5</strong>
+                    <span data-i18n="video.size45Hint">1080×1350 / 縦長タイムライン</span>
+                  </span>
+                </label>
+              </fieldset>
+
+              <div id="vertical-options" hidden>
+                <p class="note" data-i18n="video.verticalNote">
+                  縦型では16:9のスライドがそのままでは小さくなります。配置と拡大方法を指定してください。
+                </p>
+                <div class="grid-2">
+                  <div class="field">
+                    <label for="v-layout" data-i18n="video.vLayout">スライドの配置</label>
+                    <select id="v-layout">
+                      <option data-i18n="video.vLayout1">上寄せ（下に字幕）</option>
+                      <option data-i18n="video.vLayout2">中央（上下に余白）</option>
+                      <option data-i18n="video.vLayout3">拡大して切り抜き</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label for="v-bg" data-i18n="video.vBg">余白の色</label>
+                    <select id="v-bg">
+                      <option data-i18n="video.vBg1">白</option>
+                      <option data-i18n="video.vBg2">濃紺</option>
+                      <option data-i18n="video.vBg3">スライドの色に合わせる</option>
+                    </select>
+                  </div>
+                </div>
+                <label class="checkbox-row">
+                  <input type="checkbox" id="safe-area" />
+                  <span data-i18n="video.safeArea">UIに隠れない範囲（セーフエリア）を表示する</span>
+                </label>
+              </div>
+
+              <div class="field">
+                <label for="fps" data-i18n="video.fps">フレームレート</label>
+                <select id="fps">
+                  <option selected>30 fps</option>
+                  <option>60 fps</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="card">
+              <h2 data-i18n="video.subtitleTitle">字幕</h2>
+              <fieldset class="option-cards">
+                <legend class="visually-hidden" data-i18n="video.subtitleLegend">字幕の出力方法</legend>
+                <label class="option-card">
+                  <input type="radio" name="subtitle" value="burn" checked />
+                  <span>
+                    <strong data-i18n="video.subBurn">映像に焼き込む</strong>
+                    <span data-i18n="video.subBurnHint">どの環境でも同じ見た目になります</span>
+                  </span>
+                </label>
+                <label class="option-card">
+                  <input type="radio" name="subtitle" value="srt" />
+                  <span>
+                    <strong data-i18n="video.subSrt">字幕ファイルを別に出す</strong>
+                    <span data-i18n="video.subSrtHint">SRTを同時に書き出します</span>
+                  </span>
+                </label>
+                <label class="option-card">
+                  <input type="radio" name="subtitle" value="none" />
+                  <span>
+                    <strong data-i18n="video.subNone">字幕なし</strong>
+                    <span data-i18n="video.subNoneHint">音声のみで構成します</span>
+                  </span>
+                </label>
+              </fieldset>
+
+              <div class="grid-2">
+                <div class="field">
+                  <label for="sub-size" data-i18n="video.subSize">文字サイズ</label>
+                  <select id="sub-size">
+                    <option data-i18n="video.subSizeS">小</option>
+                    <option selected data-i18n="video.subSizeM">中</option>
+                    <option data-i18n="video.subSizeL">大（ショート動画向け）</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="sub-pos" data-i18n="video.subPos">表示位置</label>
+                  <select id="sub-pos">
+                    <option selected data-i18n="video.subPosBottom">下</option>
+                    <option data-i18n="video.subPosCenter">中央下</option>
+                    <option data-i18n="video.subPosTop">上</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <h2 data-i18n="video.voiceTitle">読み上げ音声</h2>
+              <div class="grid-2">
+                <div class="field">
+                  <label for="voice-id" data-i18n="video.voiceId">音声</label>
+                  <select id="voice-id">
+                    <option selected>Takumi（ja-JP）</option>
+                    <option>Kazuha（ja-JP）</option>
+                    <option>Tomoko（ja-JP）</option>
+                    <option>Joanna（en-US）</option>
+                    <option>Matthew（en-US）</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="voice-engine" data-i18n="video.engine">エンジン</label>
+                  <select id="voice-engine">
+                    <option selected>neural</option>
+                    <option>standard</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="sample-rate" data-i18n="video.sampleRate">サンプルレート</label>
+                  <select id="sample-rate">
+                    <option selected>24000 Hz</option>
+                    <option>22050 Hz</option>
+                    <option>16000 Hz</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="speech-rate" data-i18n="video.speechRate">読み上げ速度</label>
+                  <select id="speech-rate">
+                    <option>90%</option>
+                    <option selected data-i18n="video.rateDefault">100%（既定）</option>
+                    <option>110%</option>
+                  </select>
+                </div>
+              </div>
+              <button type="button" class="btn btn-ghost btn-sm" data-mock-toast="video.toastVoiceTest" data-i18n="video.voiceTest">
+                この音声で短い文を試聴する
+              </button>
+              <p class="hint" data-i18n="video.voiceTestHint">
+                音声とエンジンの組み合わせによって使えない指定があります。本番の生成前に短い文で確認できます。
+              </p>
+            </div>
+          </div>
+
+          <div class="card preview-col">
+            <h3 data-i18n="video.previewTitle">プレビュー</h3>
+            <div class="preview-wrap">
+              <div class="preview-frame" id="preview-frame" style="--preview-aspect: 16 / 9">
+                <div class="preview-slide" data-i18n="video.previewSlide">スライド表示領域</div>
+                <p class="preview-caption" data-i18n="video.previewCaption">ここに字幕が表示されます</p>
+              </div>
+              <p class="preview-meta" id="preview-dim">1920×1080 / 16:9</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="step-actions">
+          <button type="button" class="btn btn-ghost spacer" data-step-target="step-1" data-i18n="common.back">戻る</button>
+          <button type="button" class="btn btn-primary" data-step-target="step-3" data-i18n="video.toNarration">ナレーション案を作る</button>
+        </div>
+      </section>
+
+      <!-- ステップ3: ナレーションとSSML -->
+      <section class="step-panel" id="step-3" data-step-panel hidden>
+        <div class="card">
+          <h2 data-i18n="video.narrTitle">ナレーションを確認・編集する</h2>
+          <p class="card-sub" data-i18n="video.narrSub">
+            生成AIがページごとに原稿案を作成しました。読み上げる文章は、ここで確定した内容が使われます。
+          </p>
+
+          <div class="split">
+            <div>
+              <h3 data-i18n="video.pageListTitle">ページ</h3>
+              <ul class="page-list" id="narr-list"></ul>
+              <p class="hint" id="total-est"></p>
+            </div>
+
+            <div>
+              <div class="inline-row" style="justify-content: space-between; margin-bottom: 8px">
+                <h3 style="margin: 0" id="narr-index-label">ページ 1</h3>
+                <span class="badge badge-ai" data-i18n="video.aiDraft">生成AIの下書き</span>
+              </div>
+
+              <fieldset class="option-cards" style="grid-template-columns: repeat(2, minmax(0, 1fr))">
+                <legend data-i18n="video.inputMode">原稿の記述方法</legend>
+                <label class="option-card">
+                  <input type="radio" name="narr-mode" value="plain" checked />
+                  <span>
+                    <strong data-i18n="video.modePlain">通常の文章</strong>
+                    <span data-i18n="video.modePlainHint">そのまま読み上げます</span>
+                  </span>
+                </label>
+                <label class="option-card">
+                  <input type="radio" name="narr-mode" value="ssml" />
+                  <span>
+                    <strong data-i18n="video.modeSsml">SSMLで細かく指定</strong>
+                    <span data-i18n="video.modeSsmlHint">読み方・振り仮名・間を指定します</span>
+                  </span>
+                </label>
+              </fieldset>
+
+              <div class="field">
+                <label for="narr-text" data-i18n="video.script">読み上げ原稿</label>
+                <div class="toolbar" id="ssml-toolbar" role="group" aria-label="SSML" data-i18n-aria-label="video.ssmlToolbar">
+                  <button type="button" disabled data-ssml-tag="sub" data-ssml-wrap='<sub alias="ヨミカタ">|</sub>' data-i18n="video.ssmlSub">読み替え</button>
+                  <button type="button" disabled data-ssml-tag="sub" data-ssml-wrap='<sub alias="ふりがな">|</sub>' data-i18n="video.ssmlRuby">振り仮名</button>
+                  <button type="button" disabled data-ssml-tag="phoneme" data-ssml-wrap='<phoneme alphabet="x-sampa" ph="">|</phoneme>' data-i18n="video.ssmlPhoneme">発音記号</button>
+                  <button type="button" disabled data-ssml-tag="say-as" data-ssml-wrap='<say-as interpret-as="characters">|</say-as>' data-i18n="video.ssmlSpell">1文字ずつ読む</button>
+                  <button type="button" disabled data-ssml-tag="break" data-ssml-insert='<break time="400ms"/>' data-i18n="video.ssmlBreak">間を入れる</button>
+                  <button type="button" disabled data-ssml-tag="prosody" data-ssml-wrap='<prosody rate="95%">|</prosody>' data-i18n="video.ssmlRate">速度</button>
+                  <button type="button" disabled data-ssml-tag="emphasis" data-ssml-wrap='<emphasis level="moderate">|</emphasis>' data-i18n="video.ssmlEmphasis">強調</button>
+                  <button type="button" id="cheatsheet-open" disabled aria-expanded="false" aria-controls="ssml-cheatsheet" data-i18n="video.cheatsheetOpen">SSMLチートシート</button>
+                </div>
+                <textarea id="narr-text" class="code" rows="10"></textarea>
+                <div class="counter">
+                  <span id="char-count">0 文字</span>
+                  <span id="est-sec">推定 0.0 秒</span>
+                </div>
+                <span class="hint" data-i18n="video.estHint">
+                  推定時間の目安です。実際の尺は音声を生成したあとに実測値で確定します。
+                </span>
+                <p class="hint" id="audio-cost-line"></p>
+              </div>
+
+              <p class="note note-warn" id="ssml-note" hidden data-i18n="video.ssmlNote">
+                振り仮名は読み替えタグで指定します。音声とエンジンの組み合わせによって使えないタグがあるため、試聴で確認してください。
+              </p>
+              <p class="hint" id="ssml-availability" hidden></p>
+
+              <div class="inline-row">
+                <button type="button" class="btn btn-ghost btn-sm" data-mock-toast="video.toastPreviewAudio" data-i18n="video.previewAudio">この原稿を試聴する</button>
+                <button type="button" class="btn btn-ghost btn-sm" data-mock-toast="video.toastRegenScript" data-i18n="video.regenScript">AIに再提案させる</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2 data-i18n="video.dictTitle">読み方の辞書（資料全体に適用）</h2>
+          <p class="card-sub" data-i18n="video.dictSub">
+            繰り返し出る英単語や固有名詞は、ページごとに書かずに辞書で統一します。
+          </p>
+          <table class="table">
+            <thead>
+              <tr>
+                <th data-i18n="video.dictWord">表記</th>
+                <th data-i18n="video.dictRead">読み方</th>
+                <th data-i18n="video.dictMethod">指定方法</th>
+                <th><span class="visually-hidden" data-i18n="home.thAction">操作</span></th>
+              </tr>
+            </thead>
+            <tbody id="dict-body">
+              <tr>
+                <td><input type="text" value="Kiro Crew" data-i18n-aria-label="video.dictWord" aria-label="表記" /></td>
+                <td><input type="text" value="キロクルー" data-i18n-aria-label="video.dictRead" aria-label="読み方" /></td>
+                <td>
+                  <select data-i18n-aria-label="video.dictMethod" aria-label="指定方法">
+                    <option selected data-i18n="video.dictSubTag">読み替え</option>
+                    <option data-i18n="video.dictPhonemeTag">発音記号</option>
+                    <option data-i18n="video.dictSpellTag">1文字ずつ</option>
+                  </select>
+                </td>
+                <td><button type="button" class="btn btn-danger btn-sm" data-remove-row data-i18n="common.remove">削除</button></td>
+              </tr>
+              <tr>
+                <td><input type="text" value="SSML" data-i18n-aria-label="video.dictWord" aria-label="表記" /></td>
+                <td><input type="text" value="エスエスエムエル" data-i18n-aria-label="video.dictRead" aria-label="読み方" /></td>
+                <td>
+                  <select data-i18n-aria-label="video.dictMethod" aria-label="指定方法">
+                    <option selected data-i18n="video.dictSubTag">読み替え</option>
+                    <option data-i18n="video.dictPhonemeTag">発音記号</option>
+                    <option data-i18n="video.dictSpellTag">1文字ずつ</option>
+                  </select>
+                </td>
+                <td><button type="button" class="btn btn-danger btn-sm" data-remove-row data-i18n="common.remove">削除</button></td>
+              </tr>
+              <tr>
+                <td><input type="text" value="PR" data-i18n-aria-label="video.dictWord" aria-label="表記" /></td>
+                <td><input type="text" value="プルリクエスト" data-i18n-aria-label="video.dictRead" aria-label="読み方" /></td>
+                <td>
+                  <select data-i18n-aria-label="video.dictMethod" aria-label="指定方法">
+                    <option selected data-i18n="video.dictSubTag">読み替え</option>
+                    <option data-i18n="video.dictPhonemeTag">発音記号</option>
+                    <option data-i18n="video.dictSpellTag">1文字ずつ</option>
+                  </select>
+                </td>
+                <td><button type="button" class="btn btn-danger btn-sm" data-remove-row data-i18n="common.remove">削除</button></td>
+              </tr>
+            </tbody>
+          </table>
+          <button type="button" class="btn btn-ghost btn-sm" id="dict-add" style="margin-top: 12px" data-i18n="video.dictAdd">行を追加</button>
+        </div>
+
+        <div class="step-actions">
+          <button type="button" class="btn btn-ghost spacer" data-step-target="step-2" data-i18n="common.back">戻る</button>
+          <button type="button" class="btn btn-primary" data-step-target="step-4" data-i18n="video.generate">動画を生成する</button>
+        </div>
+      </section>
+
+      <!-- ステップ4: 生成と完成 -->
+      <section class="step-panel" id="step-4" data-step-panel hidden>
+        <div class="card">
+          <h2 data-i18n="video.jobTitle">生成の進行状況</h2>
+          <p class="card-sub" data-i18n="video.jobSub">工程ごとに進みます。途中で失敗した場合は、その工程だけを再実行します。</p>
+
+          <ol class="progress-list" id="progress-list">
+            <li data-state="wait"><span class="state" aria-hidden="true">1</span><span data-i18n="video.job1">ページを画像に変換</span></li>
+            <li data-state="wait"><span class="state" aria-hidden="true">2</span><span data-i18n="video.job2">ナレーション音声を合成</span></li>
+            <li data-state="wait"><span class="state" aria-hidden="true">3</span><span data-i18n="video.job3">音声の長さを実測して字幕を作成</span></li>
+            <li data-state="wait"><span class="state" aria-hidden="true">4</span><span data-i18n="video.job4">ページごとの動画を作成</span></li>
+            <li data-state="wait"><span class="state" aria-hidden="true">5</span><span data-i18n="video.job5">全ページを連結して書き出し</span></li>
+          </ol>
+
+          <div class="bar"><span id="progress-bar"></span></div>
+          <p class="hint" id="progress-text" data-i18n="video.jobWaiting">開始待ち</p>
+        </div>
+
+        <div class="card" id="result-card" hidden>
+          <h2 data-i18n="video.resultTitle">動画ができました</h2>
+          <div class="split-result">
+            <div class="preview-wrap">
+              <div class="preview-frame" id="result-preview" style="--preview-aspect: 16 / 9">
+                <div class="preview-slide" data-i18n="video.resultPreview">完成した動画のプレビュー</div>
+                <p class="preview-caption" data-i18n="video.resultCaption">字幕つきで再生されます</p>
+              </div>
+              <p class="preview-meta" id="result-dim">1920×1080 / 16:9</p>
+            </div>
+
+            <div>
+              <table class="table" style="margin-bottom: 16px">
+                <tbody>
+                  <tr>
+                    <th data-i18n="video.resFile">ファイル</th>
+                    <td>kiro-crew-introduction-ja.mp4</td>
+                  </tr>
+                  <tr>
+                    <th data-i18n="video.resPages">ページ数</th>
+                    <td data-i18n="video.res5pages">5ページ</td>
+                  </tr>
+                  <tr>
+                    <th data-i18n="video.resDuration">長さ</th>
+                    <td>2:19（139.6秒）</td>
+                  </tr>
+                  <tr>
+                    <th data-i18n="video.resVideo">映像</th>
+                    <td>H.264 / 30fps</td>
+                  </tr>
+                  <tr>
+                    <th data-i18n="video.resAudio">音声</th>
+                    <td>AAC / Takumi / neural</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <div class="inline-row">
+                <button type="button" class="btn btn-primary btn-sm" data-mock-toast="common.toastMockFile" data-i18n="video.dlMp4">MP4をダウンロード</button>
+                <button type="button" class="btn btn-ghost btn-sm" data-mock-toast="common.toastMockFile" data-i18n="video.dlSrt">字幕（SRT）</button>
+                <button type="button" class="btn btn-ghost btn-sm" data-mock-toast="common.toastMockFile" data-i18n="video.dlAudio">音声ファイル</button>
+              </div>
+
+              <p class="note" style="margin-top: 16px" data-i18n="video.reuseNote">
+                原稿を変えていない場合、音声を作り直さずに別サイズの動画を書き出せます。
+              </p>
+              <button type="button" class="btn btn-ghost btn-sm" data-mock-toast="video.toastVertical" data-i18n="video.makeVertical">
+                同じ原稿で縦型（1080×1920）も書き出す
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" id="cost-card" hidden>
+          <div class="inline-row" style="justify-content: space-between">
+            <h2 style="margin: 0" data-i18n="cost.sectionTitle">工程別の費用</h2>
+            <span class="badge badge-ai" data-i18n="cost.estimateBadge">推定</span>
+          </div>
+          <p class="card-sub" data-i18n="cost.sectionSub">
+            使用量から計算した推定額です。実際の請求額は、あとで集計して照合します。
+          </p>
+
+          <table class="table">
+            <thead>
+              <tr>
+                <th data-i18n="cost.thStage">工程</th>
+                <th data-i18n="cost.thService">サービス</th>
+                <th data-i18n="cost.thUsage">使用量</th>
+                <th class="num" data-i18n="cost.thEstimate">推定コスト</th>
+              </tr>
+            </thead>
+            <tbody id="cost-body"></tbody>
+            <tfoot>
+              <tr>
+                <th colspan="3" data-i18n="cost.total">推定合計</th>
+                <td class="num" id="cost-total">-</td>
+              </tr>
+            </tfoot>
+          </table>
+
+          <p class="note" style="margin-top: 16px" data-i18n="cost.actualPending">
+            実績値: 集計待ち（反映まで最大24時間）
+          </p>
+          <p class="hint" data-i18n="cost.unitNote">
+            表示している単価は画面確認用のサンプルです。実装時はAWS Price List APIから取得した単価を使い、計算に使った単価の取得日を記録します。
+          </p>
+          <p class="hint" data-i18n="cost.disclaimer">
+            無料利用枠は考慮していません。日本円は請求時のレートによって変わります。
+          </p>
+        </div>
+
+        <div class="step-actions">
+          <button type="button" class="btn btn-ghost spacer" data-step-target="step-3" data-i18n="video.backNarration">ナレーション編集に戻る</button>
+          <a class="btn btn-ghost" href="home.html" data-i18n="common.backHome">ホームへ戻る</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <span data-i18n="common.footer">Slide-First AI Video 画面モックアップ / 通信・生成処理は行いません</span>
+    </footer>
+
+    <!-- 移動できるSSMLチートシート。編集中も参照できるよう、画面をふさがない小窓にする。 -->
+    <section
+      class="cheatsheet"
+      id="ssml-cheatsheet"
+      role="dialog"
+      aria-modal="false"
+      aria-labelledby="cheatsheet-title"
+      hidden
+    >
+      <div class="cheatsheet-head" id="cheatsheet-head" tabindex="0" aria-describedby="cheatsheet-move-help">
+        <h2 id="cheatsheet-title">
+          <span data-i18n="video.cheatsheetTitle">Amazon Polly SSML チートシート</span>
+          <span class="engine-label" id="cheatsheet-engine"></span>
+        </h2>
+        <button type="button" class="cheatsheet-close" id="cheatsheet-close" data-i18n="video.cheatsheetClose">
+          閉じる
+        </button>
+      </div>
+
+      <div class="cheatsheet-body">
+        <p id="cheatsheet-move-help" class="hint" style="margin-top: 0" data-i18n="video.cheatsheetMoveHelp">
+          見出しをドラッグすると移動できます。見出しを選んで矢印キーでも移動できます。右下をドラッグすると大きさを変えられます。
+        </p>
+
+        <table class="table">
+          <thead>
+            <tr>
+              <th data-i18n="video.cheatsheetThPurpose">用途</th>
+              <th data-i18n="video.cheatsheetThTag">タグと書き方</th>
+              <th data-i18n="video.cheatsheetThSupport">対応</th>
+              <th><span class="visually-hidden" data-i18n="video.cheatsheetThInsert">挿入</span></th>
+            </tr>
+          </thead>
+          <tbody id="cheatsheet-body"></tbody>
+        </table>
+
+        <p class="note note-warn" style="margin-top: 14px" data-i18n="video.cheatsheetNote1">
+          ニューラル音声では、prosody の volume と rate は使えますが、pitch は使えません。標準音声ではすべて使えます。
+        </p>
+        <p class="note note-warn" data-i18n="video.cheatsheetNote2">
+          say-as の characters（1文字ずつ読む）は、ニューラル音声では該当の文だけ標準音声で合成されます。課金はニューラル音声として行われます。
+        </p>
+        <p class="note" data-i18n="video.cheatsheetNote3">
+          対応していないタグを使うとエラーになります。生成前に試聴で確認してください。
+        </p>
+        <p class="hint" data-i18n="video.cheatsheetSource">
+          出典: Amazon Polly 公式ドキュメント「Supported SSML tags」
+        </p>
+      </div>
+    </section>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+    <script src="assets/i18n.js"></script>
+    <script src="assets/mockup.js"></script>
+  </body>
+</html>

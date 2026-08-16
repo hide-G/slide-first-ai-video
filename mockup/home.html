@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ホーム | Slide-First AI Video</title>
+    <link rel="stylesheet" href="assets/mockup.css" />
+  </head>
+  <body data-page="home" data-i18n-title="home.title">
+    <a class="skip-link" href="#main" data-i18n="common.skip">本文へ移動</a>
+
+    <header class="app-header">
+      <a class="brand" href="home.html">
+        <span class="brand-mark" aria-hidden="true">SF</span>
+        <span class="brand-text">
+          <strong>Slide-First AI Video</strong>
+          <span class="brand-sub" data-i18n="common.brandSub">スライドを正本に、音声と字幕で動画化</span>
+        </span>
+      </a>
+      <div class="header-right">
+        <span class="badge badge-mock" data-i18n="common.mockBadge">画面モックアップ</span>
+        <div class="lang-toggle" role="group" data-i18n-aria-label="common.uiLang" aria-label="UI表示言語">
+          <button type="button" class="lang-btn" data-lang="ja" aria-pressed="true">日本語</button>
+          <button type="button" class="lang-btn" data-lang="en" aria-pressed="false">English</button>
+        </div>
+        <div class="user-menu">
+          <span class="avatar" aria-hidden="true">HG</span>
+          <span>hide-g</span>
+          <a class="header-link" href="index.html" data-i18n="common.logout">ログアウト</a>
+        </div>
+      </div>
+    </header>
+
+    <main id="main" class="page">
+      <div class="page-head">
+        <h1 data-i18n="home.heading">何をつくりますか</h1>
+        <p data-i18n="home.lead">
+          スライド生成と動画生成は独立した機能です。本アプリ以外で作ったPDFやPowerPointを、動画生成へ直接アップロードできます。
+        </p>
+      </div>
+
+      <div class="entry-grid" style="margin-bottom: 24px">
+        <section class="entry-card">
+          <span class="kicker" data-i18n="home.card1Kicker">機能 ②</span>
+          <h2 data-i18n="home.card1Title">生成AIでスライドを作る</h2>
+          <p data-i18n="home.card1Body">
+            文章や参考文献のURLを渡すと、生成AIがスライドの骨子を作ります。内容を確認・加筆修正してからMarpでスライドを生成します。
+          </p>
+          <ul>
+            <li data-i18n="home.card1Point1">スライドの言語を日本語・英語から選択</li>
+            <li data-i18n="home.card1Point2">骨子をレビューして文章を編集</li>
+            <li data-i18n="home.card1Point3">Markdown・PDF・PowerPointで書き出し</li>
+          </ul>
+          <a class="btn btn-primary" href="slide-studio.html" data-i18n="home.card1Cta">スライド作成をはじめる</a>
+        </section>
+
+        <section class="entry-card">
+          <span class="kicker" data-i18n="home.card2Kicker">機能 ③</span>
+          <h2 data-i18n="home.card2Title">資料から動画を作る</h2>
+          <p data-i18n="home.card2Body">
+            PDFまたはPowerPointをアップロードし、ナレーションと字幕を付けて動画にします。スライド生成を経由せず、単独で使えます。
+          </p>
+          <ul>
+            <li data-i18n="home.card2Point1">横型・縦型・正方形の出力サイズを選択</li>
+            <li data-i18n="home.card2Point2">ページごとのナレーション案を自動作成</li>
+            <li data-i18n="home.card2Point3">SSMLで読み方と振り仮名を指定</li>
+          </ul>
+          <a class="btn btn-primary" href="video-studio.html" data-i18n="home.card2Cta">動画作成をはじめる</a>
+        </section>
+      </div>
+
+      <section class="card">
+        <h2 data-i18n="home.recentTitle">最近のプロジェクト</h2>
+        <p class="card-sub" data-i18n="home.recentSub">表示内容はモックアップ用のサンプルです。</p>
+        <table class="table">
+          <thead>
+            <tr>
+              <th data-i18n="home.thName">名前</th>
+              <th data-i18n="home.thKind">種別</th>
+              <th data-i18n="home.thSize">出力</th>
+              <th data-i18n="home.thUpdated">更新</th>
+              <th class="num" data-i18n="cost.recentCost">推定コスト</th>
+              <th data-i18n="home.thState">状態</th>
+              <th><span class="visually-hidden" data-i18n="home.thAction">操作</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>kiro-crew-introduction-ja</td>
+              <td data-i18n="home.kindVideo">動画</td>
+              <td>1920×1080 / 2:19</td>
+              <td>2026-08-15</td>
+              <td class="num">0.0412 USD</td>
+              <td><span class="badge badge-done" data-i18n="home.stateDone">完了</span></td>
+              <td><a class="btn btn-ghost btn-sm" href="video-studio.html" data-i18n="common.open">開く</a></td>
+            </tr>
+            <tr>
+              <td>kiro-crew-shorts-vertical</td>
+              <td data-i18n="home.kindVideo">動画</td>
+              <td>1080×1920 / 0:58</td>
+              <td>2026-08-15</td>
+              <td class="num">0.0188 USD</td>
+              <td><span class="badge badge-run" data-i18n="home.stateRunning">生成中</span></td>
+              <td><a class="btn btn-ghost btn-sm" href="video-studio.html" data-i18n="common.open">開く</a></td>
+            </tr>
+            <tr>
+              <td>bedrock-web-search-overview</td>
+              <td data-i18n="home.kindSlide">スライド</td>
+              <td data-i18n="home.slides6">6ページ</td>
+              <td>2026-08-14</td>
+              <td class="num">0.0067 USD</td>
+              <td><span class="badge badge-draft" data-i18n="home.stateDraft">下書き</span></td>
+              <td><a class="btn btn-ghost btn-sm" href="slide-studio.html" data-i18n="common.open">開く</a></td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <details class="spec">
+        <summary data-i18n="home.specTitle">この画面構成で想定しているAWS側の処理（設計メモ）</summary>
+        <ul>
+          <li data-i18n="home.spec1"><strong>①ログイン</strong>：Amazon Cognito。以降の入力・成果物はユーザー単位で分離します。</li>
+          <li data-i18n="home.spec2"><strong>②骨子生成</strong>：Amazon Bedrockでスライド骨子のテキストを生成。ユーザーが確定した骨子だけをスライド生成へ渡します。</li>
+          <li data-i18n="home.spec3"><strong>②スライド生成</strong>：Marpでスライドを生成し、Markdown・PDF・PowerPointをS3へ保存します。</li>
+          <li data-i18n="home.spec4"><strong>③素材受け取り</strong>：PDF・PowerPointをS3へアップロードし、ページ画像へ変換します。</li>
+          <li data-i18n="home.spec5"><strong>③音声と字幕</strong>：ナレーション原稿はBedrockで下書きし、確定原稿をAmazon Pollyで音声化。字幕は同じ原稿から生成します。</li>
+          <li data-i18n="home.spec6"><strong>③動画結合</strong>：ページ画像・音声・字幕を結合。ページごとの尺は音声の実測時間に合わせます。</li>
+          <li data-i18n="home.spec7"><strong>進行管理</strong>：工程を分けて実行し、失敗した工程だけを再実行できる構成にします。</li>
+        </ul>
+      </details>
+    </main>
+
+    <footer class="app-footer">
+      <span data-i18n="common.footer">Slide-First AI Video 画面モックアップ / 通信・生成処理は行いません</span>
+    </footer>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+    <script src="assets/i18n.js"></script>
+    <script src="assets/mockup.js"></script>
+  </body>
+</html>

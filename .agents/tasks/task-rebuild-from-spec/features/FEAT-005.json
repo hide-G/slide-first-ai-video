@@ -2,7 +2,7 @@
   "id": "FEAT-005",
   "type": "feat",
   "description": "Rebuild the React frontend to match all 4 mockup screens exactly (Tasks #10-13 from spec). Implement slide studio (3-step), video studio (4-step), hub page with cost column, and login page. Include SSML cheatsheet movable panel, output size options, subtitle modes, and cost display.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Rewrite frontend/src/App.tsx with React Router routes: / (login), /home (hub), /slide-studio (slide creation), /video-studio (video creation)",
     "Rewrite frontend/src/pages/LoginPage.tsx matching mockup/index.html: email/password form, SSO button, language toggle (ja/en), show password checkbox, forgot password and signup links",
@@ -38,5 +38,5 @@
     "source /root/.nvm/nvm.sh && cd /projects/sandbox/slide-first-ai-video && pnpm build && pnpm test"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "Simplified i18n system from complex type-safe MessageCatalog with formatter functions to a simpler flat key-value approach (Record<MessageKey, string>) since the mockups only use simple strings. Removed aws-amplify/ui-react Authenticator from LoginPage in favor of a custom login form matching the mockup. Removed authenticator.ts dependency from LanguageContext. All 291 tests pass across the workspace (41 frontend). The old Layout component was removed since the protected layout is now inline in App.tsx with the correct header structure from mockups."
 }

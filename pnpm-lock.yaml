@@ -204,6 +204,9 @@ importers:
       '@types/node':
         specifier: 22.15.21
         version: 22.15.21
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
       eslint:
         specifier: 9.28.0
         version: 9.28.0

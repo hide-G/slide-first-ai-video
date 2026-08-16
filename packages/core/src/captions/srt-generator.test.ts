@@ -25,21 +25,21 @@ describe("SRT generator", () => {
   });
 
   describe("generateSrt", () => {
-    it("generates SRT from pages with cumulative timing", () => {
+    it("generates SRT from pages with cumulative frameAlignedDurationMs timing", () => {
       const pages = [
         {
           pageNumber: 1,
-          audioDurationSec: 5.0,
+          frameAlignedDurationMs: 5000,
           script: { mode: "plain" as const, text: "First page narration" },
         },
         {
           pageNumber: 2,
-          audioDurationSec: 3.5,
+          frameAlignedDurationMs: 3534,
           script: { mode: "plain" as const, text: "Second page narration" },
         },
         {
           pageNumber: 3,
-          audioDurationSec: 4.2,
+          frameAlignedDurationMs: 4200,
           script: { mode: "plain" as const, text: "Third page narration" },
         },
       ];
@@ -48,8 +48,8 @@ describe("SRT generator", () => {
 
       expect(srt).toBe(
         "1\n00:00:00,000 --> 00:00:05,000\nFirst page narration\n\n" +
-          "2\n00:00:05,000 --> 00:00:08,500\nSecond page narration\n\n" +
-          "3\n00:00:08,500 --> 00:00:12,700\nThird page narration\n",
+          "2\n00:00:05,000 --> 00:00:08,534\nSecond page narration\n\n" +
+          "3\n00:00:08,534 --> 00:00:12,734\nThird page narration\n",
       );
     });
 
@@ -61,17 +61,17 @@ describe("SRT generator", () => {
       const pages = [
         {
           pageNumber: 1,
-          audioDurationSec: 3.0,
+          frameAlignedDurationMs: 3000,
           script: { mode: "plain" as const, text: "Hello" },
         },
         {
           pageNumber: 2,
-          audioDurationSec: 2.0,
+          frameAlignedDurationMs: 2000,
           script: { mode: "plain" as const, text: "" },
         },
         {
           pageNumber: 3,
-          audioDurationSec: 4.0,
+          frameAlignedDurationMs: 4000,
           script: { mode: "plain" as const, text: "World" },
         },
       ];
@@ -89,7 +89,7 @@ describe("SRT generator", () => {
       const pages = [
         {
           pageNumber: 1,
-          audioDurationSec: 10.0,
+          frameAlignedDurationMs: 10000,
           script: { mode: "plain" as const, text: "Solo page" },
         },
       ];
@@ -103,7 +103,7 @@ describe("SRT generator", () => {
       const pages = [
         {
           pageNumber: 1,
-          audioDurationSec: 2.0,
+          frameAlignedDurationMs: 2000,
           script: { mode: "plain" as const, text: "  trimmed  " },
         },
       ];

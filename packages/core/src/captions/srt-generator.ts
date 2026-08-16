@@ -1,7 +1,7 @@
 /**
- * SRT (SubRip) caption generator for the new pipeline.
+ * SRT (SubRip) caption generator for the pipeline.
  *
- * Generates captions from ManifestPage[] using cumulative audioDurationSec
+ * Generates captions from ManifestPage[] using cumulative frameAlignedDurationMs
  * to calculate timing. Each page gets one SRT entry with its script text.
  *
  * SRT format:
@@ -11,7 +11,7 @@
  */
 
 import type { Page } from "@slide-first/shared-types";
-import { calculatePageTimings } from "../duration.js";
+import { calculateFrameAlignedTimings } from "../duration.js";
 
 /**
  * Format seconds to SRT timestamp: HH:MM:SS,mmm
@@ -34,18 +34,18 @@ export function formatSrtTimestamp(seconds: number): string {
 /**
  * Generate SRT content from manifest pages.
  *
- * Each page becomes one subtitle entry, timed from its cumulative start
- * to its cumulative end (start + audioDurationSec).
+ * Each page becomes one subtitle entry, timed using cumulative
+ * frameAlignedDurationMs values (converted to seconds for SRT timestamps).
  */
 export function generateSrt(
-  pages: Pick<Page, "pageNumber" | "audioDurationSec" | "script">[],
+  pages: Pick<Page, "pageNumber" | "frameAlignedDurationMs" | "script">[],
 ): string {
   if (pages.length === 0) {
     return "";
   }
 
-  const timings = calculatePageTimings(
-    pages.map((p) => ({ pageNumber: p.pageNumber, audioDurationSec: p.audioDurationSec })),
+  const timings = calculateFrameAlignedTimings(
+    pages.map((p) => ({ pageNumber: p.pageNumber, frameAlignedDurationMs: p.frameAlignedDurationMs })),
   );
 
   const blocks: string[] = [];

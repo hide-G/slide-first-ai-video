@@ -5,7 +5,6 @@ export {
   pageImageKey,
   audioKey,
   captionsSrtKey,
-  clipKey,
   outputVideoKey,
   manifestKey,
   projectPrefix,
@@ -19,9 +18,11 @@ export type { S3KeyParams } from "./s3-keys.js";
 export {
   totalDurationSec,
   calculatePageTimings,
+  calculateFrameAlignedTimings,
+  totalFrameAlignedDurationMs,
   pageStartSec,
 } from "./duration.js";
-export type { PageTiming } from "./duration.js";
+export type { PageTiming, FrameAlignedTiming } from "./duration.js";
 
 // Idempotency
 export { generateIdempotencyKey, isValidIdempotencyKey } from "./idempotency.js";

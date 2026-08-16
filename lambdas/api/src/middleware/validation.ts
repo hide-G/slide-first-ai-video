@@ -90,7 +90,7 @@ export const SaveNarrationSchema = z.object({
 });
 
 export const StartRenderSchema = z.object({
-  startFromStage: z.enum(["pages", "audio", "captions", "clips", "concat"]).optional(),
+  startFromStage: z.enum(["pages", "audio", "captions", "video"]).optional(),
 });
 
 export type CreateProjectInput = z.infer<typeof CreateProjectSchema>;

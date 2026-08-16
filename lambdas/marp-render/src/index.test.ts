@@ -60,11 +60,11 @@ const sampleManifest: Manifest = {
   },
   lexicon: [],
   pages: [
-    { pageNumber: 1, imageKey: "pages/page-001.png", script: { mode: "plain", text: "Hello" }, audioKey: "audio/page-001.mp3", audioDurationSec: 0, clipKey: "clips/page-001.mp4" },
-    { pageNumber: 2, imageKey: "pages/page-002.png", script: { mode: "plain", text: "World" }, audioKey: "audio/page-002.mp3", audioDurationSec: 0, clipKey: "clips/page-002.mp4" },
-    { pageNumber: 3, imageKey: "pages/page-003.png", script: { mode: "plain", text: "End" }, audioKey: "audio/page-003.mp3", audioDurationSec: 0, clipKey: "clips/page-003.mp4" },
+    { pageNumber: 1, imageKey: "pages/page-001.png", script: { mode: "plain", text: "Hello" }, audioKey: "audio/page-001.wav", audioDurationSec: 0, frameAlignedDurationMs: 0 },
+    { pageNumber: 2, imageKey: "pages/page-002.png", script: { mode: "plain", text: "World" }, audioKey: "audio/page-002.wav", audioDurationSec: 0, frameAlignedDurationMs: 0 },
+    { pageNumber: 3, imageKey: "pages/page-003.png", script: { mode: "plain", text: "End" }, audioKey: "audio/page-003.wav", audioDurationSec: 0, frameAlignedDurationMs: 0 },
   ],
-  stages: { pages: "pending", audio: "pending", captions: "pending", clips: "pending", concat: "pending" },
+  stages: { pages: "pending", audio: "pending", captions: "pending", video: "pending" },
 };
 
 describe("Stage 1: Pages handler", () => {

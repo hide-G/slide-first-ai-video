@@ -24,25 +24,24 @@ function validManifest() {
         pageNumber: 1,
         imageKey: "pages/page-001.png",
         script: { mode: "plain" as const, text: "First page narration." },
-        audioKey: "audio/page-001.mp3",
+        audioKey: "audio/page-001.wav",
         audioDurationSec: 12.5,
-        clipKey: "clips/page-001.mp4",
+        frameAlignedDurationMs: 12534,
       },
       {
         pageNumber: 2,
         imageKey: "pages/page-002.png",
         script: { mode: "ssml" as const, text: "<speak>Second page.</speak>" },
-        audioKey: "audio/page-002.mp3",
+        audioKey: "audio/page-002.wav",
         audioDurationSec: 8.3,
-        clipKey: "clips/page-002.mp4",
+        frameAlignedDurationMs: 8334,
       },
     ],
     stages: {
       pages: "done" as const,
       audio: "done" as const,
       captions: "pending" as const,
-      clips: "pending" as const,
-      concat: "pending" as const,
+      video: "pending" as const,
     },
   };
 }
@@ -151,6 +150,13 @@ describe("ManifestSchema", () => {
   it("rejects negative audioDurationSec", () => {
     const manifest = validManifest();
     manifest.pages[0].audioDurationSec = -1;
+    const result = ManifestSchema.safeParse(manifest);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects negative frameAlignedDurationMs", () => {
+    const manifest = validManifest();
+    manifest.pages[0].frameAlignedDurationMs = -1;
     const result = ManifestSchema.safeParse(manifest);
     expect(result.success).toBe(false);
   });

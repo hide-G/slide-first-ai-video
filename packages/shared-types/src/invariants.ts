@@ -9,19 +9,15 @@ export interface InvariantViolation {
 }
 
 /**
- * Validates the structural invariants defined in section 4.3:
+ * Validates the structural invariants:
  *
  * 1. pages.length === source.pageCount
  * 2. All script.text must be non-empty before audio stage starts
  *    (if stages.audio is "running" or "done")
  * 3. audioDurationSec must be positive for all pages when audio stage is "done"
- * 4. Each page video duration matches audioDurationSec (checked at runtime via ffprobe)
- * 5. Total video duration matches sum of audioDurationSec (checked at runtime)
- * 6. Subtitle timecodes from cumulative audioDurationSec (checked at runtime)
- *
- * Rules 4, 5, 6 require runtime ffprobe measurement and cannot be
- * validated purely from manifest data. They are documented here but
- * enforced by the pipeline stages.
+ * 4. frameAlignedDurationMs >= audioDurationSec * 1000 for each page
+ * 5. Frame excess (frameAlignedDurationMs - audioDurationSec*1000) <= 34ms per page
+ * 6. pageNumber must be sequential starting from 1
  */
 export function validateInvariants(manifest: Manifest): InvariantViolation[] {
   const violations: InvariantViolation[] = [];
@@ -48,7 +44,7 @@ export function validateInvariants(manifest: Manifest): InvariantViolation[] {
     }
   }
 
-  // Rule 3 (derived): audioDurationSec must be positive when audio is done
+  // Rule 3: audioDurationSec must be positive when audio is done
   if (manifest.stages.audio === "done") {
     for (const page of manifest.pages) {
       if (page.audioDurationSec <= 0) {
@@ -60,7 +56,31 @@ export function validateInvariants(manifest: Manifest): InvariantViolation[] {
     }
   }
 
-  // Rule: pageNumber must be sequential starting from 1
+  // Rule 4 & 5: frameAlignedDurationMs constraints when audio is done
+  if (manifest.stages.audio === "done") {
+    for (const page of manifest.pages) {
+      if (page.frameAlignedDurationMs > 0 && page.audioDurationSec > 0) {
+        const audioMs = page.audioDurationSec * 1000;
+        // Must be >= audio duration in ms
+        if (page.frameAlignedDurationMs < audioMs) {
+          violations.push({
+            rule: "frame-aligned-gte-audio",
+            message: `Page ${page.pageNumber}: frameAlignedDurationMs (${page.frameAlignedDurationMs}) must be >= audioDurationSec*1000 (${audioMs})`,
+          });
+        }
+        // Excess must be <= FRAME_EXCESS_MS
+        const excess = page.frameAlignedDurationMs - audioMs;
+        if (excess > TOLERANCES.FRAME_EXCESS_MS) {
+          violations.push({
+            rule: "frame-excess",
+            message: `Page ${page.pageNumber}: frame excess ${excess.toFixed(3)}ms exceeds maximum ${TOLERANCES.FRAME_EXCESS_MS}ms`,
+          });
+        }
+      }
+    }
+  }
+
+  // Rule 6: pageNumber must be sequential starting from 1
   for (let i = 0; i < manifest.pages.length; i++) {
     if (manifest.pages[i].pageNumber !== i + 1) {
       violations.push({
@@ -74,11 +94,11 @@ export function validateInvariants(manifest: Manifest): InvariantViolation[] {
 }
 
 /**
- * Tolerance constants from section 4.3.
+ * Tolerance constants for the MediaConvert pipeline.
  */
 export const TOLERANCES = {
-  /** Maximum difference between page video duration and audioDurationSec (seconds) */
-  PAGE_DURATION_SEC: 0.05,
-  /** Maximum difference between total video duration and sum of audioDurationSec (seconds) */
-  TOTAL_DURATION_SEC: 0.2,
+  /** Maximum total duration drift in milliseconds */
+  TOTAL_DURATION_MS: 50,
+  /** Maximum frame-aligned excess per page in milliseconds (one frame at 30fps = 33.33ms) */
+  FRAME_EXCESS_MS: 34,
 } as const;

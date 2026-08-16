@@ -221,26 +221,10 @@ importers:
         version: 3.1.4(@types/node@22.15.21)(jsdom@24.1.3)
 
   lambdas/clip-worker:
-    dependencies:
-      '@aws-sdk/client-s3':
-        specifier: ^3.600.0
-        version: 3.1103.0
-      '@slide-first/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@slide-first/renderer-ffmpeg':
-        specifier: workspace:*
-        version: link:../../packages/renderer-ffmpeg
-      '@slide-first/shared-types':
-        specifier: workspace:*
-        version: link:../../packages/shared-types
     devDependencies:
       '@eslint/js':
         specifier: 9.28.0
         version: 9.28.0
-      '@types/aws-lambda':
-        specifier: ^8.10.145
-        version: 8.10.162
       '@types/node':
         specifier: 22.15.21
         version: 22.15.21
@@ -258,26 +242,10 @@ importers:
         version: 3.1.4(@types/node@22.15.21)(jsdom@24.1.3)
 
   lambdas/concat-worker:
-    dependencies:
-      '@aws-sdk/client-s3':
-        specifier: ^3.600.0
-        version: 3.1103.0
-      '@slide-first/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@slide-first/renderer-ffmpeg':
-        specifier: workspace:*
-        version: link:../../packages/renderer-ffmpeg
-      '@slide-first/shared-types':
-        specifier: workspace:*
-        version: link:../../packages/shared-types
     devDependencies:
       '@eslint/js':
         specifier: 9.28.0
         version: 9.28.0
-      '@types/aws-lambda':
-        specifier: ^8.10.145
-        version: 8.10.162
       '@types/node':
         specifier: 22.15.21
         version: 22.15.21

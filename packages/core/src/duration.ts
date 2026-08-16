@@ -1,12 +1,11 @@
 /**
- * Duration calculation utilities for the new pipeline model.
+ * Duration calculation utilities for the pipeline.
  *
  * In the new architecture:
- * - Each page has an audioDurationSec (float, measured by ffprobe)
- * - Total video duration = sum of all audioDurationSec values
- * - Each page's start time = cumulative sum of preceding pages' audioDurationSec
- *
- * All values are in seconds (not milliseconds).
+ * - Each page has an audioDurationSec (calculated from PCM byte length)
+ * - Each page has a frameAlignedDurationMs (ceil to frame boundary)
+ * - Subtitle timecodes use cumulative frameAlignedDurationMs
+ * - Total video duration = sum of all frameAlignedDurationMs values
  */
 
 import type { Page } from "@slide-first/shared-types";
@@ -18,15 +17,22 @@ export interface PageTiming {
   endSec: number;
 }
 
+export interface FrameAlignedTiming {
+  pageNumber: number;
+  frameAlignedDurationMs: number;
+  startSec: number;
+  endSec: number;
+}
+
 /**
- * Calculate the total duration of all pages in seconds.
+ * Calculate the total duration of all pages in seconds (from audioDurationSec).
  */
 export function totalDurationSec(pages: Pick<Page, "audioDurationSec">[]): number {
   return pages.reduce((sum, page) => sum + page.audioDurationSec, 0);
 }
 
 /**
- * Calculate cumulative timings for all pages.
+ * Calculate cumulative timings for all pages using audioDurationSec.
  * Returns an array with startSec and endSec for each page.
  */
 export function calculatePageTimings(
@@ -48,6 +54,40 @@ export function calculatePageTimings(
   }
 
   return timings;
+}
+
+/**
+ * Calculate cumulative timings using frameAlignedDurationMs.
+ * This is used for SRT timecodes to ensure alignment with video frames.
+ */
+export function calculateFrameAlignedTimings(
+  pages: Pick<Page, "pageNumber" | "frameAlignedDurationMs">[],
+): FrameAlignedTiming[] {
+  const timings: FrameAlignedTiming[] = [];
+  let cumulativeMs = 0;
+
+  for (const page of pages) {
+    const startSec = cumulativeMs / 1000;
+    const endSec = (cumulativeMs + page.frameAlignedDurationMs) / 1000;
+    timings.push({
+      pageNumber: page.pageNumber,
+      frameAlignedDurationMs: page.frameAlignedDurationMs,
+      startSec,
+      endSec,
+    });
+    cumulativeMs += page.frameAlignedDurationMs;
+  }
+
+  return timings;
+}
+
+/**
+ * Calculate total frame-aligned duration in milliseconds.
+ */
+export function totalFrameAlignedDurationMs(
+  pages: Pick<Page, "frameAlignedDurationMs">[],
+): number {
+  return pages.reduce((sum, page) => sum + page.frameAlignedDurationMs, 0);
 }
 
 /**

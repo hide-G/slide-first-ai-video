@@ -5,7 +5,6 @@ import {
   pageImageKey,
   audioKey,
   captionsSrtKey,
-  clipKey,
   outputVideoKey,
   manifestKey,
   projectPrefix,
@@ -59,9 +58,9 @@ describe("S3 key builders", () => {
   });
 
   describe("audioKey", () => {
-    it("builds audio key as MP3", () => {
+    it("builds audio key as WAV", () => {
       expect(audioKey(params, 3)).toBe(
-        "users/user-123/projects/proj-456/audio/page-003.mp3",
+        "users/user-123/projects/proj-456/audio/page-003.wav",
       );
     });
   });
@@ -70,14 +69,6 @@ describe("S3 key builders", () => {
     it("builds captions SRT key", () => {
       expect(captionsSrtKey(params)).toBe(
         "users/user-123/projects/proj-456/captions/captions.srt",
-      );
-    });
-  });
-
-  describe("clipKey", () => {
-    it("builds clip key for page", () => {
-      expect(clipKey(params, 5)).toBe(
-        "users/user-123/projects/proj-456/clips/page-005.mp4",
       );
     });
   });
@@ -107,12 +98,11 @@ describe("S3 key builders", () => {
   });
 
   describe("pageKeys", () => {
-    it("returns image, audio, and clip keys for a page", () => {
+    it("returns image and audio keys for a page", () => {
       const keys = pageKeys(params, 2);
       expect(keys).toEqual({
         image: "users/user-123/projects/proj-456/pages/page-002.png",
-        audio: "users/user-123/projects/proj-456/audio/page-002.mp3",
-        clip: "users/user-123/projects/proj-456/clips/page-002.mp4",
+        audio: "users/user-123/projects/proj-456/audio/page-002.wav",
       });
     });
   });
@@ -133,8 +123,8 @@ describe("S3 key builders", () => {
       expect(keys.pages[0].image).toBe(
         "users/user-123/projects/proj-456/pages/page-001.png",
       );
-      expect(keys.pages[2].clip).toBe(
-        "users/user-123/projects/proj-456/clips/page-003.mp4",
+      expect(keys.pages[2].audio).toBe(
+        "users/user-123/projects/proj-456/audio/page-003.wav",
       );
     });
   });

@@ -1,27 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Mock child_process
-vi.mock("node:child_process", () => ({
-  execFile: vi.fn((...args: unknown[]) => {
-    const cb = args[args.length - 1];
-    if (typeof cb === "function") {
-      const cmd = args[0] as string;
-      if (cmd === "ffprobe") {
-        (cb as Function)(null, { stdout: "5.432\n", stderr: "" });
-      } else {
-        (cb as Function)(null, { stdout: "", stderr: "" });
-      }
-    }
-    return {};
-  }),
-}));
-
-// Mock fs/promises
-vi.mock("node:fs/promises", () => ({
-  writeFile: vi.fn().mockResolvedValue(undefined),
-  mkdir: vi.fn().mockResolvedValue(undefined),
-}));
-
 // Mock AWS SDK - Polly
 vi.mock("@aws-sdk/client-polly", () => {
   const mockSend = vi.fn();
@@ -44,7 +22,6 @@ vi.mock("@aws-sdk/client-s3", () => {
   };
 });
 
-import { execFile } from "node:child_process";
 import type { Manifest } from "@slide-first/shared-types";
 
 const { __mockSend: mockS3Send } = await import("@aws-sdk/client-s3") as unknown as { __mockSend: ReturnType<typeof vi.fn> };
@@ -74,10 +51,10 @@ const sampleManifest: Manifest = {
     { written: "AWS", reading: "エーダブリューエス", method: "sub" },
   ],
   pages: [
-    { pageNumber: 1, imageKey: "pages/page-001.png", script: { mode: "plain", text: "AWSについて" }, audioKey: "audio/page-001.mp3", audioDurationSec: 0, clipKey: "clips/page-001.mp4" },
-    { pageNumber: 2, imageKey: "pages/page-002.png", script: { mode: "plain", text: "まとめ" }, audioKey: "audio/page-002.mp3", audioDurationSec: 0, clipKey: "clips/page-002.mp4" },
+    { pageNumber: 1, imageKey: "pages/page-001.png", script: { mode: "plain", text: "AWSについて" }, audioKey: "audio/page-001.wav", audioDurationSec: 0, frameAlignedDurationMs: 0 },
+    { pageNumber: 2, imageKey: "pages/page-002.png", script: { mode: "plain", text: "まとめ" }, audioKey: "audio/page-002.wav", audioDurationSec: 0, frameAlignedDurationMs: 0 },
   ],
-  stages: { pages: "done", audio: "pending", captions: "pending", clips: "pending", concat: "pending" },
+  stages: { pages: "done", audio: "pending", captions: "pending", video: "pending" },
 };
 
 describe("Stage 2: Audio handler", () => {
@@ -96,13 +73,14 @@ describe("Stage 2: Audio handler", () => {
       return Promise.resolve({});
     });
 
+    // Return a fake PCM buffer (48000 bytes = 1 second at 24000Hz, 16bit, mono)
     mockPollySend.mockResolvedValue({
-      AudioStream: Buffer.from("fake-mp3-data"),
+      AudioStream: Buffer.alloc(48000),
       RequestCharacters: 42,
     });
   });
 
-  it("calls Polly SynthesizeSpeech with correct parameters", async () => {
+  it("calls Polly SynthesizeSpeech with pcm format", async () => {
     const { handler } = await import("./index.js");
     const result = await handler({ s3Bucket: "test-bucket", s3Prefix: "users/user-1/projects/proj-1/", projectId: "proj-1", userId: "user-1", renderId: "render-1" });
 
@@ -110,7 +88,7 @@ describe("Stage 2: Audio handler", () => {
     expect(mockPollySend).toHaveBeenCalledTimes(2); // 2 pages
 
     const firstCall = mockPollySend.mock.calls[0][0];
-    expect(firstCall.input.OutputFormat).toBe("mp3");
+    expect(firstCall.input.OutputFormat).toBe("pcm");
     expect(firstCall.input.VoiceId).toBe("Takumi");
     expect(firstCall.input.Engine).toBe("neural");
     expect(firstCall.input.SampleRate).toBe("24000");
@@ -131,21 +109,54 @@ describe("Stage 2: Audio handler", () => {
     expect(firstCall.input.Text).toContain("エーダブリューエス");
   });
 
-  it("measures duration with ffprobe", async () => {
+  it("calculates audioDurationSec from PCM byte length", async () => {
+    // 48000 bytes / (2 * 24000) = 1.0 second
     const { handler } = await import("./index.js");
     await handler({ s3Bucket: "test-bucket", s3Prefix: "users/user-1/projects/proj-1/", projectId: "proj-1", userId: "user-1", renderId: "render-1" });
 
-    const mockExecFile = vi.mocked(execFile);
-    // Should call ffprobe for each page
-    const ffprobeCalls = mockExecFile.mock.calls.filter((call) => call[0] === "ffprobe");
-    expect(ffprobeCalls.length).toBe(2);
+    // Check manifest written to S3 contains correct duration
+    const putCalls = mockS3Send.mock.calls.filter(
+      (call: unknown[]) => (call[0] as { type: string }).type === "put",
+    );
+    const manifestPuts = putCalls.filter(
+      (call: unknown[]) => (call[0] as { input: { ContentType?: string } }).input.ContentType === "application/json",
+    );
+    const lastManifest = JSON.parse((manifestPuts[manifestPuts.length - 1][0] as { input: { Body: string } }).input.Body);
+    // Each page should have audioDurationSec = 1.0
+    expect(lastManifest.pages[0].audioDurationSec).toBe(1.0);
+    expect(lastManifest.pages[1].audioDurationSec).toBe(1.0);
+  });
 
-    // Verify ffprobe args
-    const probeArgs = ffprobeCalls[0][1] as string[];
-    expect(probeArgs).toContain("-v");
-    expect(probeArgs).toContain("error");
-    expect(probeArgs).toContain("-show_entries");
-    expect(probeArgs).toContain("format=duration");
+  it("computes frameAlignedDurationMs", async () => {
+    const { handler } = await import("./index.js");
+    await handler({ s3Bucket: "test-bucket", s3Prefix: "users/user-1/projects/proj-1/", projectId: "proj-1", userId: "user-1", renderId: "render-1" });
+
+    const putCalls = mockS3Send.mock.calls.filter(
+      (call: unknown[]) => (call[0] as { type: string }).type === "put",
+    );
+    const manifestPuts = putCalls.filter(
+      (call: unknown[]) => (call[0] as { input: { ContentType?: string } }).input.ContentType === "application/json",
+    );
+    const lastManifest = JSON.parse((manifestPuts[manifestPuts.length - 1][0] as { input: { Body: string } }).input.Body);
+    // audioDurationSec = 1.0 -> 1000ms, at 30fps frameMs=33.333, ceil(1000/33.333)=30 frames, 30*33.333=1000ms rounded=1000
+    expect(lastManifest.pages[0].frameAlignedDurationMs).toBe(1000);
+  });
+
+  it("uploads WAV with correct content type", async () => {
+    const { handler } = await import("./index.js");
+    await handler({ s3Bucket: "test-bucket", s3Prefix: "users/user-1/projects/proj-1/", projectId: "proj-1", userId: "user-1", renderId: "render-1" });
+
+    const putCalls = mockS3Send.mock.calls.filter(
+      (call: unknown[]) => (call[0] as { type: string }).type === "put",
+    );
+    const wavPut = putCalls.find(
+      (call: unknown[]) => (call[0] as { input: { ContentType?: string } }).input.ContentType === "audio/wav",
+    );
+    expect(wavPut).toBeDefined();
+    // WAV file should start with RIFF header (44 bytes header + PCM data)
+    const body = (wavPut![0] as { input: { Body: Buffer } }).input.Body;
+    expect(body.length).toBe(48000 + 44); // PCM data + WAV header
+    expect(body.slice(0, 4).toString()).toBe("RIFF");
   });
 
   it("records total RequestCharacters", async () => {
@@ -179,8 +190,9 @@ describe("Stage 2: Audio handler", () => {
       ...sampleManifest,
       lexicon: [],
       pages: [
-        { pageNumber: 1, imageKey: "pages/page-001.png", script: { mode: "plain" as const, text: "A & B < C" }, audioKey: "audio/page-001.mp3", audioDurationSec: 0, clipKey: "clips/page-001.mp4" },
+        { pageNumber: 1, imageKey: "pages/page-001.png", script: { mode: "plain" as const, text: "A & B < C" }, audioKey: "audio/page-001.wav", audioDurationSec: 0, frameAlignedDurationMs: 0 },
       ],
+      source: { ...sampleManifest.source, pageCount: 1 },
     };
     mockS3Send.mockImplementation((cmd: { type: string; input?: { Key?: string } }) => {
       if (cmd.type === "get") {

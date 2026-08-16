@@ -1,5 +1,5 @@
-# Stage 1: Pages - PDF/PPTX to PNG rasterization
-# Requires: poppler-utils (pdftoppm), libreoffice (for PPTX), fonts
+# Stage 4: Clips - per-page video generation with FFmpeg
+# Requires: ffmpeg, ffprobe
 FROM public.ecr.aws/lambda/nodejs:22 AS builder
 
 WORKDIR /app
@@ -9,10 +9,8 @@ RUN npm install && npm run build
 
 FROM public.ecr.aws/lambda/nodejs:22
 
-# Install poppler-utils for pdftoppm and LibreOffice for PPTX conversion
-RUN dnf install -y poppler-utils libreoffice-core libreoffice-impress \
-    google-noto-sans-japanese-fonts google-noto-serif-japanese-fonts \
-    && dnf clean all
+# Install FFmpeg
+RUN dnf install -y ffmpeg && dnf clean all
 
 WORKDIR ${LAMBDA_TASK_ROOT}
 COPY --from=builder /app/dist/ ./dist/

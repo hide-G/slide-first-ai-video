@@ -11,6 +11,7 @@ export {
   projectPrefix,
   pageKeys,
   renderKeys,
+  buildVersionPrefix,
 } from "./s3-keys.js";
 export type { S3KeyParams } from "./s3-keys.js";
 

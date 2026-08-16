@@ -12,7 +12,6 @@ export interface ContentStateMachineConstructProps {
   slideGeneratorLambda: lambda.IFunction;
   marpLambda: lambda.IFunction;
   pollyWorkerLambda: lambda.IFunction;
-  compositionBuilderLambda: lambda.IFunction;
   renderStateMachine: sfn.StateMachine;
   table: dynamodb.Table;
 }
@@ -168,21 +167,10 @@ export class ContentStateMachineConstruct extends Construct {
       resultPath: "$.captionResult",
     });
 
-    // Step 7: Invoke composition builder Lambda
-    const invokeCompositionBuilder = new tasks.LambdaInvoke(
-      this,
-      "InvokeCompositionBuilder",
-      {
-        lambdaFunction: props.compositionBuilderLambda,
-        resultPath: "$.compositionResult",
-        retryOnServiceExceptions: true,
-      },
-    );
-    invokeCompositionBuilder.addRetry({
-      errors: ["Lambda.ServiceException", "Lambda.TooManyRequestsException"],
-      interval: cdk.Duration.seconds(2),
-      maxAttempts: 3,
-      backoffRate: 2,
+    // Step 7: Pipeline stages handled by separate workers (clips, concat)
+    const pipelineStages = new sfn.Pass(this, "PipelineStages", {
+      comment: "Trigger 5-stage video pipeline (pages, audio, captions, clips, concat)",
+      resultPath: "$.pipelineResult",
     });
 
     // Step 8: Start Render State Machine
@@ -203,7 +191,7 @@ export class ContentStateMachineConstruct extends Construct {
       .next(parallelProcessing)
       .next(timingResolver)
       .next(captionGenerator)
-      .next(invokeCompositionBuilder)
+      .next(pipelineStages)
       .next(startRenderStateMachine);
 
     this.stateMachine = new sfn.StateMachine(this, "ContentStateMachine", {

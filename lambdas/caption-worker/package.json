@@ -1,27 +1,25 @@
 {
-  "name": "@slide-first/renderer-port",
+  "name": "@slide-first/lambda-caption-worker",
   "version": "0.1.0",
   "private": true,
-  "description": "VideoRenderer port interface for video rendering implementations",
+  "description": "Stage 3: Captions - SRT generation Lambda",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    }
-  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "lint": "eslint src/",
-    "test": "echo 'No tests - type-only package'"
+    "test": "vitest run"
   },
   "dependencies": {
-    "@slide-first/shared-types": "workspace:*"
+    "@slide-first/shared-types": "workspace:*",
+    "@slide-first/core": "workspace:*",
+    "@aws-sdk/client-s3": "^3.600.0"
   },
   "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
     "@types/node": "22.15.21",
     "typescript": "5.8.3",
+    "vitest": "3.1.4",
     "eslint": "9.28.0",
     "@eslint/js": "9.28.0",
     "typescript-eslint": "8.33.0"

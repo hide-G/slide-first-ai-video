@@ -83,3 +83,16 @@ export function renderKeys(
     pages,
   };
 }
+
+/**
+ * Legacy compatibility: build a version prefix for the API layer.
+ * In the new architecture, versions are tracked via manifest, but
+ * the API still uses a version-based prefix for backward compatibility.
+ */
+export function buildVersionPrefix(params: {
+  userId: string;
+  projectId: string;
+  versionNumber: number;
+}): string {
+  return `users/${params.userId}/projects/${params.projectId}/v${params.versionNumber}/`;
+}

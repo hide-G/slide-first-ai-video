@@ -34,7 +34,7 @@ export class RenderStateMachineConstruct extends Construct {
       functionName: `${productSlug}-${environment}-renderer`,
       runtime: lambda.Runtime.NODEJS_22_X,
       handler: "index.handler",
-      code: lambda.Code.fromAsset("../lambdas/render-worker/dist"),
+      code: lambda.Code.fromAsset("../lambdas/clip-worker/dist"),
       memorySize: 10240,
       ephemeralStorageSize: cdk.Size.mebibytes(4096),
       timeout: cdk.Duration.minutes(15),

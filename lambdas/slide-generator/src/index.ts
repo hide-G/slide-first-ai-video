@@ -5,7 +5,8 @@
  */
 
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
-import type { SlideImportance } from "@slide-first/shared-types";
+/** Slide importance level for content prioritization */
+type SlideImportance = "HIGH" | "MEDIUM" | "LOW";
 import { callBedrockConverse, type BedrockConfig } from "./bedrock-client.js";
 import { buildSystemPrompt, buildUserPrompt } from "./prompts.js";
 import { parseBedrockOutput } from "./parser.js";

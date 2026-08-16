@@ -1,0 +1,42 @@
+{
+  "id": "FEAT-005",
+  "type": "feat",
+  "description": "Rebuild the React frontend to match all 4 mockup screens exactly (Tasks #10-13 from spec). Implement slide studio (3-step), video studio (4-step), hub page with cost column, and login page. Include SSML cheatsheet movable panel, output size options, subtitle modes, and cost display.",
+  "status": "pending",
+  "steps": [
+    "Rewrite frontend/src/App.tsx with React Router routes: / (login), /home (hub), /slide-studio (slide creation), /video-studio (video creation)",
+    "Rewrite frontend/src/pages/LoginPage.tsx matching mockup/index.html: email/password form, SSO button, language toggle (ja/en), show password checkbox, forgot password and signup links",
+    "Create frontend/src/pages/HomePage.tsx matching mockup/home.html: two entry cards (slide studio, video studio), recent projects table with cost column (推定コスト), project status badges",
+    "Create frontend/src/pages/SlideStudioPage.tsx matching mockup/slide-studio.html: 3-step wizard (input -> outline review -> generate/export). Step 1: content language selector (ja/en separate from UI language), topic, source text, reference URLs (add/remove), audience, pages, tone, theme. Step 2: outline list with reorder/add/delete, per-slide title+body+notes editing, AI badge. Step 3: thumbnail grid, download buttons (MD/PDF/PPTX), cost table.",
+    "Create frontend/src/pages/VideoStudioPage.tsx matching mockup/video-studio.html: 4-step wizard. Step 1: file upload (PDF/PPTX), handoff from slide studio, page thumbnails. Step 2: aspect ratio selection (16:9/9:16/1:1/4:5) with vertical options (layout, bg color, safe area), fps, subtitle mode (burn/srt/none), subtitle size/position, voice settings (id, engine, sample rate, speed). Step 3: narration editor with page list, plain/SSML mode toggle, SSML toolbar (sub/phoneme/say-as/break/prosody/emphasis/cheatsheet), character counter, estimated duration, pronunciation dictionary table. Step 4: 5-stage progress bar, result display with video preview and specs, download buttons (MP4/SRT/audio), cost table.",
+    "Create frontend/src/components/SsmlCheatsheet.tsx: movable/resizable floating panel (dialog role, aria-modal=false). Draggable header, close button, table of SSML tags with support status per engine. Tags show enabled/disabled based on selected voice+engine. Keyboard accessible (arrow keys to move).",
+    "Update frontend/src/i18n/messages.ts with all i18n keys from mockup HTML (data-i18n attributes) for both ja and en",
+    "Update frontend/src/api/client.ts to call all 11 API endpoints from section 5",
+    "Update frontend/src/api/types.ts with request/response types matching the API",
+    "Create frontend/src/components/StepWizard.tsx for the step navigation pattern used in both studios",
+    "Create frontend/src/components/CostTable.tsx for the cost display pattern (stage/service/usage/estimate columns, total row, 'pending' actual label)",
+    "Add frontend unit tests: component rendering for each page, navigation between steps, SSML toolbar state based on engine, language switching",
+    "Ensure frontend builds and tests pass"
+  ],
+  "acceptance_criteria": [
+    "Login page has email/password, SSO, language toggle matching mockup",
+    "Hub page shows two entry cards and recent projects table with cost column",
+    "Slide studio has 3 steps with outline editing (reorder/add/delete/edit)",
+    "Video studio has 4 steps with all output options from mockup",
+    "SSML cheatsheet is a movable floating panel that does not block the editor",
+    "SSML toolbar buttons are disabled when tags are unsupported by selected engine",
+    "UI language (ja/en) and content language are independent",
+    "Subtitle mode selection offers burn/srt/none",
+    "Output size selection includes 16:9, 9:16, 1:1, 4:5 with vertical-specific options",
+    "Cost tables show estimated amounts with 'pending' for actual",
+    "Frontend builds and tests pass",
+    "All buttons/inputs from mockup connect to corresponding actions (no dead UI)"
+  ],
+  "verification": [
+    "source /root/.nvm/nvm.sh && cd /projects/sandbox/slide-first-ai-video && pnpm --filter @slide-first/frontend build",
+    "source /root/.nvm/nvm.sh && cd /projects/sandbox/slide-first-ai-video && pnpm --filter @slide-first/frontend test",
+    "source /root/.nvm/nvm.sh && cd /projects/sandbox/slide-first-ai-video && pnpm build && pnpm test"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

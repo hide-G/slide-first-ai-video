@@ -1,0 +1,31 @@
+{
+  "id": "FEAT-002",
+  "type": "chore",
+  "description": "Create docs/migration.md documenting what existing code maps to what in the new architecture (Task #2 from spec). Also update packages/core to align with the new data contract - rewrite s3-keys.ts, duration.ts, and related modules to use the new manifest structure.",
+  "status": "pending",
+  "steps": [
+    "Inventory all existing constructs in infra/lib/ and map them to new spec: storage-construct (keep), auth-construct (keep), api-construct (rebuild routes per section 5), marp-lambda-construct (keep for slide gen), polly-worker-construct (keep), render-state-machine-construct (rebuild as 5-stage pipeline), content-state-machine-construct (rebuild for new flow), teaser-* (remove - not in spec), delivery-construct (keep), frontend-construct (keep), composition-builder-construct (remove/replace with clips stage), slide-generator-construct (keep for outline gen)",
+    "Inventory all existing lambdas and map: api (rebuild routes per section 5), marp-render (keep, adapt), polly-worker (keep, change output to MP3), render-worker (rebuild as per-page clip generator), slide-generator (keep for outline+deck gen), composition-builder (replace with concat stage), teaser-* (remove)",
+    "Inventory packages: shared-types (rebuilt in FEAT-001), core (rebuild s3-keys + duration for new layout), renderer-port (simplify interface for new pipeline), renderer-ffmpeg (rebuild for clip+concat per section 6), renderer-contract-tests (update), renderer-hyperframes (remove - not in spec), evaluation (remove - not in spec)",
+    "Write docs/migration.md with a clear table: existing item -> new mapping -> action (keep/rebuild/remove)",
+    "Rewrite packages/core/src/s3-keys.ts to match section 4.1 S3 layout: users/{userId}/projects/{projectId}/ with input/, deck/, pages/, audio/, captions/, clips/, output/{renderId}/ paths",
+    "Rewrite packages/core/src/duration.ts for the new model: audioDurationSec is per-page ffprobe measurement, total is sum of all pages",
+    "Remove packages/core/src/teaser/ directory (not in spec)",
+    "Update packages/core/src/index.ts exports",
+    "Update packages/core unit tests to match new s3-keys and duration logic",
+    "Ensure packages/core builds and tests pass"
+  ],
+  "acceptance_criteria": [
+    "docs/migration.md exists with a table covering all existing constructs, lambdas, and packages",
+    "packages/core/src/s3-keys.ts produces paths like users/{userId}/projects/{projectId}/pages/page-001.png",
+    "packages/core builds successfully",
+    "packages/core tests pass",
+    "Teaser-related code is identified for removal in migration.md"
+  ],
+  "verification": [
+    "source /root/.nvm/nvm.sh && cd /projects/sandbox/slide-first-ai-video && pnpm --filter @slide-first/core build",
+    "source /root/.nvm/nvm.sh && cd /projects/sandbox/slide-first-ai-video && pnpm --filter @slide-first/core test"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

@@ -1,0 +1,38 @@
+{
+  "id": "FEAT-003",
+  "type": "feat",
+  "description": "Implement the 5 processing stages as independent Lambda handlers (Tasks #3-7 from spec). Each stage reads from and writes to S3, updates manifest.json stages field, and can be re-run independently. Adapt renderer-port and renderer-ffmpeg for the new clip-based pipeline.",
+  "status": "pending",
+  "steps": [
+    "Rewrite packages/renderer-port/src/index.ts to define the new stage interfaces: PagesStage (input -> PNG), AudioStage (script -> MP3 + measured duration), CaptionsStage (script + durations -> SRT), ClipsStage (PNG + MP3 + duration -> per-page MP4), ConcatStage (clips + optional subtitles -> final MP4). Each stage takes manifest + S3 client and returns updated manifest.",
+    "Rewrite packages/renderer-ffmpeg/src/ffmpeg-renderer.ts to implement the FFmpeg commands for stages 4 and 5. Stage 4 (clips): for each page, create MP4 from PNG + MP3 using -t with measured audioDurationSec (rule 7.1), -loop 1 for image, H.264 1920x1080 30fps yuv420p, AAC 96kbps. Stage 5 (concat): concat all clips with ffmpeg concat demuxer, optionally burn subtitles using subtitles filter with SRT file (rule 3.5 - never embed text in drawtext). All commands use execFile with array args, no shell (rule 3.5).",
+    "Rewrite lambdas/marp-render/src/index.ts for Stage 1 (pages): Accept manifest with source file, convert PDF/PPTX to PNG pages. For PDF use pdftoppm or equivalent. For PPTX first convert to PDF via LibreOffice then to PNG. Output pages/page-NNN.png. Verify PNG count === pageCount.",
+    "Rewrite lambdas/polly-worker/src/index.ts for Stage 2 (audio): For each page, call Polly SynthesizeSpeech with confirmed script.text, voice config (Takumi/neural/ja-JP/24kHz). Apply lexicon substitutions before synthesis. Output MP3 files. Measure duration with ffprobe and write audioDurationSec to manifest. Record x-amzn-RequestCharacters for cost.",
+    "Create lambdas/caption-worker/ for Stage 3 (captions): Generate SRT from confirmed scripts + audioDurationSec cumulative timing. Subtitle count === page count. Timestamps monotonically increasing. Total matches audio sum.",
+    "Create lambdas/clip-worker/ for Stage 4 (clips): For each page, invoke FFmpeg to create page MP4. Use -t audioDurationSec explicitly. Validate clip duration matches audio within 0.05s tolerance.",
+    "Create lambdas/concat-worker/ for Stage 5 (concat): Concatenate all clips. If captions='burn', use subtitles filter with SRT file. Validate total duration matches audio sum within 0.2s. Run ffmpeg decode check.",
+    "Update all Lambda package.json files with correct dependencies on @slide-first/shared-types and @slide-first/renderer-port",
+    "Add Dockerfile stubs for each Lambda that needs FFmpeg/Marp/LibreOffice/fonts (structural only since no Docker daemon)",
+    "Write unit tests for each stage with mocked execFile/S3/Polly calls. Test that: correct FFmpeg args are generated, -t uses measured duration, no shell invocation, subtitles use file reference not drawtext, error handling does not hide failures",
+    "Update packages/renderer-ffmpeg tests to cover the new clip and concat command generation"
+  ],
+  "acceptance_criteria": [
+    "renderer-port exports stage interfaces (PagesStage, AudioStage, CaptionsStage, ClipsStage, ConcatStage)",
+    "renderer-ffmpeg generates correct FFmpeg commands: -t with measured seconds, AAC 96kbps, no shell, subtitles via file",
+    "polly-worker uses SynthesizeSpeech with correct params and records RequestCharacters",
+    "caption-worker generates SRT with correct monotonic timestamps",
+    "Each stage handler reads manifest, performs work, updates manifest.stages, writes back",
+    "Unit tests pass for all stage handlers",
+    "All Lambda packages build successfully",
+    "No stage embeds text in command strings (drawtext prohibition)",
+    "Dockerfiles exist for stages requiring FFmpeg/Marp (structural validation)"
+  ],
+  "verification": [
+    "source /root/.nvm/nvm.sh && cd /projects/sandbox/slide-first-ai-video && pnpm --filter @slide-first/renderer-port build",
+    "source /root/.nvm/nvm.sh && cd /projects/sandbox/slide-first-ai-video && pnpm --filter @slide-first/renderer-ffmpeg build && pnpm --filter @slide-first/renderer-ffmpeg test",
+    "source /root/.nvm/nvm.sh && cd /projects/sandbox/slide-first-ai-video && pnpm --filter '*worker*' build && pnpm --filter '*worker*' test",
+    "source /root/.nvm/nvm.sh && cd /projects/sandbox/slide-first-ai-video && pnpm build && pnpm test"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

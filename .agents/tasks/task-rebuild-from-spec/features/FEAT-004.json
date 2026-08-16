@@ -1,0 +1,39 @@
+{
+  "id": "FEAT-004",
+  "type": "feat",
+  "description": "Rebuild the API Lambda to match section 5's 11 endpoints exactly, implement stage orchestration with partial retry (Task #8-9 from spec), and update CDK infrastructure to match the new architecture. Remove teaser-related constructs and add new stage workers.",
+  "status": "pending",
+  "steps": [
+    "Rewrite lambdas/api/src/index.ts routes to match section 5 exactly: POST /projects, POST /projects/{id}/outline, PUT /projects/{id}/outline, POST /projects/{id}/deck, POST /projects/{id}/source-upload-url, POST /projects/{id}/source, PUT /projects/{id}/output, POST /projects/{id}/narration, PUT /projects/{id}/narration, POST /projects/{id}/renders, GET /projects/{id}/renders/{renderId}, GET /projects/{id}/renders/{renderId}/artifacts",
+    "Rewrite lambdas/api/src/handlers/ to implement each endpoint: projects.ts (create/list), outline.ts (generate via Bedrock, save confirmed), deck.ts (generate slides via Marp), source.ts (presigned URL + register), output.ts (save output settings), narration.ts (generate AI drafts, save confirmed + lexicon), renders.ts (start render pipeline, get status, get artifacts with presigned URLs)",
+    "Update lambdas/api/src/middleware/auth.ts to enforce Cognito auth and verify projectId ownership",
+    "Rewrite lambdas/slide-generator/ for outline generation using Bedrock Converse API. Record usage.inputTokens/outputTokens for cost. Generate slide outline based on user input (topic, source text, reference URLs, audience, pages, tone, theme, content language)",
+    "Rebuild infra/src/main-stack.ts: Remove teaser-related constructs (TeaserGeneratorConstruct, TeaserCompositionBuilderConstruct, TeaserStateMachineConstruct). Remove composition-builder-construct. Add new Lambda constructs for caption-worker, clip-worker, concat-worker. Rebuild RenderStateMachineConstruct as 5-stage pipeline with per-stage failure handling and re-run capability.",
+    "Update infra/lib/render-state-machine-construct.ts to implement the 5-stage pipeline: pages -> audio -> captions -> clips -> concat. Each stage updates manifest.stages. Failed stage can be retried without re-running prior stages.",
+    "Remove infra/lib/teaser-*.ts, infra/lib/composition-builder-construct.ts",
+    "Update infra/lib/api-construct.ts to define all 11 API routes with Cognito authorizer",
+    "Update infra/test/main-stack.test.ts to test new architecture: 11 API methods, 5-stage state machine, no teaser resources, new Lambda functions",
+    "Remove lambdas/teaser-generator/, lambdas/teaser-composition-builder/, lambdas/composition-builder/ directories",
+    "Remove packages/renderer-hyperframes/, packages/evaluation/, packages/renderer-contract-tests/ (not needed in new arch)",
+    "Update pnpm-workspace.yaml if any workspace paths changed",
+    "Add cost tracking: tag all Lambda invocations and S3 writes with projectId/renderId/userId. Add cost calculation logic that records usage from API responses.",
+    "Create docs/cost.md documenting the cost allocation tag setup procedure"
+  ],
+  "acceptance_criteria": [
+    "API has exactly 11 endpoints matching section 5",
+    "All endpoints require Cognito authentication (return 401 without token)",
+    "ProjectId ownership is verified (return 403 for other user's project)",
+    "State machine implements 5-stage pipeline with independent re-run",
+    "Teaser-related code is removed from deployable paths",
+    "CDK synth succeeds (validated via test suite)",
+    "All infra tests pass",
+    "All API handler tests pass",
+    "docs/cost.md exists with tag setup procedure"
+  ],
+  "verification": [
+    "source /root/.nvm/nvm.sh && cd /projects/sandbox/slide-first-ai-video && pnpm build",
+    "source /root/.nvm/nvm.sh && cd /projects/sandbox/slide-first-ai-video && pnpm test"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

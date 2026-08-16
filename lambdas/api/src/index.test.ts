@@ -286,6 +286,31 @@ describe("API Router", () => {
     expect(body.output.aspect).toBe("16:9");
   });
 
+  it("saves narration without an explicit voice", async () => {
+    // voice は任意項目。undefined を UpdateExpression に含めると
+    // "expression attribute value ... is not defined" で 500 になっていた。
+    mockDynamoSend.mockResolvedValueOnce({
+      Item: { projectId: "proj-001", userId: "user-123", status: "DRAFT" },
+    });
+    mockDynamoSend.mockResolvedValueOnce({});
+
+    const event = makeEvent("PUT", "/projects/proj-001/narration", {
+      body: JSON.stringify({
+        scripts: [{ pageNumber: 1, mode: "plain", text: "一ページ目です。" }],
+      }),
+    });
+    const result = await handler(event, mockContext);
+
+    expect(result.statusCode).toBe(200);
+
+    const updateCall = mockDynamoSend.mock.calls
+      .map((call) => call[0])
+      .find((command) => command?.type === "Update");
+    expect(updateCall).toBeDefined();
+    expect(updateCall.input.UpdateExpression).not.toContain(":voice");
+    expect(updateCall.input.ExpressionAttributeValues).not.toHaveProperty(":voice");
+  });
+
   it("routes POST /projects/{id}/renders (start render)", async () => {
     // レンダリング開始前に manifest.json をS3へ書き出すため、
     // source と narration が揃ったプロジェクトを2回返す（所有者確認と manifest 組み立て）

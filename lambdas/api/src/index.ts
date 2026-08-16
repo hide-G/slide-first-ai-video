@@ -1,6 +1,7 @@
 /**
  * API Lambda handler.
  * Single Lambda with path-based routing for API Gateway proxy integration.
+ * Endpoints match section 5 of the spec exactly.
  */
 
 import type {
@@ -12,13 +13,17 @@ import { buildErrorResponse } from "./middleware/index.js";
 import {
   handleCreateProject,
   handleListProjects,
-  handleStartSlides,
-  handleGetVersion,
-  handleApprove,
-  handleStartVideo,
-  handleStartTeaser,
-  handleGetJob,
-  handleGetDeliverables,
+  handleGenerateOutline,
+  handleSaveOutline,
+  handleGenerateDeck,
+  handleSourceUploadUrl,
+  handleRegisterSource,
+  handleSaveOutput,
+  handleGenerateNarration,
+  handleSaveNarration,
+  handleStartRender,
+  handleGetRenderStatus,
+  handleGetRenderArtifacts,
 } from "./handlers/index.js";
 
 type RouteHandler = (
@@ -29,7 +34,6 @@ interface Route {
   method: string;
   pattern: RegExp;
   handler: RouteHandler;
-  /** 正規表現から抽出する名前付きパスパラメータ */
   paramKeys: string[];
 }
 
@@ -41,65 +45,101 @@ const corsHeaders = {
 };
 
 const routes: Route[] = [
+  // GET /projects - list user's projects
   {
     method: "GET",
     pattern: /^\/projects\/?$/,
     handler: handleListProjects,
     paramKeys: [],
   },
+  // POST /projects - create project
   {
     method: "POST",
     pattern: /^\/projects\/?$/,
     handler: handleCreateProject,
     paramKeys: [],
   },
+  // POST /projects/{id}/outline - generate outline
   {
     method: "POST",
-    pattern: /^\/projects\/([^/]+)\/slides\/?$/,
-    handler: handleStartSlides,
+    pattern: /^\/projects\/([^/]+)\/outline\/?$/,
+    handler: handleGenerateOutline,
     paramKeys: ["id"],
   },
+  // PUT /projects/{id}/outline - save confirmed outline
+  {
+    method: "PUT",
+    pattern: /^\/projects\/([^/]+)\/outline\/?$/,
+    handler: handleSaveOutline,
+    paramKeys: ["id"],
+  },
+  // POST /projects/{id}/deck - generate slides
+  {
+    method: "POST",
+    pattern: /^\/projects\/([^/]+)\/deck\/?$/,
+    handler: handleGenerateDeck,
+    paramKeys: ["id"],
+  },
+  // POST /projects/{id}/source-upload-url - get presigned upload URL
+  {
+    method: "POST",
+    pattern: /^\/projects\/([^/]+)\/source-upload-url\/?$/,
+    handler: handleSourceUploadUrl,
+    paramKeys: ["id"],
+  },
+  // POST /projects/{id}/source - register uploaded source
+  {
+    method: "POST",
+    pattern: /^\/projects\/([^/]+)\/source\/?$/,
+    handler: handleRegisterSource,
+    paramKeys: ["id"],
+  },
+  // PUT /projects/{id}/output - save output settings
+  {
+    method: "PUT",
+    pattern: /^\/projects\/([^/]+)\/output\/?$/,
+    handler: handleSaveOutput,
+    paramKeys: ["id"],
+  },
+  // POST /projects/{id}/narration - generate narration drafts
+  {
+    method: "POST",
+    pattern: /^\/projects\/([^/]+)\/narration\/?$/,
+    handler: handleGenerateNarration,
+    paramKeys: ["id"],
+  },
+  // PUT /projects/{id}/narration - save confirmed narration + lexicon
+  {
+    method: "PUT",
+    pattern: /^\/projects\/([^/]+)\/narration\/?$/,
+    handler: handleSaveNarration,
+    paramKeys: ["id"],
+  },
+  // POST /projects/{id}/renders - start render pipeline
+  {
+    method: "POST",
+    pattern: /^\/projects\/([^/]+)\/renders\/?$/,
+    handler: handleStartRender,
+    paramKeys: ["id"],
+  },
+  // GET /projects/{id}/renders/{renderId} - get render status
   {
     method: "GET",
-    pattern: /^\/projects\/([^/]+)\/versions\/([^/]+)\/?$/,
-    handler: handleGetVersion,
-    paramKeys: ["id", "version"],
+    pattern: /^\/projects\/([^/]+)\/renders\/([^/]+)\/?$/,
+    handler: handleGetRenderStatus,
+    paramKeys: ["id", "renderId"],
   },
-  {
-    method: "POST",
-    pattern: /^\/projects\/([^/]+)\/versions\/([^/]+)\/approve\/?$/,
-    handler: handleApprove,
-    paramKeys: ["id", "version"],
-  },
-  {
-    method: "POST",
-    pattern: /^\/projects\/([^/]+)\/videos\/teaser\/?$/,
-    handler: handleStartTeaser,
-    paramKeys: ["id"],
-  },
-  {
-    method: "POST",
-    pattern: /^\/projects\/([^/]+)\/videos\/?$/,
-    handler: handleStartVideo,
-    paramKeys: ["id"],
-  },
+  // GET /projects/{id}/renders/{renderId}/artifacts - get artifacts
   {
     method: "GET",
-    pattern: /^\/jobs\/([^/]+)\/?$/,
-    handler: handleGetJob,
-    paramKeys: ["jobId"],
-  },
-  {
-    method: "GET",
-    pattern: /^\/projects\/([^/]+)\/deliverables\/?$/,
-    handler: handleGetDeliverables,
-    paramKeys: ["id"],
+    pattern: /^\/projects\/([^/]+)\/renders\/([^/]+)\/artifacts\/?$/,
+    handler: handleGetRenderArtifacts,
+    paramKeys: ["id", "renderId"],
   },
 ];
 
 /**
- * REST APIイベントのstageと任意の/v1プレフィックスを除去して、
- * APIリソースのパスへ正規化する。
+ * Normalize the path by removing the API Gateway stage prefix and /v1 prefix.
  */
 function normalizePath(path: string, stage: string): string {
   let normalizedPath = path.startsWith("/") ? path : `/${path}`;
@@ -126,7 +166,7 @@ function normalizePath(path: string, stage: string): string {
 }
 
 /**
- * ルート処理結果へCORSヘッダーを必ず追加する。
+ * Add CORS headers to any response.
  */
 function withCorsHeaders(
   response: APIGatewayProxyResult,
@@ -141,7 +181,7 @@ function withCorsHeaders(
 }
 
 /**
- * リクエストをルートhandlerへ照合する。
+ * Match a request to a route handler.
  */
 function matchRoute(
   method: string,

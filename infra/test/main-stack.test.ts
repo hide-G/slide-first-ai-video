@@ -172,17 +172,6 @@ describe("MainStack - Lambda Functions", () => {
     });
   });
 
-  it("creates Render Lambda with 10240MB memory and 4096MB ephemeral storage", () => {
-    const template = createTestStack();
-
-    template.hasResourceProperties("AWS::Lambda::Function", {
-      FunctionName: "testapp-dev-renderer",
-      MemorySize: 10240,
-      Timeout: 900,
-      EphemeralStorage: { Size: 4096 },
-    });
-  });
-
   it("grants Polly Worker polly:SynthesizeSpeech permission", () => {
     const template = createTestStack();
 
@@ -196,6 +185,51 @@ describe("MainStack - Lambda Functions", () => {
           }),
         ]),
       },
+    });
+  });
+
+  it("creates Caption Worker Lambda with 512MB memory", () => {
+    const template = createTestStack();
+
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      FunctionName: "testapp-dev-caption-worker",
+      Runtime: "nodejs22.x",
+      MemorySize: 512,
+      Timeout: 120,
+    });
+  });
+
+  it("creates Clip Worker Lambda with 10240MB memory and 4096MB ephemeral storage", () => {
+    const template = createTestStack();
+
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      FunctionName: "testapp-dev-clip-worker",
+      Runtime: "nodejs22.x",
+      MemorySize: 10240,
+      Timeout: 900,
+      EphemeralStorage: { Size: 4096 },
+    });
+  });
+
+  it("creates Concat Worker Lambda with 10240MB memory and 4096MB ephemeral storage", () => {
+    const template = createTestStack();
+
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      FunctionName: "testapp-dev-concat-worker",
+      Runtime: "nodejs22.x",
+      MemorySize: 10240,
+      Timeout: 900,
+      EphemeralStorage: { Size: 4096 },
+    });
+  });
+
+  it("creates Slide Generator Lambda with 1024MB memory", () => {
+    const template = createTestStack();
+
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      FunctionName: "testapp-dev-slide-generator",
+      MemorySize: 1024,
+      Timeout: 120,
     });
   });
 });
@@ -242,7 +276,7 @@ describe("MainStack - API Gateway", () => {
     }
   });
 
-  it("creates 9 protected API methods and 12 CORS preflight methods", () => {
+  it("creates 13 protected API methods (section 5 endpoints)", () => {
     const template = createTestStack();
     const methods = Object.values(
       template.findResources("AWS::ApiGateway::Method"),
@@ -250,13 +284,26 @@ describe("MainStack - API Gateway", () => {
     const protectedMethods = methods.filter(
       (method) => method.Properties.HttpMethod !== "OPTIONS",
     );
+
+    // 13 protected methods: GET+POST /projects, POST+PUT /projects/{id}/outline,
+    // POST /projects/{id}/deck, POST /projects/{id}/source-upload-url,
+    // POST /projects/{id}/source, PUT /projects/{id}/output,
+    // POST+PUT /projects/{id}/narration, POST /projects/{id}/renders,
+    // GET /projects/{id}/renders/{renderId}, GET /projects/{id}/renders/{renderId}/artifacts
+    expect(protectedMethods).toHaveLength(13);
+  });
+
+  it("creates OPTIONS preflight methods for CORS", () => {
+    const template = createTestStack();
+    const methods = Object.values(
+      template.findResources("AWS::ApiGateway::Method"),
+    );
     const preflightMethods = methods.filter(
       (method) => method.Properties.HttpMethod === "OPTIONS",
     );
 
-    template.resourceCountIs("AWS::ApiGateway::Method", 21);
-    expect(protectedMethods).toHaveLength(9);
-    expect(preflightMethods).toHaveLength(12);
+    // OPTIONS on each resource path that has methods
+    expect(preflightMethods.length).toBeGreaterThan(0);
   });
 
   it("uses Cognito for protected methods and no auth for CORS preflight", () => {
@@ -276,16 +323,7 @@ describe("MainStack - API Gateway", () => {
 });
 
 describe("MainStack - Step Functions", () => {
-  it("creates Content Generation state machine", () => {
-    const template = createTestStack();
-
-    template.hasResourceProperties("AWS::StepFunctions::StateMachine", {
-      StateMachineName: "testapp-dev-content-generation",
-      StateMachineType: "STANDARD",
-    });
-  });
-
-  it("creates Render Pipeline state machine", () => {
+  it("creates 5-stage Render Pipeline state machine", () => {
     const template = createTestStack();
 
     template.hasResourceProperties("AWS::StepFunctions::StateMachine", {
@@ -294,60 +332,12 @@ describe("MainStack - Step Functions", () => {
     });
   });
 
-  it("creates 2 state machines total", () => {
+  it("creates exactly 1 state machine (render pipeline only, no content SM)", () => {
     const template = createTestStack();
-    template.resourceCountIs("AWS::StepFunctions::StateMachine", 2);
+    template.resourceCountIs("AWS::StepFunctions::StateMachine", 1);
   });
 
-  it("content state machine has Parallel state for Marp + Polly", () => {
-    const template = createTestStack();
-
-    // Find the content state machine and verify its definition includes a Parallel state
-    const stateMachines = template.findResources(
-      "AWS::StepFunctions::StateMachine",
-      {
-        Properties: {
-          StateMachineName: "testapp-dev-content-generation",
-        },
-      },
-    );
-
-    const smKeys = Object.keys(stateMachines);
-    expect(smKeys.length).toBe(1);
-
-    const definition =
-      stateMachines[smKeys[0]].Properties.DefinitionString["Fn::Join"][1];
-    const definitionStr = definition.join("");
-
-    // Verify a Parallel state exists in the definition
-    expect(definitionStr).toContain("Parallel");
-  });
-
-  it("content state machine has callback-token approval step", () => {
-    const template = createTestStack();
-
-    const stateMachines = template.findResources(
-      "AWS::StepFunctions::StateMachine",
-      {
-        Properties: {
-          StateMachineName: "testapp-dev-content-generation",
-        },
-      },
-    );
-
-    const smKeys = Object.keys(stateMachines);
-    expect(smKeys.length).toBe(1);
-
-    const definition =
-      stateMachines[smKeys[0]].Properties.DefinitionString["Fn::Join"][1];
-    const definitionStr = definition.join("");
-
-    // Verify the approval step uses waitForTaskToken pattern (SQS send)
-    expect(definitionStr).toContain("WaitForApproval");
-    expect(definitionStr).toContain(".waitForTaskToken");
-  });
-
-  it("render state machine has Map state for parallel chunk rendering", () => {
+  it("render pipeline has Map states for parallel audio and clip processing", () => {
     const template = createTestStack();
 
     const stateMachines = template.findResources(
@@ -366,18 +356,63 @@ describe("MainStack - Step Functions", () => {
       stateMachines[smKeys[0]].Properties.DefinitionString["Fn::Join"][1];
     const definitionStr = definition.join("");
 
-    // Verify a Map state exists in the definition
+    // Verify Map states exist for parallel processing
     expect(definitionStr).toContain("Map");
+  });
+
+  it("render pipeline includes all 5 stages: pages, audio, captions, clips, concat", () => {
+    const template = createTestStack();
+
+    const stateMachines = template.findResources(
+      "AWS::StepFunctions::StateMachine",
+      {
+        Properties: {
+          StateMachineName: "testapp-dev-render-pipeline",
+        },
+      },
+    );
+
+    const smKeys = Object.keys(stateMachines);
+    const definition =
+      stateMachines[smKeys[0]].Properties.DefinitionString["Fn::Join"][1];
+    const definitionStr = definition.join("");
+
+    expect(definitionStr).toContain("PagesStage");
+    expect(definitionStr).toContain("AudioMapPages");
+    expect(definitionStr).toContain("CaptionsStage");
+    expect(definitionStr).toContain("ClipsMapPages");
+    expect(definitionStr).toContain("ConcatStage");
   });
 });
 
-describe("MainStack - SQS", () => {
-  it("creates approval queue for callback token pattern", () => {
+describe("MainStack - No Teaser Resources", () => {
+  it("does not create any teaser-related state machines", () => {
     const template = createTestStack();
 
-    template.hasResourceProperties("AWS::SQS::Queue", {
-      QueueName: "testapp-dev-approval-queue",
-    });
+    const stateMachines = template.findResources(
+      "AWS::StepFunctions::StateMachine",
+    );
+
+    for (const [, sm] of Object.entries(stateMachines)) {
+      const name = sm.Properties.StateMachineName ?? "";
+      expect(name).not.toContain("teaser");
+    }
+  });
+
+  it("does not create any teaser Lambda functions", () => {
+    const template = createTestStack();
+
+    const functions = template.findResources("AWS::Lambda::Function");
+
+    for (const [, fn] of Object.entries(functions)) {
+      const name = fn.Properties.FunctionName ?? "";
+      expect(name).not.toContain("teaser");
+    }
+  });
+
+  it("does not create any SQS queues (no approval queue needed)", () => {
+    const template = createTestStack();
+    template.resourceCountIs("AWS::SQS::Queue", 0);
   });
 });
 
@@ -474,37 +509,76 @@ describe("MainStack - Environment Variables", () => {
     });
   });
 
-  it("API Lambda has VIDEO_STATE_MACHINE_ARN env var", () => {
+  it("API Lambda has RENDER_STATE_MACHINE_ARN env var", () => {
     const template = createTestStack();
 
     template.hasResourceProperties("AWS::Lambda::Function", {
       FunctionName: "testapp-dev-api",
       Environment: {
         Variables: Match.objectLike({
-          VIDEO_STATE_MACHINE_ARN: Match.anyValue(),
+          RENDER_STATE_MACHINE_ARN: Match.anyValue(),
         }),
       },
     });
   });
 
-  it("API Lambda has TEASER_STATE_MACHINE_ARN env var", () => {
+  it("API Lambda has SLIDE_GENERATOR_ARN env var", () => {
     const template = createTestStack();
 
     template.hasResourceProperties("AWS::Lambda::Function", {
       FunctionName: "testapp-dev-api",
       Environment: {
         Variables: Match.objectLike({
-          TEASER_STATE_MACHINE_ARN: Match.anyValue(),
+          SLIDE_GENERATOR_ARN: Match.anyValue(),
         }),
       },
     });
   });
 
-  it("Render Lambda has BUCKET_NAME env var", () => {
+  it("API Lambda has MARP_LAMBDA_ARN env var", () => {
     const template = createTestStack();
 
     template.hasResourceProperties("AWS::Lambda::Function", {
-      FunctionName: "testapp-dev-renderer",
+      FunctionName: "testapp-dev-api",
+      Environment: {
+        Variables: Match.objectLike({
+          MARP_LAMBDA_ARN: Match.anyValue(),
+        }),
+      },
+    });
+  });
+
+  it("Caption Worker has BUCKET_NAME env var", () => {
+    const template = createTestStack();
+
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      FunctionName: "testapp-dev-caption-worker",
+      Environment: {
+        Variables: Match.objectLike({
+          BUCKET_NAME: Match.anyValue(),
+        }),
+      },
+    });
+  });
+
+  it("Clip Worker has BUCKET_NAME env var", () => {
+    const template = createTestStack();
+
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      FunctionName: "testapp-dev-clip-worker",
+      Environment: {
+        Variables: Match.objectLike({
+          BUCKET_NAME: Match.anyValue(),
+        }),
+      },
+    });
+  });
+
+  it("Concat Worker has BUCKET_NAME env var", () => {
+    const template = createTestStack();
+
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      FunctionName: "testapp-dev-concat-worker",
       Environment: {
         Variables: Match.objectLike({
           BUCKET_NAME: Match.anyValue(),

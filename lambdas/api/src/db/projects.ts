@@ -1,21 +1,23 @@
 /**
  * DynamoDB operations for Project entities.
+ * Single table design: PK=USER#{userId}, SK=PROJECT#{projectId}
  */
 
 import { PutCommand, GetCommand, UpdateCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
-import { ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
 import { docClient, TABLE_NAME } from "./client.js";
 
 export interface ProjectRecord {
   projectId: string;
   userId: string;
   title: string;
-  theme?: string;
-  audience?: string;
-  duration?: number;
-  urls?: string[];
+  contentLanguage?: string;
   status: string;
-  currentVersion: number;
+  outline?: unknown;
+  source?: unknown;
+  output?: unknown;
+  narration?: unknown;
+  voice?: unknown;
+  lexicon?: unknown;
   createdAt: string;
   updatedAt: string;
 }
@@ -28,69 +30,72 @@ export async function createProject(project: ProjectRecord): Promise<void> {
     new PutCommand({
       TableName: TABLE_NAME,
       Item: {
-        PK: `PROJECT#${project.projectId}`,
-        SK: `META`,
-        GSI1PK: `USER#${project.userId}`,
-        GSI1SK: `PROJECT#${project.createdAt}`,
+        PK: `USER#${project.userId}`,
+        SK: `PROJECT#${project.projectId}`,
+        GSI1PK: `PROJECT#${project.projectId}`,
+        GSI1SK: `META`,
         ...project,
       },
-      ConditionExpression: "attribute_not_exists(PK)",
+      ConditionExpression: "attribute_not_exists(PK) AND attribute_not_exists(SK)",
     }),
   );
 }
 
 /**
- * Get a project by ID.
+ * Get a project by ID (query GSI1 by projectId).
  */
 export async function getProject(
   projectId: string,
 ): Promise<ProjectRecord | null> {
   const result = await docClient.send(
-    new GetCommand({
+    new QueryCommand({
       TableName: TABLE_NAME,
-      Key: {
-        PK: `PROJECT#${projectId}`,
-        SK: `META`,
+      IndexName: "GSI1",
+      KeyConditionExpression: "GSI1PK = :pk AND GSI1SK = :sk",
+      ExpressionAttributeValues: {
+        ":pk": `PROJECT#${projectId}`,
+        ":sk": "META",
       },
+      Limit: 1,
     }),
   );
 
-  return (result.Item as ProjectRecord) ?? null;
+  if (!result.Items || result.Items.length === 0) {
+    return null;
+  }
+
+  return result.Items[0] as ProjectRecord;
 }
 
 /**
- * Update project status.
+ * Update project fields.
  */
-export async function updateProjectStatus(
+export async function updateProject(
+  userId: string,
   projectId: string,
-  status: string,
-  additionalUpdates?: Record<string, unknown>,
+  updates: Record<string, unknown>,
 ): Promise<void> {
   const now = new Date().toISOString();
-  let updateExpression = "SET #status = :status, #updatedAt = :updatedAt";
+  let updateExpression = "SET #updatedAt = :updatedAt";
   const expressionNames: Record<string, string> = {
-    "#status": "status",
     "#updatedAt": "updatedAt",
   };
   const expressionValues: Record<string, unknown> = {
-    ":status": status,
     ":updatedAt": now,
   };
 
-  if (additionalUpdates) {
-    for (const [key, value] of Object.entries(additionalUpdates)) {
-      updateExpression += `, #${key} = :${key}`;
-      expressionNames[`#${key}`] = key;
-      expressionValues[`:${key}`] = value;
-    }
+  for (const [key, value] of Object.entries(updates)) {
+    updateExpression += `, #${key} = :${key}`;
+    expressionNames[`#${key}`] = key;
+    expressionValues[`:${key}`] = value;
   }
 
   await docClient.send(
     new UpdateCommand({
       TableName: TABLE_NAME,
       Key: {
-        PK: `PROJECT#${projectId}`,
-        SK: `META`,
+        PK: `USER#${userId}`,
+        SK: `PROJECT#${projectId}`,
       },
       UpdateExpression: updateExpression,
       ExpressionAttributeNames: expressionNames,
@@ -100,49 +105,7 @@ export async function updateProjectStatus(
 }
 
 /**
- * Update project version and status atomically.
- */
-export async function incrementProjectVersion(
-  projectId: string,
-  expectedVersion: number,
-): Promise<number> {
-  const newVersion = expectedVersion + 1;
-  const now = new Date().toISOString();
-
-  try {
-    await docClient.send(
-      new UpdateCommand({
-        TableName: TABLE_NAME,
-        Key: {
-          PK: `PROJECT#${projectId}`,
-          SK: `META`,
-        },
-        UpdateExpression:
-          "SET #currentVersion = :newVersion, #updatedAt = :updatedAt",
-        ConditionExpression: "#currentVersion = :expectedVersion",
-        ExpressionAttributeNames: {
-          "#currentVersion": "currentVersion",
-          "#updatedAt": "updatedAt",
-        },
-        ExpressionAttributeValues: {
-          ":newVersion": newVersion,
-          ":expectedVersion": expectedVersion,
-          ":updatedAt": now,
-        },
-      }),
-    );
-  } catch (err) {
-    if (err instanceof ConditionalCheckFailedException) {
-      throw new Error("Version conflict: project was modified concurrently");
-    }
-    throw err;
-  }
-
-  return newVersion;
-}
-
-/**
- * List projects by userId using GSI1.
+ * List projects by userId.
  */
 export async function listProjectsByUser(
   userId: string,
@@ -151,10 +114,10 @@ export async function listProjectsByUser(
   const result = await docClient.send(
     new QueryCommand({
       TableName: TABLE_NAME,
-      IndexName: "GSI1",
-      KeyConditionExpression: "GSI1PK = :pk",
+      KeyConditionExpression: "PK = :pk AND begins_with(SK, :skPrefix)",
       ExpressionAttributeValues: {
         ":pk": `USER#${userId}`,
+        ":skPrefix": "PROJECT#",
       },
       ScanIndexForward: false,
       Limit: 50,

@@ -27,6 +27,7 @@ vi.mock("@aws-sdk/client-s3", () => {
   return {
     S3Client: vi.fn(() => ({ send: mockSend })),
     GetObjectCommand: vi.fn((input) => ({ input })),
+    PutObjectCommand: vi.fn((input) => ({ input })),
     ListObjectsV2Command: vi.fn((input) => ({ input })),
     __mockSend: mockSend,
   };
@@ -41,6 +42,15 @@ vi.mock("@aws-sdk/client-sfn", () => {
   return {
     SFNClient: vi.fn(() => ({ send: mockSend })),
     StartExecutionCommand: vi.fn((input) => ({ input })),
+    __mockSend: mockSend,
+  };
+});
+
+vi.mock("@aws-sdk/client-lambda", () => {
+  const mockSend = vi.fn();
+  return {
+    LambdaClient: vi.fn(() => ({ send: mockSend })),
+    InvokeCommand: vi.fn((input) => ({ input })),
     __mockSend: mockSend,
   };
 });
@@ -91,15 +101,31 @@ function makeEvent(
 }
 
 describe("API Router", () => {
-  let mockSend: ReturnType<typeof vi.fn>;
+  let mockDynamoSend: ReturnType<typeof vi.fn>;
+  let mockSfnSend: ReturnType<typeof vi.fn>;
+  let mockLambdaSend: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     vi.clearAllMocks();
     const dynamoModule = await import("@aws-sdk/lib-dynamodb");
-    mockSend = (
+    mockDynamoSend = (
       dynamoModule as unknown as { __mockSend: ReturnType<typeof vi.fn> }
     ).__mockSend;
-    mockSend.mockResolvedValue({});
+    mockDynamoSend.mockResolvedValue({ Items: [] });
+
+    const sfnModule = await import("@aws-sdk/client-sfn");
+    mockSfnSend = (
+      sfnModule as unknown as { __mockSend: ReturnType<typeof vi.fn> }
+    ).__mockSend;
+    mockSfnSend.mockResolvedValue({ executionArn: "arn:aws:states:us-east-1:123:execution:test" });
+
+    const lambdaModule = await import("@aws-sdk/client-lambda");
+    mockLambdaSend = (
+      lambdaModule as unknown as { __mockSend: ReturnType<typeof vi.fn> }
+    ).__mockSend;
+    mockLambdaSend.mockResolvedValue({
+      Payload: Buffer.from(JSON.stringify({ outline: [] })),
+    });
   });
 
   it("returns CORS headers with 404 for unknown routes", async () => {
@@ -112,7 +138,7 @@ describe("API Router", () => {
     expect(body.error).toBe("NOT_FOUND");
   });
 
-  it("routes GET /projects when the REST API path includes the stage", async () => {
+  it("routes GET /projects (list user projects)", async () => {
     const event = makeEvent("GET", "/v1/projects");
     const result = await handler(event, mockContext);
 
@@ -122,7 +148,7 @@ describe("API Router", () => {
     expect(body.projects).toEqual([]);
   });
 
-  it("routes POST /projects without a leading /v1 path prefix", async () => {
+  it("routes POST /projects (create project)", async () => {
     const event = makeEvent("POST", "/projects", {
       body: JSON.stringify({ title: "Router Test" }),
     });
@@ -135,29 +161,165 @@ describe("API Router", () => {
     expect(body.project.title).toBe("Router Test");
   });
 
-  it("routes GET /v1/jobs/{jobId} correctly", async () => {
-    mockSend.mockResolvedValue({
-      Item: {
-        jobId: "job-abc",
-        projectId: "proj-001",
-        userId: "user-123",
-        versionNumber: 1,
-        type: "GENERATE",
-        status: "PENDING",
-        createdAt: "2024-01-01T00:00:00.000Z",
-        updatedAt: "2024-01-01T00:00:00.000Z",
-      },
+  it("routes POST /projects/{id}/outline (generate outline)", async () => {
+    // First mock: getProject (via GSI1 query) returns project owned by user
+    mockDynamoSend.mockResolvedValueOnce({
+      Items: [{ projectId: "proj-001", userId: "user-123", status: "DRAFT" }],
     });
+    // Second mock: Lambda invoke for outline generation
+    mockLambdaSend.mockResolvedValueOnce({
+      Payload: Buffer.from(JSON.stringify({ outline: [{ pageNumber: 1, title: "Intro" }] })),
+    });
+    // Third mock: updateProject
+    mockDynamoSend.mockResolvedValueOnce({});
 
-    const event = makeEvent("GET", "/v1/jobs/job-abc");
+    const event = makeEvent("POST", "/projects/proj-001/outline", {
+      body: JSON.stringify({ topic: "AI Video Creation" }),
+    });
     const result = await handler(event, mockContext);
 
     expect(result.statusCode).toBe(200);
     const body = JSON.parse(result.body);
-    expect(body.jobId).toBe("job-abc");
+    expect(body.outline).toEqual([{ pageNumber: 1, title: "Intro" }]);
   });
 
-  it("adds CORS headers to exception responses", async () => {
+  it("routes PUT /projects/{id}/outline (save outline)", async () => {
+    mockDynamoSend.mockResolvedValueOnce({
+      Items: [{ projectId: "proj-001", userId: "user-123", status: "OUTLINE_GENERATED" }],
+    });
+    mockDynamoSend.mockResolvedValueOnce({});
+
+    const event = makeEvent("PUT", "/projects/proj-001/outline", {
+      body: JSON.stringify({ outline: [{ pageNumber: 1, title: "Saved", bullets: [] }] }),
+    });
+    const result = await handler(event, mockContext);
+
+    expect(result.statusCode).toBe(200);
+  });
+
+  it("routes POST /projects/{id}/source-upload-url (presigned URL)", async () => {
+    mockDynamoSend.mockResolvedValueOnce({
+      Items: [{ projectId: "proj-001", userId: "user-123", status: "DRAFT" }],
+    });
+
+    const event = makeEvent("POST", "/projects/proj-001/source-upload-url", {
+      body: JSON.stringify({ fileName: "slides.pdf", contentType: "application/pdf" }),
+    });
+    const result = await handler(event, mockContext);
+
+    expect(result.statusCode).toBe(200);
+    const body = JSON.parse(result.body);
+    expect(body.uploadUrl).toBe("https://presigned.example.com");
+    expect(body.fileKey).toContain("source.pdf");
+  });
+
+  it("routes POST /projects/{id}/source (register source)", async () => {
+    mockDynamoSend.mockResolvedValueOnce({
+      Items: [{ projectId: "proj-001", userId: "user-123", status: "DRAFT" }],
+    });
+    mockDynamoSend.mockResolvedValueOnce({});
+
+    const event = makeEvent("POST", "/projects/proj-001/source", {
+      body: JSON.stringify({ kind: "uploaded", fileKey: "users/user-123/projects/proj-001/input/source.pdf", pageCount: 10 }),
+    });
+    const result = await handler(event, mockContext);
+
+    expect(result.statusCode).toBe(200);
+    const body = JSON.parse(result.body);
+    expect(body.source.kind).toBe("uploaded");
+  });
+
+  it("routes PUT /projects/{id}/output (save output settings)", async () => {
+    mockDynamoSend.mockResolvedValueOnce({
+      Items: [{ projectId: "proj-001", userId: "user-123", status: "DRAFT" }],
+    });
+    mockDynamoSend.mockResolvedValueOnce({});
+
+    const event = makeEvent("PUT", "/projects/proj-001/output", {
+      body: JSON.stringify({ aspect: "16:9", width: 1920, height: 1080, fps: 30, captions: "burn" }),
+    });
+    const result = await handler(event, mockContext);
+
+    expect(result.statusCode).toBe(200);
+    const body = JSON.parse(result.body);
+    expect(body.output.aspect).toBe("16:9");
+  });
+
+  it("routes POST /projects/{id}/renders (start render)", async () => {
+    mockDynamoSend.mockResolvedValueOnce({
+      Items: [{ projectId: "proj-001", userId: "user-123", status: "NARRATION_CONFIRMED" }],
+    });
+    mockDynamoSend.mockResolvedValueOnce({});
+
+    const event = makeEvent("POST", "/projects/proj-001/renders", {
+      body: JSON.stringify({}),
+    });
+    const result = await handler(event, mockContext);
+
+    expect(result.statusCode).toBe(201);
+    const body = JSON.parse(result.body);
+    expect(body.renderId).toBe("01TESTROUTERID00001");
+    expect(body.status).toBe("RUNNING");
+  });
+
+  it("routes GET /projects/{id}/renders/{renderId} (render status)", async () => {
+    mockDynamoSend.mockResolvedValueOnce({
+      Items: [{ projectId: "proj-001", userId: "user-123", status: "NARRATION_CONFIRMED" }],
+    });
+    mockDynamoSend.mockResolvedValueOnce({
+      Item: {
+        renderId: "render-001",
+        projectId: "proj-001",
+        userId: "user-123",
+        status: "RUNNING",
+        currentStage: "audio",
+        startedAt: "2024-01-01T00:00:00.000Z",
+        updatedAt: "2024-01-01T00:01:00.000Z",
+      },
+    });
+
+    const event = makeEvent("GET", "/projects/proj-001/renders/render-001");
+    const result = await handler(event, mockContext);
+
+    expect(result.statusCode).toBe(200);
+    const body = JSON.parse(result.body);
+    expect(body.renderId).toBe("render-001");
+    expect(body.status).toBe("RUNNING");
+  });
+
+  it("routes GET /projects/{id}/renders/{renderId}/artifacts", async () => {
+    mockDynamoSend.mockResolvedValueOnce({
+      Items: [{ projectId: "proj-001", userId: "user-123", status: "DONE" }],
+    });
+    mockDynamoSend.mockResolvedValueOnce({
+      Item: {
+        renderId: "render-001",
+        projectId: "proj-001",
+        userId: "user-123",
+        status: "COMPLETED",
+        startedAt: "2024-01-01T00:00:00.000Z",
+        updatedAt: "2024-01-01T00:05:00.000Z",
+      },
+    });
+
+    const s3Module = await import("@aws-sdk/client-s3");
+    const s3MockSend = (s3Module as unknown as { __mockSend: ReturnType<typeof vi.fn> }).__mockSend;
+    s3MockSend.mockResolvedValueOnce({
+      Contents: [
+        { Key: "users/user-123/projects/proj-001/output/render-001/video.mp4", Size: 1024000, LastModified: new Date("2024-01-01") },
+      ],
+    });
+
+    const event = makeEvent("GET", "/projects/proj-001/renders/render-001/artifacts");
+    const result = await handler(event, mockContext);
+
+    expect(result.statusCode).toBe(200);
+    const body = JSON.parse(result.body);
+    expect(body.artifacts).toHaveLength(1);
+    expect(body.artifacts[0].url).toBe("https://presigned.example.com");
+  });
+
+  it("returns 401 for unauthenticated requests", async () => {
     const event = makeEvent("POST", "/projects", {
       body: JSON.stringify({ title: "Test" }),
       requestContext: {
@@ -169,5 +331,60 @@ describe("API Router", () => {
     const result = await handler(event, mockContext);
     expect(result.statusCode).toBe(401);
     expect(result.headers).toMatchObject(expectedCorsHeaders);
+  });
+
+  it("returns 403 for project owned by another user", async () => {
+    mockDynamoSend.mockResolvedValueOnce({
+      Items: [{ projectId: "proj-001", userId: "other-user", status: "DRAFT" }],
+    });
+
+    const event = makeEvent("PUT", "/projects/proj-001/outline", {
+      body: JSON.stringify({ outline: [{ pageNumber: 1, title: "Test" }] }),
+    });
+    const result = await handler(event, mockContext);
+
+    expect(result.statusCode).toBe(403);
+    expect(result.headers).toMatchObject(expectedCorsHeaders);
+  });
+
+  it("returns 403 when project does not exist", async () => {
+    mockDynamoSend.mockResolvedValueOnce({ Items: [] });
+
+    const event = makeEvent("PUT", "/projects/nonexistent/output", {
+      body: JSON.stringify({ aspect: "16:9", width: 1920, height: 1080, fps: 30, captions: "burn" }),
+    });
+    const result = await handler(event, mockContext);
+
+    expect(result.statusCode).toBe(403);
+  });
+
+  it("handles all 11+ endpoint paths correctly", async () => {
+    // Verify all routes are registered by checking known paths don't 404
+    const routePaths = [
+      { method: "GET", path: "/projects" },
+      { method: "POST", path: "/projects" },
+      { method: "POST", path: "/projects/x/outline" },
+      { method: "PUT", path: "/projects/x/outline" },
+      { method: "POST", path: "/projects/x/deck" },
+      { method: "POST", path: "/projects/x/source-upload-url" },
+      { method: "POST", path: "/projects/x/source" },
+      { method: "PUT", path: "/projects/x/output" },
+      { method: "POST", path: "/projects/x/narration" },
+      { method: "PUT", path: "/projects/x/narration" },
+      { method: "POST", path: "/projects/x/renders" },
+      { method: "GET", path: "/projects/x/renders/r1" },
+      { method: "GET", path: "/projects/x/renders/r1/artifacts" },
+    ];
+
+    for (const { method, path } of routePaths) {
+      // Reset mocks for ownership check
+      mockDynamoSend.mockResolvedValue({ Items: [] });
+      const event = makeEvent(method, path, {
+        body: JSON.stringify({}),
+      });
+      const result = await handler(event, mockContext);
+      // Should NOT be 404 (may be 401, 403, or other but never 404)
+      expect(result.statusCode).not.toBe(404);
+    }
   });
 });

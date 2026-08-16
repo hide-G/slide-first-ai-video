@@ -2,15 +2,17 @@ export { docClient, TABLE_NAME } from "./client.js";
 export {
   createProject,
   getProject,
-  updateProjectStatus,
-  incrementProjectVersion,
+  updateProject,
   listProjectsByUser,
 } from "./projects.js";
 export type { ProjectRecord } from "./projects.js";
-export { createVersion, getVersion, updateVersionStatus } from "./versions.js";
-export type { VersionRecord } from "./versions.js";
-export { createJob, getJob, updateJobProgress } from "./jobs.js";
-export type { JobRecord } from "./jobs.js";
+export {
+  createRender,
+  getRender,
+  listRendersByProject,
+  updateRenderStatus,
+} from "./renders.js";
+export type { RenderRecord } from "./renders.js";
 export {
   putIfAbsent,
   getIdempotencyRecord,

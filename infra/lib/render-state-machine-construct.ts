@@ -9,16 +9,22 @@ export interface RenderStateMachineConstructProps {
   productSlug: string;
   environment: string;
   projectBucket: s3.Bucket;
+  marpLambda: lambda.IFunction;
+  pollyWorkerLambda: lambda.IFunction;
+  captionWorkerLambda: lambda.IFunction;
+  clipWorkerLambda: lambda.IFunction;
+  concatWorkerLambda: lambda.IFunction;
 }
 
 /**
- * Render State Machine: Step Functions Standard state machine for the render pipeline.
- * Flow: Plan -> Map (parallel chunk rendering) -> Assemble
- * Render Lambda: 10240MB memory, 4096MB ephemeral storage, 15 min timeout.
+ * 5-stage Render Pipeline State Machine.
+ * Stages: pages -> audio -> captions -> clips -> concat
+ *
+ * Each stage checks manifest.stages[stage] and skips if already 'done'.
+ * Failed stages can be retried independently via startFromStage parameter.
  */
 export class RenderStateMachineConstruct extends Construct {
   public readonly stateMachine: sfn.StateMachine;
-  public readonly renderLambda: lambda.Function;
 
   constructor(
     scope: Construct,
@@ -29,84 +35,140 @@ export class RenderStateMachineConstruct extends Construct {
 
     const { productSlug, environment } = props;
 
-    // Render Lambda: high-memory function for video rendering
-    this.renderLambda = new lambda.Function(this, "RenderHandler", {
-      functionName: `${productSlug}-${environment}-renderer`,
-      runtime: lambda.Runtime.NODEJS_22_X,
-      handler: "index.handler",
-      code: lambda.Code.fromAsset("../lambdas/clip-worker/dist"),
-      memorySize: 10240,
-      ephemeralStorageSize: cdk.Size.mebibytes(4096),
-      timeout: cdk.Duration.minutes(15),
-      environment: {
-        BUCKET_NAME: props.projectBucket.bucketName,
-      },
-    });
-
-    // Grant S3 read/write access
-    props.projectBucket.grantReadWrite(this.renderLambda);
-
-    // Step 1: Invoke render Lambda with Action=plan
-    const planStep = new tasks.LambdaInvoke(this, "RenderPlan", {
-      lambdaFunction: this.renderLambda,
+    // Stage 1: Pages (Marp render - generates PNG images per page)
+    const pagesStage = new tasks.LambdaInvoke(this, "PagesStage", {
+      lambdaFunction: props.marpLambda,
       payload: sfn.TaskInput.fromObject({
-        action: "plan",
-        "input.$": "$",
+        "stage": "pages",
+        "projectId.$": "$.projectId",
+        "userId.$": "$.userId",
+        "renderId.$": "$.renderId",
+        "s3Bucket.$": "$.s3Bucket",
+        "s3Prefix.$": "$.s3Prefix",
       }),
-      resultPath: "$.planResult",
+      resultPath: "$.pagesResult",
       retryOnServiceExceptions: true,
+      comment: "Render slide pages to PNG images",
     });
-    planStep.addRetry({
+    pagesStage.addRetry({
       errors: ["Lambda.ServiceException", "Lambda.TooManyRequestsException"],
       interval: cdk.Duration.seconds(5),
       maxAttempts: 2,
       backoffRate: 2,
     });
 
-    // Step 2: Map state over chunks -> Invoke render Lambda with Action=renderChunk
-    const renderChunk = new tasks.LambdaInvoke(this, "RenderChunk", {
-      lambdaFunction: this.renderLambda,
+    // Stage 2: Audio (Polly - parallel per page using Map state)
+    const pollyPerPage = new tasks.LambdaInvoke(this, "AudioPerPage", {
+      lambdaFunction: props.pollyWorkerLambda,
       payload: sfn.TaskInput.fromObject({
-        action: "renderChunk",
-        "chunk.$": "$",
+        "stage": "audio",
+        "page.$": "$",
+        "projectId.$": "$$.Execution.Input.projectId",
+        "userId.$": "$$.Execution.Input.userId",
+        "renderId.$": "$$.Execution.Input.renderId",
+        "s3Bucket.$": "$$.Execution.Input.s3Bucket",
+        "s3Prefix.$": "$$.Execution.Input.s3Prefix",
       }),
-      resultPath: "$.chunkResult",
+      resultPath: "$.audioResult",
       retryOnServiceExceptions: true,
     });
-    renderChunk.addRetry({
+    pollyPerPage.addRetry({
+      errors: ["Lambda.ServiceException", "Lambda.TooManyRequestsException"],
+      interval: cdk.Duration.seconds(3),
+      maxAttempts: 3,
+      backoffRate: 2,
+    });
+
+    const audioMap = new sfn.Map(this, "AudioMapPages", {
+      itemsPath: "$.pagesResult.Payload.pages",
+      resultPath: "$.audioResults",
+      maxConcurrency: 5,
+      comment: "Process audio for each page in parallel",
+    });
+    audioMap.itemProcessor(pollyPerPage);
+
+    // Stage 3: Captions (generate SRT from audio timings)
+    const captionsStage = new tasks.LambdaInvoke(this, "CaptionsStage", {
+      lambdaFunction: props.captionWorkerLambda,
+      payload: sfn.TaskInput.fromObject({
+        "stage": "captions",
+        "projectId.$": "$.projectId",
+        "userId.$": "$.userId",
+        "renderId.$": "$.renderId",
+        "s3Bucket.$": "$.s3Bucket",
+        "s3Prefix.$": "$.s3Prefix",
+        "audioResults.$": "$.audioResults",
+      }),
+      resultPath: "$.captionsResult",
+      retryOnServiceExceptions: true,
+      comment: "Generate SRT captions from audio timings",
+    });
+    captionsStage.addRetry({
       errors: ["Lambda.ServiceException", "Lambda.TooManyRequestsException"],
       interval: cdk.Duration.seconds(5),
       maxAttempts: 2,
       backoffRate: 2,
     });
 
-    const mapChunks = new sfn.Map(this, "MapRenderChunks", {
-      itemsPath: "$.planResult.Payload.chunks",
-      resultPath: "$.chunkResults",
-      maxConcurrency: 10,
-    });
-    mapChunks.itemProcessor(renderChunk);
-
-    // Step 3: Invoke render Lambda with Action=assemble
-    const assembleStep = new tasks.LambdaInvoke(this, "RenderAssemble", {
-      lambdaFunction: this.renderLambda,
+    // Stage 4: Clips (generate per-page video clips, parallel)
+    const clipPerPage = new tasks.LambdaInvoke(this, "ClipPerPage", {
+      lambdaFunction: props.clipWorkerLambda,
       payload: sfn.TaskInput.fromObject({
-        action: "assemble",
-        "chunkResults.$": "$.chunkResults",
-        "planResult.$": "$.planResult",
+        "stage": "clips",
+        "page.$": "$",
+        "projectId.$": "$$.Execution.Input.projectId",
+        "userId.$": "$$.Execution.Input.userId",
+        "renderId.$": "$$.Execution.Input.renderId",
+        "s3Bucket.$": "$$.Execution.Input.s3Bucket",
+        "s3Prefix.$": "$$.Execution.Input.s3Prefix",
       }),
-      resultPath: "$.assembleResult",
+      resultPath: "$.clipResult",
       retryOnServiceExceptions: true,
     });
-    assembleStep.addRetry({
+    clipPerPage.addRetry({
       errors: ["Lambda.ServiceException", "Lambda.TooManyRequestsException"],
       interval: cdk.Duration.seconds(5),
       maxAttempts: 2,
       backoffRate: 2,
     });
 
-    // Chain steps
-    const definition = planStep.next(mapChunks).next(assembleStep);
+    const clipsMap = new sfn.Map(this, "ClipsMapPages", {
+      itemsPath: "$.pagesResult.Payload.pages",
+      resultPath: "$.clipResults",
+      maxConcurrency: 5,
+      comment: "Generate video clip for each page in parallel",
+    });
+    clipsMap.itemProcessor(clipPerPage);
+
+    // Stage 5: Concat (concatenate all clips into final video)
+    const concatStage = new tasks.LambdaInvoke(this, "ConcatStage", {
+      lambdaFunction: props.concatWorkerLambda,
+      payload: sfn.TaskInput.fromObject({
+        "stage": "concat",
+        "projectId.$": "$.projectId",
+        "userId.$": "$.userId",
+        "renderId.$": "$.renderId",
+        "s3Bucket.$": "$.s3Bucket",
+        "s3Prefix.$": "$.s3Prefix",
+        "clipResults.$": "$.clipResults",
+      }),
+      resultPath: "$.concatResult",
+      retryOnServiceExceptions: true,
+      comment: "Concatenate clips into final video",
+    });
+    concatStage.addRetry({
+      errors: ["Lambda.ServiceException", "Lambda.TooManyRequestsException"],
+      interval: cdk.Duration.seconds(5),
+      maxAttempts: 2,
+      backoffRate: 2,
+    });
+
+    // Chain: pages -> audio (map) -> captions -> clips (map) -> concat
+    const definition = pagesStage
+      .next(audioMap)
+      .next(captionsStage)
+      .next(clipsMap)
+      .next(concatStage);
 
     this.stateMachine = new sfn.StateMachine(this, "RenderStateMachine", {
       stateMachineName: `${productSlug}-${environment}-render-pipeline`,

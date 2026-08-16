@@ -2,7 +2,7 @@
   "id": "FEAT-004",
   "type": "feat",
   "description": "Rebuild the API Lambda to match section 5's 11 endpoints exactly, implement stage orchestration with partial retry (Task #8-9 from spec), and update CDK infrastructure to match the new architecture. Remove teaser-related constructs and add new stage workers.",
-  "status": "pending",
+  "status": "in_progress",
   "steps": [
     "Rewrite lambdas/api/src/index.ts routes to match section 5 exactly: POST /projects, POST /projects/{id}/outline, PUT /projects/{id}/outline, POST /projects/{id}/deck, POST /projects/{id}/source-upload-url, POST /projects/{id}/source, PUT /projects/{id}/output, POST /projects/{id}/narration, PUT /projects/{id}/narration, POST /projects/{id}/renders, GET /projects/{id}/renders/{renderId}, GET /projects/{id}/renders/{renderId}/artifacts",
     "Rewrite lambdas/api/src/handlers/ to implement each endpoint: projects.ts (create/list), outline.ts (generate via Bedrock, save confirmed), deck.ts (generate slides via Marp), source.ts (presigned URL + register), output.ts (save output settings), narration.ts (generate AI drafts, save confirmed + lexicon), renders.ts (start render pipeline, get status, get artifacts with presigned URLs)",

@@ -10,7 +10,6 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as lambdaNodejs from "aws-cdk-lib/aws-lambda-nodejs";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as sfn from "aws-cdk-lib/aws-stepfunctions";
-import * as sqs from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
 
 function findRepositoryRoot(startDirectory: string): string {
@@ -23,7 +22,7 @@ function findRepositoryRoot(startDirectory: string): string {
 
     const parentDirectory = path.dirname(directory);
     if (parentDirectory === directory) {
-      throw new Error("pnpm-lock.yamlを含むリポジトリルートを特定できませんでした。");
+      throw new Error("pnpm-lock.yaml not found in any parent directory.");
     }
 
     directory = parentDirectory;
@@ -36,14 +35,14 @@ export interface ApiConstructProps {
   userPool: cognito.UserPool;
   table: dynamodb.Table;
   projectBucket: s3.Bucket;
-  contentStateMachine: sfn.StateMachine;
   renderStateMachine: sfn.StateMachine;
-  teaserStateMachine: sfn.StateMachine;
-  approvalQueue: sqs.Queue;
+  slideGeneratorLambda: lambda.IFunction;
+  marpLambda: lambda.IFunction;
 }
 
 /**
  * API construct: API Gateway REST API with Cognito authorizer and Lambda integration.
+ * Supports all 11 endpoints from the spec section 5.
  */
 export class ApiConstruct extends Construct {
   public readonly api: apigateway.RestApi;
@@ -57,7 +56,6 @@ export class ApiConstruct extends Construct {
       path.dirname(fileURLToPath(import.meta.url)),
     );
 
-    // API Lambdaをローカルesbuildでバンドルし、workspace依存を同梱する。
     this.apiHandler = new lambdaNodejs.NodejsFunction(this, "ApiHandler", {
       functionName: `${productSlug}-${environment}-api`,
       runtime: lambda.Runtime.NODEJS_22_X,
@@ -70,10 +68,9 @@ export class ApiConstruct extends Construct {
       environment: {
         TABLE_NAME: props.table.tableName,
         BUCKET_NAME: props.projectBucket.bucketName,
-        CONTENT_STATE_MACHINE_ARN: props.contentStateMachine.stateMachineArn,
-        VIDEO_STATE_MACHINE_ARN: props.renderStateMachine.stateMachineArn,
-        TEASER_STATE_MACHINE_ARN: props.teaserStateMachine.stateMachineArn,
-        APPROVAL_QUEUE_URL: props.approvalQueue.queueUrl,
+        RENDER_STATE_MACHINE_ARN: props.renderStateMachine.stateMachineArn,
+        SLIDE_GENERATOR_ARN: props.slideGeneratorLambda.functionArn,
+        MARP_LAMBDA_ARN: props.marpLambda.functionArn,
       },
       bundling: {
         bundleAwsSDK: true,
@@ -89,25 +86,15 @@ export class ApiConstruct extends Construct {
     // Grant DynamoDB access
     props.table.grantReadWriteData(this.apiHandler);
 
-    // Grant S3 read access
-    props.projectBucket.grantRead(this.apiHandler);
+    // Grant S3 read/write access (for presigned URLs and artifact listing)
+    props.projectBucket.grantReadWrite(this.apiHandler);
 
     // Grant Step Functions start execution
-    props.contentStateMachine.grantStartExecution(this.apiHandler);
     props.renderStateMachine.grantStartExecution(this.apiHandler);
-    props.teaserStateMachine.grantStartExecution(this.apiHandler);
 
-    // Grant SQS receive/delete on approval queue
-    props.approvalQueue.grantConsumeMessages(this.apiHandler);
-
-    // Grant states:SendTaskSuccess for resuming the content state machine
-    this.apiHandler.addToRolePolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ["states:SendTaskSuccess"],
-        resources: [props.contentStateMachine.stateMachineArn],
-      }),
-    );
+    // Grant Lambda invoke for slide-generator and marp
+    props.slideGeneratorLambda.grantInvoke(this.apiHandler);
+    props.marpLambda.grantInvoke(this.apiHandler);
 
     // Cognito authorizer
     const authorizer = new apigateway.CognitoUserPoolsAuthorizer(
@@ -145,7 +132,7 @@ export class ApiConstruct extends Construct {
       },
     });
 
-    // Lambdaに到達しない4XX/5XXとCognito認可失敗の401/403にもCORSを付与する。
+    // CORS gateway responses for 4XX/5XX
     new apigateway.GatewayResponse(this, "Default4xxCorsResponse", {
       restApi: this.api,
       type: apigateway.ResponseType.DEFAULT_4XX,
@@ -175,40 +162,50 @@ export class ApiConstruct extends Construct {
       authorizationType: apigateway.AuthorizationType.COGNITO,
     };
 
-    // Routes: GET /v1/projects (list), POST /v1/projects (create)
+    // /projects
     const projects = this.api.root.addResource("projects");
     projects.addMethod("GET", lambdaIntegration, authOptions);
     projects.addMethod("POST", lambdaIntegration, authOptions);
 
-    // Routes: POST /v1/projects/{id}/slides
+    // /projects/{id}
     const projectId = projects.addResource("{id}");
-    const slides = projectId.addResource("slides");
-    slides.addMethod("POST", lambdaIntegration, authOptions);
 
-    // Routes: GET /v1/projects/{id}/versions/{version}
-    const versions = projectId.addResource("versions");
-    const version = versions.addResource("{version}");
-    version.addMethod("GET", lambdaIntegration, authOptions);
+    // /projects/{id}/outline
+    const outline = projectId.addResource("outline");
+    outline.addMethod("POST", lambdaIntegration, authOptions);
+    outline.addMethod("PUT", lambdaIntegration, authOptions);
 
-    // Routes: POST /v1/projects/{id}/versions/{version}/approve
-    const approve = version.addResource("approve");
-    approve.addMethod("POST", lambdaIntegration, authOptions);
+    // /projects/{id}/deck
+    const deck = projectId.addResource("deck");
+    deck.addMethod("POST", lambdaIntegration, authOptions);
 
-    // Routes: POST /v1/projects/{id}/videos
-    const videos = projectId.addResource("videos");
-    videos.addMethod("POST", lambdaIntegration, authOptions);
+    // /projects/{id}/source-upload-url
+    const sourceUploadUrl = projectId.addResource("source-upload-url");
+    sourceUploadUrl.addMethod("POST", lambdaIntegration, authOptions);
 
-    // Routes: POST /v1/projects/{id}/videos/teaser
-    const teaser = videos.addResource("teaser");
-    teaser.addMethod("POST", lambdaIntegration, authOptions);
+    // /projects/{id}/source
+    const source = projectId.addResource("source");
+    source.addMethod("POST", lambdaIntegration, authOptions);
 
-    // Routes: GET /v1/projects/{id}/deliverables
-    const deliverables = projectId.addResource("deliverables");
-    deliverables.addMethod("GET", lambdaIntegration, authOptions);
+    // /projects/{id}/output
+    const output = projectId.addResource("output");
+    output.addMethod("PUT", lambdaIntegration, authOptions);
 
-    // Routes: GET /v1/jobs/{jobId}
-    const jobs = this.api.root.addResource("jobs");
-    const jobId = jobs.addResource("{jobId}");
-    jobId.addMethod("GET", lambdaIntegration, authOptions);
+    // /projects/{id}/narration
+    const narration = projectId.addResource("narration");
+    narration.addMethod("POST", lambdaIntegration, authOptions);
+    narration.addMethod("PUT", lambdaIntegration, authOptions);
+
+    // /projects/{id}/renders
+    const renders = projectId.addResource("renders");
+    renders.addMethod("POST", lambdaIntegration, authOptions);
+
+    // /projects/{id}/renders/{renderId}
+    const renderId = renders.addResource("{renderId}");
+    renderId.addMethod("GET", lambdaIntegration, authOptions);
+
+    // /projects/{id}/renders/{renderId}/artifacts
+    const artifacts = renderId.addResource("artifacts");
+    artifacts.addMethod("GET", lambdaIntegration, authOptions);
   }
 }

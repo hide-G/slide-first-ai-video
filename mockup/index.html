@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ログイン | Slide-First AI Video</title>
+    <link rel="stylesheet" href="assets/mockup.css" />
+  </head>
+  <body data-page="login" data-i18n-title="login.title">
+    <a class="skip-link" href="#main" data-i18n="common.skip">本文へ移動</a>
+
+    <header class="app-header">
+      <span class="brand">
+        <span class="brand-mark" aria-hidden="true">SF</span>
+        <span class="brand-text">
+          <strong>Slide-First AI Video</strong>
+          <span class="brand-sub" data-i18n="common.brandSub">スライドを正本に、音声と字幕で動画化</span>
+        </span>
+      </span>
+      <div class="header-right">
+        <span class="badge badge-mock" data-i18n="common.mockBadge">画面モックアップ</span>
+        <div class="lang-toggle" role="group" data-i18n-aria-label="common.uiLang" aria-label="UI表示言語">
+          <button type="button" class="lang-btn" data-lang="ja" aria-pressed="true">日本語</button>
+          <button type="button" class="lang-btn" data-lang="en" aria-pressed="false">English</button>
+        </div>
+      </div>
+    </header>
+
+    <main id="main" class="login-layout">
+      <div class="login-pitch">
+        <h1 data-i18n="login.heading">スライドを正本に、音声と字幕つき動画をつくる</h1>
+        <p data-i18n="login.lead">
+          生成AIでスライドの骨子を作る工程と、手持ちの資料を動画化する工程は独立しています。必要な側だけを使えます。
+        </p>
+        <ul class="pitch-list">
+          <li data-i18n="login.point1"><strong>① スライド生成</strong>：文章と参考URLを渡し、骨子を確認・修正してからMarpスライドを作ります。</li>
+          <li data-i18n="login.point2"><strong>② 動画生成</strong>：PDFやPowerPointをそのままアップロードし、ナレーションと字幕を付けて書き出します。</li>
+          <li data-i18n="login.point3"><strong>③ 読み方の指定</strong>：英単語や固有名詞の読み、振り仮名、間の取り方をSSMLで調整できます。</li>
+        </ul>
+      </div>
+
+      <div class="card" style="margin-bottom: 0">
+        <h2 data-i18n="login.formTitle">ログイン</h2>
+        <p class="card-sub" data-i18n="login.formSub">社内アカウントまたはメールアドレスでログインします。</p>
+
+        <form data-mock-submit="home.html">
+          <div class="field">
+            <label for="email" data-i18n="login.email">メールアドレス</label>
+            <input type="email" id="email" name="email" autocomplete="username" placeholder="you@example.com" />
+          </div>
+
+          <div class="field">
+            <label for="password" data-i18n="login.password">パスワード</label>
+            <input type="password" id="password" name="password" autocomplete="current-password" placeholder="********" />
+            <label class="checkbox-row" style="margin-top: 8px">
+              <input type="checkbox" data-toggle-password="password" />
+              <span data-i18n="login.showPassword">パスワードを表示する</span>
+            </label>
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-block" data-i18n="login.submit">ログイン</button>
+        </form>
+
+        <p class="divider" data-i18n="common.or">または</p>
+
+        <a class="btn btn-ghost btn-block" href="home.html" data-i18n="login.sso">シングルサインオンでログイン</a>
+
+        <div class="login-links">
+          <a href="#" data-mock-toast="login.toastReset" data-i18n="login.forgot">パスワードを忘れた場合</a>
+          <a href="#" data-mock-toast="login.toastSignup" data-i18n="login.signup">アカウントを新規作成</a>
+        </div>
+
+        <p class="note note-warn" style="margin: 16px 0 0" data-i18n="login.mockNote">
+          これは画面確認用のモックアップです。認証処理は実装されておらず、入力内容はどこにも送信されません。
+        </p>
+      </div>
+    </main>
+
+    <footer class="app-footer">
+      <span data-i18n="common.footer">Slide-First AI Video 画面モックアップ / 通信・生成処理は行いません</span>
+    </footer>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+    <script src="assets/i18n.js"></script>
+    <script src="assets/mockup.js"></script>
+  </body>
+</html>

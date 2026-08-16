@@ -36,3 +36,12 @@ coverage/
 
 # Logs
 *.log
+
+# ローカルで生成した成果物（動画・音声・PDF・PPTX・画像など）
+artifacts/
+
+# Lambdaのデプロイ用アーカイブ
+dist.zip
+
+# 画面モックアップのスクリプトは上の *.js 除外の対象外にする
+!mockup/**/*.js

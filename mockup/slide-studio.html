@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>スライド作成 | Slide-First AI Video</title>
+    <link rel="stylesheet" href="assets/mockup.css" />
+  </head>
+  <body data-page="slide-studio" data-i18n-title="slide.title">
+    <a class="skip-link" href="#main" data-i18n="common.skip">本文へ移動</a>
+
+    <header class="app-header">
+      <a class="brand" href="home.html">
+        <span class="brand-mark" aria-hidden="true">SF</span>
+        <span class="brand-text">
+          <strong>Slide-First AI Video</strong>
+          <span class="brand-sub" data-i18n="common.brandSub">スライドを正本に、音声と字幕で動画化</span>
+        </span>
+      </a>
+      <div class="header-right">
+        <span class="badge badge-mock" data-i18n="common.mockBadge">画面モックアップ</span>
+        <div class="lang-toggle" role="group" data-i18n-aria-label="common.uiLang" aria-label="UI表示言語">
+          <button type="button" class="lang-btn" data-lang="ja" aria-pressed="true">日本語</button>
+          <button type="button" class="lang-btn" data-lang="en" aria-pressed="false">English</button>
+        </div>
+        <div class="user-menu">
+          <span class="avatar" aria-hidden="true">HG</span>
+          <a class="header-link" href="home.html" data-i18n="common.home">ホーム</a>
+          <a class="header-link" href="index.html" data-i18n="common.logout">ログアウト</a>
+        </div>
+      </div>
+    </header>
+
+    <main id="main" class="page">
+      <div class="page-head">
+        <h1 data-i18n="slide.heading">② 生成AIでスライドを作る</h1>
+        <p data-i18n="slide.lead">骨子を確認・修正してからスライドを生成します。生成AIの出力をそのまま採用しません。</p>
+      </div>
+
+      <ol class="steps" data-steps>
+        <li aria-current="step">
+          <button type="button" class="step-btn" data-step-target="step-1">
+            <span class="step-num">1</span><span data-i18n="slide.stepA">入力と条件</span>
+          </button>
+        </li>
+        <li>
+          <button type="button" class="step-btn" data-step-target="step-2">
+            <span class="step-num">2</span><span data-i18n="slide.stepB">骨子のレビューと編集</span>
+          </button>
+        </li>
+        <li>
+          <button type="button" class="step-btn" data-step-target="step-3">
+            <span class="step-num">3</span><span data-i18n="slide.stepC">スライド生成と書き出し</span>
+          </button>
+        </li>
+      </ol>
+
+      <!-- ステップ1: 入力 -->
+      <section class="step-panel" id="step-1" data-step-panel>
+        <div class="card">
+          <h2 data-i18n="slide.s1Title">スライドの内容と条件を入力する</h2>
+          <p class="card-sub" data-i18n="slide.s1Sub">入力後、まず骨子だけを生成します。この時点ではスライドは作られません。</p>
+
+          <p class="note" data-i18n="slide.langNote">
+            <strong>言語の考え方：</strong>画面の表示言語（ヘッダーの日本語 / English）と、これから作るスライドの言語は別に指定します。画面を英語にしたまま日本語のスライドを作れます。
+          </p>
+
+          <fieldset class="option-cards">
+            <legend data-i18n="slide.outputLang">スライドの言語</legend>
+            <label class="option-card">
+              <input type="radio" name="content-lang" value="ja" checked />
+              <span>
+                <strong data-i18n="slide.langJa">日本語</strong>
+                <span data-i18n="slide.langJaHint">本文・ナレーションを日本語で作成</span>
+              </span>
+            </label>
+            <label class="option-card">
+              <input type="radio" name="content-lang" value="en" />
+              <span>
+                <strong data-i18n="slide.langEn">English</strong>
+                <span data-i18n="slide.langEnHint">本文・ナレーションを英語で作成</span>
+              </span>
+            </label>
+          </fieldset>
+
+          <div class="field">
+            <label for="deck-topic" data-i18n="slide.topic">タイトル・テーマ</label>
+            <input type="text" id="deck-topic" value="Kiro Crew 入門" />
+          </div>
+
+          <div class="field">
+            <label for="deck-source" data-i18n="slide.sourceText">渡したい文章・要件</label>
+            <textarea id="deck-source" rows="6" data-i18n-placeholder="slide.sourcePlaceholder" placeholder="伝えたい内容、前提、必ず入れたい注意事項などを貼り付けます。">AWS利用経験が浅い開発者向けに、Kiro Crewの全体像、向いている作業、安全に始める手順を5ページで説明したい。フルマネージドサービスではない点を明確に伝える。</textarea>
+            <span class="hint" data-i18n="slide.sourceHint">機密情報や資格情報は入力しないでください。</span>
+          </div>
+
+          <div class="field">
+            <span class="field-label" data-i18n="slide.refUrls">参考文献のURL</span>
+            <div id="url-rows">
+              <div class="url-row">
+                <input type="url" value="https://kiro.dev/blog/introducing-kiro-crew/" data-i18n-aria-label="slide.refUrlAria" aria-label="参考文献のURL" />
+                <button type="button" class="btn btn-danger btn-sm" data-remove-url data-i18n="common.remove">削除</button>
+              </div>
+              <div class="url-row">
+                <input type="url" value="https://kiro.dev/docs/crew/" data-i18n-aria-label="slide.refUrlAria" aria-label="参考文献のURL" />
+                <button type="button" class="btn btn-danger btn-sm" data-remove-url data-i18n="common.remove">削除</button>
+              </div>
+            </div>
+            <button type="button" class="btn btn-ghost btn-sm" id="add-url" data-i18n="slide.addUrl">URLを追加</button>
+            <span class="hint" data-i18n="slide.refHint">参照した内容は要約・言い換えして使い、出典を最終ページに記載します。</span>
+          </div>
+
+          <div class="grid-2">
+            <div class="field">
+              <label for="deck-audience" data-i18n="slide.audience">対象読者</label>
+              <select id="deck-audience">
+                <option data-i18n="slide.audience1">はじめて触る人</option>
+                <option data-i18n="slide.audience2">実務で使う開発者</option>
+                <option data-i18n="slide.audience3">意思決定者</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="deck-pages" data-i18n="slide.pages">ページ数</label>
+              <select id="deck-pages">
+                <option>3</option>
+                <option selected>5</option>
+                <option>7</option>
+                <option>10</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="deck-tone" data-i18n="slide.tone">トーン</label>
+              <select id="deck-tone">
+                <option data-i18n="slide.tone1">説明中心</option>
+                <option data-i18n="slide.tone2">講義・研修</option>
+                <option data-i18n="slide.tone3">紹介・告知</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="deck-theme" data-i18n="slide.theme">デザインテーマ</label>
+              <select id="deck-theme">
+                <option data-i18n="slide.theme1">ブルー基調（既定）</option>
+                <option data-i18n="slide.theme2">モノトーン</option>
+                <option data-i18n="slide.theme3">高コントラスト</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="step-actions">
+          <a class="btn btn-ghost spacer" href="home.html" data-i18n="common.backHome">ホームへ戻る</a>
+          <button type="button" class="btn btn-primary" data-step-target="step-2" data-i18n="slide.genOutline">骨子を生成する</button>
+        </div>
+      </section>
+
+      <!-- ステップ2: 骨子レビュー -->
+      <section class="step-panel" id="step-2" data-step-panel hidden>
+        <div class="card">
+          <h2 data-i18n="slide.s2Title">骨子をレビューして修正する</h2>
+          <p class="card-sub" data-i18n="slide.s2Sub">
+            スライドを生成する前の工程です。ここで確定した文章がスライドとナレーションの元になります。
+          </p>
+
+          <div class="split">
+            <div>
+              <h3 data-i18n="slide.outlineList">スライド一覧</h3>
+              <ul class="page-list" id="outline-list"></ul>
+              <div class="list-tools">
+                <button type="button" class="btn btn-ghost btn-sm" id="outline-up" data-i18n="slide.moveUp">上へ</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="outline-down" data-i18n="slide.moveDown">下へ</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="outline-add" data-i18n="slide.addSlide">追加</button>
+                <button type="button" class="btn btn-danger btn-sm" id="outline-delete" data-i18n="common.remove">削除</button>
+              </div>
+            </div>
+
+            <div>
+              <div class="inline-row" style="justify-content: space-between; margin-bottom: 8px">
+                <h3 style="margin: 0" id="outline-index-label">スライド 1</h3>
+                <span class="badge badge-ai" data-i18n="slide.aiDraft">生成AIの下書き</span>
+              </div>
+
+              <div class="field">
+                <label for="outline-title" data-i18n="slide.slideTitle">見出し</label>
+                <input type="text" id="outline-title" />
+              </div>
+
+              <div class="field">
+                <label for="outline-body" data-i18n="slide.slideBody">本文（1行につき1項目）</label>
+                <textarea id="outline-body" rows="9"></textarea>
+                <span class="hint" data-i18n="slide.slideBodyHint">加筆・削除・言い換えは自由に行えます。事実確認は必ず人が行ってください。</span>
+              </div>
+
+              <div class="field">
+                <label for="outline-notes" data-i18n="slide.slideNotes">補足メモ（スライドには表示しない）</label>
+                <textarea id="outline-notes" rows="3"></textarea>
+              </div>
+
+              <div class="inline-row">
+                <button type="button" class="btn btn-ghost btn-sm" data-mock-toast="slide.toastRegen" data-i18n="slide.regen">このページだけAIに再提案させる</button>
+                <button type="button" class="btn btn-ghost btn-sm" data-mock-toast="slide.toastCheck" data-i18n="slide.factCheck">出典との対応を確認する</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="step-actions">
+          <button type="button" class="btn btn-ghost spacer" data-step-target="step-1" data-i18n="common.back">戻る</button>
+          <button type="button" class="btn btn-primary" data-step-target="step-3" data-i18n="slide.genDeck">この骨子でスライドを生成する</button>
+        </div>
+      </section>
+
+      <!-- ステップ3: 生成結果 -->
+      <section class="step-panel" id="step-3" data-step-panel hidden>
+        <div class="card">
+          <h2 data-i18n="slide.s3Title">スライドを生成しました</h2>
+          <p class="card-sub" data-i18n="slide.s3Sub">サムネイルは表示イメージです。実ファイルはモックアップには含まれません。</p>
+          <div class="thumb-grid" id="deck-thumbs"></div>
+        </div>
+
+        <div class="card">
+          <h2 data-i18n="slide.downloadTitle">書き出し</h2>
+          <p class="card-sub" data-i18n="slide.downloadSub">同じ内容から3つの形式を書き出します。</p>
+          <div class="inline-row">
+            <button type="button" class="btn btn-ghost" data-mock-toast="common.toastMockFile">deck.md（Markdown）</button>
+            <button type="button" class="btn btn-ghost" data-mock-toast="common.toastMockFile">deck.pdf（PDF）</button>
+            <button type="button" class="btn btn-ghost" data-mock-toast="common.toastMockFile">deck.pptx（PowerPoint）</button>
+          </div>
+          <p class="note" style="margin: 16px 0 0" data-i18n="slide.pptxNote">
+            PowerPointは拡張子だけでなく、実際にPowerPointで開けるファイルとして書き出します。
+          </p>
+        </div>
+
+        <div class="card">
+          <div class="inline-row" style="justify-content: space-between">
+            <h2 style="margin: 0" data-i18n="cost.deckEstimate">このスライド生成にかかった推定コスト</h2>
+            <span class="badge badge-ai" data-i18n="cost.estimateBadge">推定</span>
+          </div>
+          <p class="card-sub" data-i18n="cost.sectionSub">
+            使用量から計算した推定額です。実際の請求額は、あとで集計して照合します。
+          </p>
+
+          <table class="table">
+            <thead>
+              <tr>
+                <th data-i18n="cost.thStage">工程</th>
+                <th data-i18n="cost.thService">サービス</th>
+                <th data-i18n="cost.thUsage">使用量</th>
+                <th class="num" data-i18n="cost.thEstimate">推定コスト</th>
+              </tr>
+            </thead>
+            <tbody id="deck-cost-body"></tbody>
+            <tfoot>
+              <tr>
+                <th colspan="3" data-i18n="cost.total">推定合計</th>
+                <td class="num" id="deck-cost-total">-</td>
+              </tr>
+            </tfoot>
+          </table>
+
+          <p class="hint" style="margin-top: 12px" data-i18n="cost.unitNote">
+            表示している単価は画面確認用のサンプルです。実装時はAWS Price List APIから取得した単価を使い、計算に使った単価の取得日を記録します。
+          </p>
+        </div>
+
+        <div class="step-actions">
+          <button type="button" class="btn btn-ghost spacer" data-step-target="step-2" data-i18n="slide.backOutline">骨子の編集に戻る</button>
+          <a class="btn btn-primary" href="video-studio.html?from=slide" data-i18n="slide.toVideo">この資料で動画を作る</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <span data-i18n="common.footer">Slide-First AI Video 画面モックアップ / 通信・生成処理は行いません</span>
+    </footer>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+    <script src="assets/i18n.js"></script>
+    <script src="assets/mockup.js"></script>
+  </body>
+</html>

@@ -148,6 +148,8 @@
       "slide.downloadTitle": "書き出し",
       "slide.downloadSub": "同じ内容から3つの形式を書き出します。",
       "slide.pptxNote": "PowerPointは拡張子だけでなく、実際にPowerPointで開けるファイルとして書き出します。",
+      "slide.pptxEditNote":
+        "PowerPointは各ページを画像として貼り付けた形式で書き出されます。開いて表示や書き込みはできますが、テキストの編集はできません。",
       "slide.backOutline": "骨子の編集に戻る",
       "slide.toVideo": "この資料で動画を作る",
 
@@ -498,6 +500,8 @@
       "slide.downloadTitle": "Export",
       "slide.downloadSub": "Three formats from the same content.",
       "slide.pptxNote": "PowerPoint is exported as a file that really opens in PowerPoint, not just a renamed file.",
+      "slide.pptxEditNote":
+        "Each page is embedded in the PowerPoint file as an image. You can open, present and annotate it, but the text is not editable.",
       "slide.backOutline": "Back to outline editing",
       "slide.toVideo": "Make a video from this deck",
 

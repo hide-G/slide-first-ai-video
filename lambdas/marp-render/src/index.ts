@@ -1,40 +1,48 @@
 /**
- * Stage 1: Pages - PDF/PPTX to PNG rasterization Lambda handler.
+ * Marp Render Lambda handler.
  *
- * Reads manifest.json from S3, converts PDF source to PNG page images
- * using pdftoppm, uploads PNGs, and updates manifest.stages.pages to 'done'.
+ * Dispatches on two event shapes:
+ * - action: "generateDeck" -> Generate slides from Markdown using Marp Core + Chromium
+ * - stage: "pages"         -> Rasterize a PDF to page PNGs using browser-based pdf.js
  *
- * For Marp-generated decks: deck/deck.pdf is the source.
- * For uploaded PDFs: input/source.pdf is the source.
- * For PPTX: convert to PDF first via LibreOffice, then use pdftoppm.
- *
- * Uses execFile with array args (NEVER shell).
+ * Does NOT use pdftoppm, libreoffice, ffmpeg, or any external commands.
+ * Uses @sparticuz/chromium + puppeteer-core for all rendering.
  */
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { S3Client, GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
-import type { Manifest } from "@slide-first/shared-types";
-import { pageImageKey } from "@slide-first/shared-types";
+import { pageImageKey, deckKey, manifestKey as buildManifestKey } from "@slide-first/shared-types";
+import type { Manifest, S3KeyParams } from "@slide-first/shared-types";
 
-const execFileAsync = promisify(execFile);
 const s3Client = new S3Client({});
 
-export interface PagesEvent {
-  /** S3 bucket name (from state machine payload) */
+// --- Event types ---
+
+export interface GenerateDeckEvent {
+  action: "generateDeck";
   s3Bucket: string;
-  /** S3 prefix e.g. "users/{userId}/projects/{projectId}/" (from state machine payload) */
   s3Prefix: string;
-  /** Project ID */
   projectId: string;
-  /** User ID */
   userId: string;
-  /** Render ID */
+  markdown: string;
+}
+
+export interface PagesEvent {
+  stage: "pages";
+  s3Bucket: string;
+  s3Prefix: string;
+  projectId: string;
+  userId: string;
   renderId: string;
-  /** Stage name */
-  stage?: string;
+}
+
+export type MarpRenderEvent = GenerateDeckEvent | PagesEvent;
+
+export interface GenerateDeckResult {
+  success: boolean;
+  pageCount: number;
+  error?: string;
 }
 
 export interface PagesResult {
@@ -44,133 +52,295 @@ export interface PagesResult {
   error?: string;
 }
 
-/**
- * Lambda handler for Stage 1: Pages.
- */
-export const handler = async (event: PagesEvent): Promise<PagesResult> => {
-  const bucket = event.s3Bucket;
-  const manifestKey = `${event.s3Prefix}manifest.json`;
+// --- Main handler ---
 
-  // 1. Read manifest
-  const manifest = await readManifest(bucket, manifestKey);
+export const handler = async (event: MarpRenderEvent): Promise<GenerateDeckResult | PagesResult> => {
+  if ("action" in event && event.action === "generateDeck") {
+    return handleGenerateDeck(event);
+  }
+  if ("stage" in event && event.stage === "pages") {
+    return handlePages(event);
+  }
+  throw new Error(`Unknown event shape: ${JSON.stringify(event).slice(0, 200)}`);
+};
 
+// --- action: "generateDeck" ---
+
+async function handleGenerateDeck(event: GenerateDeckEvent): Promise<GenerateDeckResult> {
+  const { s3Bucket, projectId, userId, markdown } = event;
+  const keyParams: S3KeyParams = { userId, projectId };
+
+  let browser: Awaited<ReturnType<typeof launchBrowser>> | null = null;
   try {
-    // 2. Update stage to running
-    manifest.stages.pages = "running";
-    await writeManifest(bucket, manifestKey, manifest);
+    // 1. Convert markdown to HTML using Marp Core
+    const html = await convertMarkdownToHtml(markdown);
 
-    // 3. Download the source PDF
-    const sourceKey = resolveSourceKey(manifest);
-    const pdfBuffer = await downloadObject(bucket, sourceKey);
+    // 2. Upload deck.md
+    await uploadObject(s3Bucket, deckKey(keyParams, "md"), Buffer.from(markdown, "utf-8"), "text/markdown");
 
-    // 4. Write PDF to /tmp
-    const tmpDir = "/tmp/pages-work";
-    await mkdir(tmpDir, { recursive: true });
-    const pdfPath = join(tmpDir, "source.pdf");
-    await writeFile(pdfPath, pdfBuffer);
+    // 3. Launch browser
+    browser = await launchBrowser();
+    const page = await browser.newPage();
 
-    // 5. If source is PPTX, convert to PDF first
-    const ext = sourceKey.split(".").pop();
-    let actualPdfPath = pdfPath;
-    if (ext === "pptx") {
-      await execFileAsync("libreoffice", [
-        "--headless",
-        "--convert-to", "pdf",
-        "--outdir", tmpDir,
-        pdfPath,
-      ]);
-      actualPdfPath = join(tmpDir, "source.pdf");
+    // 4. Build font CSS
+    const fontCss = await buildFontCss();
+
+    // 5. Set content with font
+    const fullHtml = injectFontCss(html, fontCss);
+    await page.setContent(fullHtml, { waitUntil: "networkidle0" });
+
+    // 6. Wait for fonts to load
+    await page.evaluate(() => document.fonts.ready);
+
+    // 7. Verify font application
+    const fontApplied = await page.evaluate(() => {
+      const sample = "\u65E5\u672C\u8A9E\u306E\u6F22\u5B57\u3068\u3072\u3089\u304C\u306A";
+      const ctx = document.createElement("canvas").getContext("2d")!;
+      ctx.font = "48px NotoSansJP";
+      const a = ctx.measureText(sample).width;
+      ctx.font = "48px NoSuchFontFamilyXYZ";
+      const b = ctx.measureText(sample).width;
+      return Math.abs(a - b) > 0.5;
+    });
+    if (!fontApplied) {
+      throw new Error("Japanese font verification failed: NotoSansJP not applied");
     }
 
-    // 6. Convert PDF to PNGs using pdftoppm
-    const outputPrefix = join(tmpDir, "page");
-    await execFileAsync("pdftoppm", [
-      "-png",
-      "-r", "300",
-      actualPdfPath,
-      outputPrefix,
-    ]);
+    // 8. Generate PDF
+    const pdfBuffer = await page.pdf({ width: "1920px", height: "1080px" });
+    await uploadObject(s3Bucket, deckKey(keyParams, "pdf"), Buffer.from(pdfBuffer), "application/pdf");
 
-    // 7. Read generated PNGs and upload to S3
-    const files = await readdir(tmpDir);
-    const pngFiles = files.filter((f) => f.endsWith(".png")).sort();
+    // 9. Capture PNG per section (slide page)
+    const sectionHandles = await page.$$("section");
+    const pageCount = sectionHandles.length;
 
-    if (pngFiles.length !== manifest.source.pageCount) {
-      throw new Error(
-        `PNG count mismatch: generated ${pngFiles.length}, expected ${manifest.source.pageCount}`,
-      );
+    const pagePngs: Buffer[] = [];
+    for (let i = 0; i < pageCount; i++) {
+      const screenshot = await sectionHandles[i].screenshot({ type: "png" });
+      const pngBuffer = Buffer.from(screenshot);
+      pagePngs.push(pngBuffer);
+      await uploadObject(s3Bucket, pageImageKey(keyParams, i + 1), pngBuffer, "image/png");
     }
 
-    const keyParams = { userId: manifest.userId, projectId: manifest.projectId };
+    // 10. Generate PPTX (images pasted as pages, text not editable)
+    const pptxBuffer = await generatePptx(pagePngs);
+    await uploadObject(s3Bucket, deckKey(keyParams, "pptx"), pptxBuffer, "application/vnd.openxmlformats-officedocument.presentationml.presentation");
 
-    for (let i = 0; i < pngFiles.length; i++) {
-      const pageNumber = i + 1;
-      const pngBuffer = await readFile(join(tmpDir, pngFiles[i]));
-      const s3Key = pageImageKey(keyParams, pageNumber);
-      await s3Client.send(
-        new PutObjectCommand({
-          Bucket: bucket,
-          Key: s3Key,
-          Body: pngBuffer,
-          ContentType: "image/png",
-        }),
-      );
-    }
+    await browser.close();
+    browser = null;
 
-    // 8. Update manifest stage to done
-    manifest.stages.pages = "done";
-    await writeManifest(bucket, manifestKey, manifest);
-
-    return { success: true, pageCount: pngFiles.length, pages: Array.from({ length: pngFiles.length }, (_, i) => ({ pageNumber: i + 1 })) };
+    return { success: true, pageCount };
   } catch (error: unknown) {
-    // Mark stage as failed
+    if (browser) {
+      try { await browser.close(); } catch { /* ignore */ }
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, pageCount: 0, error: message };
+  }
+}
+
+// --- stage: "pages" (pdf.js rasterization) ---
+
+async function handlePages(event: PagesEvent): Promise<PagesResult> {
+  const { s3Bucket, s3Prefix, projectId, userId } = event;
+  const keyParams: S3KeyParams = { userId, projectId };
+  const mKey = buildManifestKey(keyParams);
+
+  // Read manifest
+  const manifest = await readManifest(s3Bucket, mKey);
+
+  let browser: Awaited<ReturnType<typeof launchBrowser>> | null = null;
+  try {
+    // Update stage to running
+    manifest.stages.pages = "running";
+    await writeManifest(s3Bucket, mKey, manifest);
+
+    // Download source PDF
+    const sourceKey = resolveSourceKey(manifest, keyParams, s3Prefix);
+    const pdfBytes = await downloadObject(s3Bucket, sourceKey);
+    const pdfBase64 = pdfBytes.toString("base64");
+
+    // Read pdf.js library sources from assets
+    const assetsDir = join(__dirname, "assets");
+    const libSource = await readFile(join(assetsDir, "pdf.min.mjs"), "utf-8");
+    const workerSource = await readFile(join(assetsDir, "pdf.worker.min.mjs"), "utf-8");
+
+    // Launch browser
+    browser = await launchBrowser();
+    const page = await browser.newPage();
+
+    // Set minimal HTML page
+    await page.setContent("<html><body></body></html>", { waitUntil: "domcontentloaded" });
+
+    // Rasterize PDF pages using pdf.js inside browser context
+    const pngDataUrls: string[] = await page.evaluate(
+      async (libSrc: string, workerSrc: string, dataBase64: string) => {
+        const libUrl = URL.createObjectURL(new Blob([libSrc], { type: "text/javascript" }));
+        const workerUrl = URL.createObjectURL(new Blob([workerSrc], { type: "text/javascript" }));
+        const pdfjs = await import(libUrl);
+        pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+
+        const bytes = Uint8Array.from(atob(dataBase64), (c) => c.charCodeAt(0));
+        const doc = await pdfjs.getDocument({ data: bytes }).promise;
+
+        const results: string[] = [];
+        for (let i = 1; i <= doc.numPages; i++) {
+          const pdfPage = await doc.getPage(i);
+          const viewportAt1 = pdfPage.getViewport({ scale: 1 });
+          const scale = 1920 / viewportAt1.width;
+          const viewport = pdfPage.getViewport({ scale });
+
+          const canvas = document.createElement("canvas");
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          const ctx = canvas.getContext("2d")!;
+
+          await pdfPage.render({ canvasContext: ctx, viewport }).promise;
+          results.push(canvas.toDataURL("image/png"));
+        }
+
+        URL.revokeObjectURL(libUrl);
+        URL.revokeObjectURL(workerUrl);
+        return results;
+      },
+      libSource,
+      workerSource,
+      pdfBase64
+    );
+
+    await browser.close();
+    browser = null;
+
+    // Upload page PNGs
+    const pageCount = pngDataUrls.length;
+    for (let i = 0; i < pageCount; i++) {
+      const dataUrl = pngDataUrls[i];
+      const base64Data = dataUrl.replace(/^data:image\/png;base64,/, "");
+      const pngBuffer = Buffer.from(base64Data, "base64");
+      await uploadObject(s3Bucket, pageImageKey(keyParams, i + 1), pngBuffer, "image/png");
+    }
+
+    // Update manifest stage to done
+    manifest.stages.pages = "done";
+    await writeManifest(s3Bucket, mKey, manifest);
+
+    return {
+      success: true,
+      pageCount,
+      pages: Array.from({ length: pageCount }, (_, i) => ({ pageNumber: i + 1 })),
+    };
+  } catch (error: unknown) {
+    if (browser) {
+      try { await browser.close(); } catch { /* ignore */ }
+    }
     manifest.stages.pages = "failed";
-    await writeManifest(bucket, manifestKey, manifest);
+    await writeManifest(s3Bucket, mKey, manifest);
 
     const message = error instanceof Error ? error.message : String(error);
     return { success: false, pageCount: 0, pages: [], error: message };
   }
-};
+}
 
-/**
- * Determine the source PDF key from the manifest.
- */
-function resolveSourceKey(manifest: Manifest): string {
-  const keyParams = { userId: manifest.userId, projectId: manifest.projectId };
-  const prefix = `users/${keyParams.userId}/projects/${keyParams.projectId}`;
+// --- Helper: Marp Core markdown -> HTML ---
 
-  if (manifest.source.kind === "generated") {
-    // Marp-generated deck
-    return `${prefix}/deck/deck.pdf`;
+async function convertMarkdownToHtml(markdown: string): Promise<string> {
+  const { Marp } = await import("@marp-team/marp-core");
+  const marp = new Marp();
+  const { html, css } = marp.render(markdown);
+  return `<!DOCTYPE html><html><head><style>${css}</style></head><body>${html}</body></html>`;
+}
+
+// --- Helper: Build font CSS ---
+
+async function buildFontCss(): Promise<string> {
+  const fontPath = join(__dirname, "assets", "noto-sans-jp.woff2");
+  const fontBuffer = await readFile(fontPath);
+  const base64 = fontBuffer.toString("base64");
+  return `@font-face { font-family: 'NotoSansJP'; src: url(data:font/woff2;base64,${base64}) format('woff2'); font-weight: 400; font-display: block; } section, section * { font-family: 'NotoSansJP', sans-serif !important; }`;
+}
+
+// --- Helper: Inject font CSS into HTML ---
+
+function injectFontCss(html: string, fontCss: string): string {
+  return html.replace("</head>", `<style>${fontCss}</style></head>`);
+}
+
+// --- Helper: Launch Chromium browser ---
+
+async function launchBrowser() {
+  const chromium = await import("@sparticuz/chromium");
+  const puppeteer = await import("puppeteer-core");
+  const executablePath = await chromium.default.executablePath();
+  const browser = await puppeteer.default.launch({
+    args: chromium.default.args,
+    executablePath,
+    headless: chromium.default.headless,
+    defaultViewport: { width: 1920, height: 1080 },
+  });
+  return browser;
+}
+
+// --- Helper: Generate PPTX with images ---
+
+async function generatePptx(pagePngs: Buffer[]): Promise<Buffer> {
+  const PptxGenJS = (await import("pptxgenjs")).default;
+  const pptx = new PptxGenJS();
+  pptx.defineLayout({ name: "WIDE", width: 13.333, height: 7.5 }); // 16:9 at 1920x1080
+  pptx.layout = "WIDE";
+
+  for (const png of pagePngs) {
+    const slide = pptx.addSlide();
+    const base64 = png.toString("base64");
+    slide.addImage({
+      data: `image/png;base64,${base64}`,
+      x: 0,
+      y: 0,
+      w: "100%",
+      h: "100%",
+    });
   }
 
-  // Uploaded source file
+  const output = await pptx.write({ outputType: "nodebuffer" });
+  return Buffer.from(output as Buffer);
+}
+
+// --- Helper: Resolve source PDF key ---
+
+function resolveSourceKey(manifest: Manifest, keyParams: S3KeyParams, _s3Prefix: string): string {
+  if (manifest.source.kind === "generated") {
+    return deckKey(keyParams, "pdf");
+  }
   return manifest.source.fileKey;
 }
 
+// --- S3 helpers ---
+
 async function readManifest(bucket: string, key: string): Promise<Manifest> {
-  const response = await s3Client.send(
-    new GetObjectCommand({ Bucket: bucket, Key: key }),
-  );
+  const response = await s3Client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
   const body = await response.Body!.transformToString();
   return JSON.parse(body) as Manifest;
 }
 
 async function writeManifest(bucket: string, key: string, manifest: Manifest): Promise<void> {
-  await s3Client.send(
-    new PutObjectCommand({
-      Bucket: bucket,
-      Key: key,
-      Body: JSON.stringify(manifest, null, 2),
-      ContentType: "application/json",
-    }),
-  );
+  await s3Client.send(new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    Body: JSON.stringify(manifest, null, 2),
+    ContentType: "application/json",
+  }));
 }
 
 async function downloadObject(bucket: string, key: string): Promise<Buffer> {
-  const response = await s3Client.send(
-    new GetObjectCommand({ Bucket: bucket, Key: key }),
-  );
+  const response = await s3Client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
   const bytes = await response.Body!.transformToByteArray();
   return Buffer.from(bytes);
+}
+
+async function uploadObject(bucket: string, key: string, body: Buffer, contentType: string): Promise<void> {
+  await s3Client.send(new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    Body: body,
+    ContentType: contentType,
+  }));
 }

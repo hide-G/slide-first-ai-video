@@ -6,7 +6,7 @@ import { MarpLambdaConstruct } from "../lib/marp-lambda-construct.js";
 import { PollyWorkerConstruct } from "../lib/polly-worker-construct.js";
 import { SlideGeneratorConstruct } from "../lib/slide-generator-construct.js";
 import { CaptionWorkerConstruct } from "../lib/caption-worker-construct.js";
-
+import { MediaConvertWorkerConstruct } from "../lib/mediaconvert-worker-construct.js";
 import { RenderStateMachineConstruct } from "../lib/render-state-machine-construct.js";
 import { ApiConstruct } from "../lib/api-construct.js";
 import { DeliveryConstruct } from "../lib/delivery-construct.js";
@@ -79,6 +79,17 @@ export class MainStack extends cdk.Stack {
       projectBucket: storage.projectBucket,
     });
 
+    // MediaConvert Worker Lambda: Video rendering via AWS MediaConvert
+    const mediaconvertWorker = new MediaConvertWorkerConstruct(
+      this,
+      "MediaConvertWorker",
+      {
+        productSlug: props.productSlug,
+        environment: props.envName,
+        projectBucket: storage.projectBucket,
+      },
+    );
+
     // 4-stage Render Pipeline State Machine (pages -> audio -> captions -> video)
     const renderStateMachine = new RenderStateMachineConstruct(
       this,
@@ -90,6 +101,7 @@ export class MainStack extends cdk.Stack {
         marpLambda: marpLambda.handler,
         pollyWorkerLambda: pollyWorker.handler,
         captionWorkerLambda: captionWorker.handler,
+        mediaconvertWorkerLambda: mediaconvertWorker.handler,
       },
     );
 

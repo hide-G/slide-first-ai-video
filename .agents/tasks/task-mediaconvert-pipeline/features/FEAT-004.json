@@ -2,7 +2,7 @@
   "id": "FEAT-004",
   "type": "feat",
   "description": "Task 9: CDK changes - add mediaconvert-worker construct, MediaConvert IAM role, PassRole permission, update state machine to 4-stage (pages -> audio -> captions -> video).",
-  "status": "pending",
+  "status": "in_progress",
   "steps": [
     "Create infra/lib/mediaconvert-worker-construct.ts: Lambda Function using Code.fromAsset('../lambdas/mediaconvert-worker/dist') with handler index.handler, nodejs22.x, 512MB memory, 300s timeout. Pass environment vars: BUCKET_NAME, MEDIACONVERT_ROLE_ARN, MEDIACONVERT_ENDPOINT (optional). Grant S3 read/write. Grant mediaconvert:CreateJob, mediaconvert:GetJob permissions.",
     "Create MediaConvert IAM service role in CDK (either in a new construct or within main-stack): Role with principal mediaconvert.amazonaws.com. Permissions: s3:GetObject, s3:PutObject on the project bucket. This role ARN is passed to the mediaconvert-worker as MEDIACONVERT_ROLE_ARN env var.",

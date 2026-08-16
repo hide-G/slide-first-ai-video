@@ -12,6 +12,7 @@ export interface RenderStateMachineConstructProps {
   marpLambda: lambda.IFunction;
   pollyWorkerLambda: lambda.IFunction;
   captionWorkerLambda: lambda.IFunction;
+  mediaconvertWorkerLambda: lambda.IFunction;
 }
 
 /**
@@ -102,11 +103,8 @@ export class RenderStateMachineConstruct extends Construct {
     });
 
     // Stage 4: Video (MediaConvert - submitted by mediaconvert-worker)
-    // Note: The mediaconvert-worker Lambda is invoked here.
-    // In the future this may be replaced by a direct MediaConvert
-    // integration using sfn tasks.
     const videoStage = new tasks.LambdaInvoke(this, "VideoStage", {
-      lambdaFunction: props.captionWorkerLambda, // Placeholder - will be replaced by mediaconvert-worker construct in FEAT-004
+      lambdaFunction: props.mediaconvertWorkerLambda,
       payload: sfn.TaskInput.fromObject({
         "stage": "video",
         "projectId.$": "$.projectId",

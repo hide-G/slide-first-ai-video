@@ -2,7 +2,7 @@
   "id": "FEAT-005",
   "type": "feat",
   "description": "Rebuild the React frontend to match all 4 mockup screens exactly (Tasks #10-13 from spec). Implement slide studio (3-step), video studio (4-step), hub page with cost column, and login page. Include SSML cheatsheet movable panel, output size options, subtitle modes, and cost display.",
-  "status": "pending",
+  "status": "in_progress",
   "steps": [
     "Rewrite frontend/src/App.tsx with React Router routes: / (login), /home (hub), /slide-studio (slide creation), /video-studio (video creation)",
     "Rewrite frontend/src/pages/LoginPage.tsx matching mockup/index.html: email/password form, SSO button, language toggle (ja/en), show password checkbox, forgot password and signup links",

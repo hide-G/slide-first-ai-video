@@ -6,23 +6,24 @@ export function LanguageSwitcher() {
   return (
     <div
       role="group"
-      aria-label={t("language.switcherLabel")}
-      style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}
+      aria-label={t("common.uiLang")}
+      className="lang-toggle"
     >
       <button
         type="button"
+        className="lang-btn"
         onClick={() => setLocale("ja")}
         aria-pressed={locale === "ja"}
       >
-        {t("language.japanese")}
+        日本語
       </button>
-      <span aria-hidden="true">/</span>
       <button
         type="button"
+        className="lang-btn"
         onClick={() => setLocale("en")}
         aria-pressed={locale === "en"}
       >
-        {t("language.english")}
+        English
       </button>
     </div>
   );

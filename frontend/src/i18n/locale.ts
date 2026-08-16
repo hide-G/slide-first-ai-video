@@ -1,4 +1,4 @@
-import { createTranslate, type Locale } from "./messages.js";
+import type { Locale } from "./messages.js";
 
 export const DEFAULT_LOCALE: Locale = "ja";
 export const LOCALE_STORAGE_KEY = "slide-first.locale";
@@ -28,7 +28,7 @@ export function persistLocale(locale: Locale): void {
   try {
     window.localStorage.setItem(LOCALE_STORAGE_KEY, locale);
   } catch {
-    // ストレージを利用できない環境でも、画面上の切替は継続する。
+    // Storage unavailable - continue without persisting
   }
 }
 
@@ -38,5 +38,5 @@ export function updateDocumentLocale(locale: Locale): void {
   }
 
   document.documentElement.lang = locale;
-  document.title = createTranslate(locale)("app.title");
+  document.title = "Slide-First AI Video";
 }

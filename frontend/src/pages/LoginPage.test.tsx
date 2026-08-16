@@ -1,50 +1,34 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const i18nMocks = vi.hoisted(() => {
-  const state = { language: "ja" };
-
-  return {
-    state,
-    putVocabularies: vi.fn(),
-    setLanguage: vi.fn((language: string) => {
-      state.language = language;
-    }),
-  };
-});
-
 vi.mock("aws-amplify/utils", () => ({
-  I18n: i18nMocks,
+  I18n: { putVocabularies: vi.fn(), setLanguage: vi.fn() },
 }));
 
 vi.mock("@aws-amplify/ui-react", () => ({
-  translations: { ja: { signIn: "サインイン" }, en: { signIn: "Sign In" } },
-  Authenticator: () => (
-    <div data-testid="authenticator">
-      {i18nMocks.state.language === "ja" ? "サインイン" : "Sign In"}
-    </div>
-  ),
+  translations: { ja: {}, en: {} },
 }));
 
-vi.mock("@aws-amplify/ui-react/styles.css", () => ({}));
+vi.mock("aws-amplify/auth", () => ({
+  signIn: vi.fn(),
+  signOut: vi.fn(),
+  getCurrentUser: vi.fn().mockRejectedValue(new Error("Not authenticated")),
+  fetchAuthSession: vi.fn().mockResolvedValue({ tokens: {} }),
+}));
 
-import { initializeAuthenticatorI18n } from "../i18n/authenticator.js";
 import { LanguageProvider } from "../i18n/LanguageContext.js";
 import { LoginPage } from "./LoginPage.js";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
-describe("LoginPageの言語切替", () => {
+describe("LoginPage", () => {
   let container: HTMLDivElement;
   let root: Root;
 
   beforeEach(() => {
-    i18nMocks.state.language = "ja";
-    i18nMocks.putVocabularies.mockClear();
-    i18nMocks.setLanguage.mockClear();
     window.localStorage.clear();
-    initializeAuthenticatorI18n("ja");
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -57,41 +41,60 @@ describe("LoginPageの言語切替", () => {
     container.remove();
   });
 
-  async function renderLoginPage(): Promise<void> {
+  async function renderLogin(): Promise<void> {
     await act(async () => {
       root.render(
         <LanguageProvider initialLocale="ja">
-          <LoginPage />
+          <MemoryRouter>
+            <LoginPage />
+          </MemoryRouter>
         </LanguageProvider>,
       );
     });
   }
 
-  it("言語切替に合わせてAuthenticatorの公式I18n言語も更新する", async () => {
-    await renderLoginPage();
+  it("renders login form with email and password fields", async () => {
+    await renderLogin();
 
-    expect(container.querySelector('[data-testid="authenticator"]')?.textContent).toBe(
-      "サインイン",
-    );
-    expect(container.textContent).toContain("スライドから動画を自動生成");
+    expect(container.querySelector('input[type="email"]')).not.toBeNull();
+    expect(container.querySelector('input[type="password"]')).not.toBeNull();
+    expect(container.textContent).toContain("ログイン");
+  });
+
+  it("has show password toggle", async () => {
+    await renderLogin();
+
+    const checkbox = container.querySelector('input[type="checkbox"]');
+    expect(checkbox).not.toBeNull();
+    expect(container.textContent).toContain("パスワードを表示する");
+  });
+
+  it("switches to English when language button clicked", async () => {
+    await renderLogin();
 
     const englishButton = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent === "English",
+      (btn) => btn.textContent === "English",
     );
-    if (!(englishButton instanceof HTMLButtonElement)) {
-      throw new Error("Englishボタンが見つかりません。");
-    }
+    expect(englishButton).not.toBeNull();
 
     await act(async () => {
-      englishButton.click();
+      englishButton!.click();
     });
 
-    expect(container.querySelector('[data-testid="authenticator"]')?.textContent).toBe(
-      "Sign In",
-    );
-    expect(container.textContent).toContain(
-      "Generate videos from slides automatically",
-    );
-    expect(i18nMocks.setLanguage).toHaveBeenLastCalledWith("en");
+    expect(container.textContent).toContain("Sign in");
+    expect(container.textContent).toContain("Show password");
+  });
+
+  it("has SSO button", async () => {
+    await renderLogin();
+
+    expect(container.textContent).toContain("シングルサインオンでログイン");
+  });
+
+  it("has forgot password and signup links", async () => {
+    await renderLogin();
+
+    expect(container.textContent).toContain("パスワードを忘れた場合");
+    expect(container.textContent).toContain("アカウントを新規作成");
   });
 });

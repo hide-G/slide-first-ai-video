@@ -2,7 +2,7 @@
   "id": "FEAT-007",
   "type": "fix",
   "description": "Address 5 v2 review issues: marp-render/polly-worker event shape alignment, remove Map states for audio/clips, XML-escape plain text before Polly, and fix presigned URL ContentLength.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Fix #1: Update marp-render handler to accept s3Bucket/s3Prefix instead of bucket/manifestKey",
     "Fix #2: Update polly-worker handler to accept s3Bucket/s3Prefix instead of bucket/manifestKey",
@@ -25,5 +25,5 @@
     "source /root/.nvm/nvm.sh && cd /projects/sandbox/slide-first-ai-video && pnpm test"
   ],
   "blocked_reason": null,
-  "findings": null
+  "findings": "All 5 v2 review issues fixed. State machine simplified from Map-based parallel architecture to sequential single-invocation Tasks for audio and clips. This avoids N^2 work and manifest write races. XML escaping in polly-worker applied before lexicon processing so that lexicon entries with special characters are correctly matched in the escaped text. Total test count: 298 (added 1 new XML-escaping test for polly-worker). All tests pass."
 }

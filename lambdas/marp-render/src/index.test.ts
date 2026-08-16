@@ -101,7 +101,7 @@ describe("Stage 1: Pages handler", () => {
 
   it("calls pdftoppm with correct args (no shell)", async () => {
     const { handler } = await import("./index.js");
-    await handler({ bucket: "test-bucket", manifestKey: "users/user-1/projects/proj-1/manifest.json" });
+    await handler({ s3Bucket: "test-bucket", s3Prefix: "users/user-1/projects/proj-1/", projectId: "proj-1", userId: "user-1", renderId: "render-1" });
 
     const mockExecFile = vi.mocked(execFile);
     // Should have been called with pdftoppm
@@ -114,10 +114,11 @@ describe("Stage 1: Pages handler", () => {
 
   it("uploads correct number of PNGs to S3", async () => {
     const { handler } = await import("./index.js");
-    const result = await handler({ bucket: "test-bucket", manifestKey: "users/user-1/projects/proj-1/manifest.json" });
+    const result = await handler({ s3Bucket: "test-bucket", s3Prefix: "users/user-1/projects/proj-1/", projectId: "proj-1", userId: "user-1", renderId: "render-1" });
 
     expect(result.success).toBe(true);
     expect(result.pageCount).toBe(3);
+    expect(result.pages).toEqual([{ pageNumber: 1 }, { pageNumber: 2 }, { pageNumber: 3 }]);
 
     // Count PutObject calls (manifest writes + PNG uploads)
     const putCalls = mockSend.mock.calls.filter(
@@ -133,10 +134,11 @@ describe("Stage 1: Pages handler", () => {
     ]); // Only 1 PNG, but expect 3
 
     const { handler } = await import("./index.js");
-    const result = await handler({ bucket: "test-bucket", manifestKey: "users/user-1/projects/proj-1/manifest.json" });
+    const result = await handler({ s3Bucket: "test-bucket", s3Prefix: "users/user-1/projects/proj-1/", projectId: "proj-1", userId: "user-1", renderId: "render-1" });
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("PNG count mismatch");
+    expect(result.pages).toEqual([]);
 
     // Should have written manifest with stages.pages = "failed"
     const putCalls = mockSend.mock.calls.filter(

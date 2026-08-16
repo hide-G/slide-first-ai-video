@@ -58,35 +58,27 @@ export class RenderStateMachineConstruct extends Construct {
       backoffRate: 2,
     });
 
-    // Stage 2: Audio (Polly - parallel per page using Map state)
-    const pollyPerPage = new tasks.LambdaInvoke(this, "AudioPerPage", {
+    // Stage 2: Audio (Polly - single invocation, processes all pages)
+    const audioStage = new tasks.LambdaInvoke(this, "AudioStage", {
       lambdaFunction: props.pollyWorkerLambda,
       payload: sfn.TaskInput.fromObject({
         "stage": "audio",
-        "page.$": "$",
-        "projectId.$": "$$.Execution.Input.projectId",
-        "userId.$": "$$.Execution.Input.userId",
-        "renderId.$": "$$.Execution.Input.renderId",
-        "s3Bucket.$": "$$.Execution.Input.s3Bucket",
-        "s3Prefix.$": "$$.Execution.Input.s3Prefix",
+        "projectId.$": "$.projectId",
+        "userId.$": "$.userId",
+        "renderId.$": "$.renderId",
+        "s3Bucket.$": "$.s3Bucket",
+        "s3Prefix.$": "$.s3Prefix",
       }),
       resultPath: "$.audioResult",
       retryOnServiceExceptions: true,
+      comment: "Synthesize speech audio for all pages",
     });
-    pollyPerPage.addRetry({
+    audioStage.addRetry({
       errors: ["Lambda.ServiceException", "Lambda.TooManyRequestsException"],
       interval: cdk.Duration.seconds(3),
       maxAttempts: 3,
       backoffRate: 2,
     });
-
-    const audioMap = new sfn.Map(this, "AudioMapPages", {
-      itemsPath: "$.pagesResult.Payload.pages",
-      resultPath: "$.audioResults",
-      maxConcurrency: 5,
-      comment: "Process audio for each page in parallel",
-    });
-    audioMap.itemProcessor(pollyPerPage);
 
     // Stage 3: Captions (generate SRT from audio timings)
     const captionsStage = new tasks.LambdaInvoke(this, "CaptionsStage", {
@@ -98,7 +90,6 @@ export class RenderStateMachineConstruct extends Construct {
         "renderId.$": "$.renderId",
         "s3Bucket.$": "$.s3Bucket",
         "s3Prefix.$": "$.s3Prefix",
-        "audioResults.$": "$.audioResults",
       }),
       resultPath: "$.captionsResult",
       retryOnServiceExceptions: true,
@@ -111,35 +102,27 @@ export class RenderStateMachineConstruct extends Construct {
       backoffRate: 2,
     });
 
-    // Stage 4: Clips (generate per-page video clips, parallel)
-    const clipPerPage = new tasks.LambdaInvoke(this, "ClipPerPage", {
+    // Stage 4: Clips (single invocation, processes all pages)
+    const clipsStage = new tasks.LambdaInvoke(this, "ClipsStage", {
       lambdaFunction: props.clipWorkerLambda,
       payload: sfn.TaskInput.fromObject({
         "stage": "clips",
-        "page.$": "$",
-        "projectId.$": "$$.Execution.Input.projectId",
-        "userId.$": "$$.Execution.Input.userId",
-        "renderId.$": "$$.Execution.Input.renderId",
-        "s3Bucket.$": "$$.Execution.Input.s3Bucket",
-        "s3Prefix.$": "$$.Execution.Input.s3Prefix",
+        "projectId.$": "$.projectId",
+        "userId.$": "$.userId",
+        "renderId.$": "$.renderId",
+        "s3Bucket.$": "$.s3Bucket",
+        "s3Prefix.$": "$.s3Prefix",
       }),
-      resultPath: "$.clipResult",
+      resultPath: "$.clipsResult",
       retryOnServiceExceptions: true,
+      comment: "Generate video clips for all pages",
     });
-    clipPerPage.addRetry({
+    clipsStage.addRetry({
       errors: ["Lambda.ServiceException", "Lambda.TooManyRequestsException"],
       interval: cdk.Duration.seconds(5),
       maxAttempts: 2,
       backoffRate: 2,
     });
-
-    const clipsMap = new sfn.Map(this, "ClipsMapPages", {
-      itemsPath: "$.pagesResult.Payload.pages",
-      resultPath: "$.clipResults",
-      maxConcurrency: 5,
-      comment: "Generate video clip for each page in parallel",
-    });
-    clipsMap.itemProcessor(clipPerPage);
 
     // Stage 5: Concat (concatenate all clips into final video)
     const concatStage = new tasks.LambdaInvoke(this, "ConcatStage", {
@@ -151,7 +134,6 @@ export class RenderStateMachineConstruct extends Construct {
         "renderId.$": "$.renderId",
         "s3Bucket.$": "$.s3Bucket",
         "s3Prefix.$": "$.s3Prefix",
-        "clipResults.$": "$.clipResults",
       }),
       resultPath: "$.concatResult",
       retryOnServiceExceptions: true,
@@ -164,12 +146,11 @@ export class RenderStateMachineConstruct extends Construct {
       backoffRate: 2,
     });
 
-    // Chain stages from each starting point
-    // pages -> audio -> captions -> clips -> concat
-    pagesStage.next(audioMap);
-    audioMap.next(captionsStage);
-    captionsStage.next(clipsMap);
-    clipsMap.next(concatStage);
+    // Chain stages: pages -> audio -> captions -> clips -> concat
+    pagesStage.next(audioStage);
+    audioStage.next(captionsStage);
+    captionsStage.next(clipsStage);
+    clipsStage.next(concatStage);
 
     // Choice state to route to the correct starting stage based on startFromStage
     const stageChoice = new sfn.Choice(this, "ChooseStartStage", {
@@ -178,9 +159,9 @@ export class RenderStateMachineConstruct extends Construct {
 
     stageChoice
       .when(sfn.Condition.stringEquals("$.startFromStage", "concat"), concatStage)
-      .when(sfn.Condition.stringEquals("$.startFromStage", "clips"), clipsMap)
+      .when(sfn.Condition.stringEquals("$.startFromStage", "clips"), clipsStage)
       .when(sfn.Condition.stringEquals("$.startFromStage", "captions"), captionsStage)
-      .when(sfn.Condition.stringEquals("$.startFromStage", "audio"), audioMap)
+      .when(sfn.Condition.stringEquals("$.startFromStage", "audio"), audioStage)
       .otherwise(pagesStage);
 
     this.stateMachine = new sfn.StateMachine(this, "RenderStateMachine", {

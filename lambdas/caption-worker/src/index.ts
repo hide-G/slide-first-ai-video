@@ -30,8 +30,6 @@ export interface CaptionsEvent {
   renderId: string;
   /** Stage name */
   stage?: string;
-  /** Audio results from previous stage */
-  audioResults?: unknown;
 }
 
 export interface CaptionsResult {

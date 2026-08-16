@@ -44,13 +44,12 @@ export async function handleSourceUploadUrl(
     Bucket: BUCKET_NAME,
     Key: fileKey,
     ContentType: body.contentType,
-    ContentLength: MAX_UPLOAD_SIZE_BYTES,
   });
 
-  // Sign with Content-Length constraint so uploads exceeding the limit are rejected
+  // Sign without content-length constraint; the HeadObject check in
+  // handleRegisterSource provides the safety net for oversized uploads.
   const uploadUrl = await getSignedUrl(s3Client, command, {
     expiresIn: 3600,
-    signableHeaders: new Set(["content-length"]),
   });
 
   return buildResponse(200, {

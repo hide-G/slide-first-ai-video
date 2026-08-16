@@ -34,8 +34,18 @@ const pollyClient = new PollyClient({});
 const s3Client = new S3Client({});
 
 export interface AudioEvent {
-  bucket: string;
-  manifestKey: string;
+  /** S3 bucket name (from state machine payload) */
+  s3Bucket: string;
+  /** S3 prefix e.g. "users/{userId}/projects/{projectId}/" (from state machine payload) */
+  s3Prefix: string;
+  /** Project ID */
+  projectId: string;
+  /** User ID */
+  userId: string;
+  /** Render ID */
+  renderId: string;
+  /** Stage name */
+  stage?: string;
 }
 
 export interface AudioResult {
@@ -48,7 +58,8 @@ export interface AudioResult {
  * Lambda handler for Stage 2: Audio.
  */
 export const handler = async (event: AudioEvent): Promise<AudioResult> => {
-  const { bucket, manifestKey } = event;
+  const bucket = event.s3Bucket;
+  const manifestKey = `${event.s3Prefix}manifest.json`;
 
   // 1. Read manifest
   const manifest = await readManifest(bucket, manifestKey);
@@ -65,8 +76,15 @@ export const handler = async (event: AudioEvent): Promise<AudioResult> => {
 
     // 3. Process each page
     for (const page of manifest.pages) {
-      // Build SSML from script
-      const processedText = applyLexicon(page.script.text, manifest.lexicon);
+      // For plain mode: XML-escape the text first, then apply lexicon
+      // For ssml mode: text is already valid SSML, apply lexicon directly
+      let processedText: string;
+      if (page.script.mode === "plain") {
+        const escapedText = escapeXml(page.script.text);
+        processedText = applyLexicon(escapedText, manifest.lexicon, true);
+      } else {
+        processedText = applyLexicon(page.script.text, manifest.lexicon, false);
+      }
       const ssml = buildSpeakTag(processedText, page.script.mode);
 
       // Script hash check for idempotency
@@ -145,23 +163,27 @@ export const handler = async (event: AudioEvent): Promise<AudioResult> => {
 /**
  * Apply lexicon substitutions to text.
  * Replaces written forms with SSML <sub> or <phoneme> tags.
+ * When textIsEscaped is true, searches for the XML-escaped form of written entries.
  */
-function applyLexicon(text: string, lexicon: LexiconEntry[]): string {
+function applyLexicon(text: string, lexicon: LexiconEntry[], textIsEscaped: boolean): string {
   let result = text;
   for (const entry of lexicon) {
+    // When text is pre-escaped, search for the escaped version of the written form
+    const searchForm = textIsEscaped ? escapeXml(entry.written) : entry.written;
+
     if (entry.method === "sub") {
       result = result.replaceAll(
-        entry.written,
+        searchForm,
         `<sub alias="${escapeXml(entry.reading)}">${escapeXml(entry.written)}</sub>`,
       );
     } else if (entry.method === "phoneme") {
       result = result.replaceAll(
-        entry.written,
+        searchForm,
         `<phoneme alphabet="x-amazon-pron" ph="${escapeXml(entry.reading)}">${escapeXml(entry.written)}</phoneme>`,
       );
     } else if (entry.method === "spell") {
       result = result.replaceAll(
-        entry.written,
+        searchForm,
         `<say-as interpret-as="spell-out">${escapeXml(entry.written)}</say-as>`,
       );
     }
@@ -172,17 +194,15 @@ function applyLexicon(text: string, lexicon: LexiconEntry[]): string {
 /**
  * Wrap text in <speak> tags.
  * If mode is 'ssml', text is already SSML content (just wrap).
- * If mode is 'plain', text has been pre-processed with lexicon substitutions
- * which insert SSML tags, so we just wrap without additional escaping.
- * Note: Non-SSML text portions are escaped during lexicon application.
+ * If mode is 'plain', text must be XML-escaped before lexicon application
+ * to avoid invalid SSML from characters like &, <, >.
  */
 function buildSpeakTag(text: string, mode: "plain" | "ssml"): string {
   if (mode === "ssml") {
     return `<speak>${text}</speak>`;
   }
-  // For 'plain' mode: lexicon has already been applied (which handles escaping
-  // of the written forms within SSML tags). We wrap the result directly since
-  // lexicon substitution produces valid SSML fragments.
+  // For 'plain' mode: the text has already been XML-escaped and lexicon-applied
+  // by the caller (escapeForSsml + applyLexicon). Just wrap.
   return `<speak>${text}</speak>`;
 }
 

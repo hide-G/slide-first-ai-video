@@ -39,8 +39,6 @@ export interface ClipsEvent {
   renderId: string;
   /** Stage name */
   stage?: string;
-  /** Page data when invoked from Map state */
-  page?: unknown;
 }
 
 export interface ClipsResult {

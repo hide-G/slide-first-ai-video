@@ -337,7 +337,7 @@ describe("MainStack - Step Functions", () => {
     template.resourceCountIs("AWS::StepFunctions::StateMachine", 1);
   });
 
-  it("render pipeline has Map states for parallel audio and clip processing", () => {
+  it("render pipeline has single Task states for audio and clip processing (no Map states)", () => {
     const template = createTestStack();
 
     const stateMachines = template.findResources(
@@ -356,8 +356,12 @@ describe("MainStack - Step Functions", () => {
       stateMachines[smKeys[0]].Properties.DefinitionString["Fn::Join"][1];
     const definitionStr = definition.join("");
 
-    // Verify Map states exist for parallel processing
-    expect(definitionStr).toContain("Map");
+    // Verify single Task states for audio and clips (no Map)
+    expect(definitionStr).toContain("AudioStage");
+    expect(definitionStr).toContain("ClipsStage");
+    // Map states should NOT exist
+    expect(definitionStr).not.toContain("AudioMapPages");
+    expect(definitionStr).not.toContain("ClipsMapPages");
   });
 
   it("render pipeline includes all 5 stages: pages, audio, captions, clips, concat", () => {
@@ -378,9 +382,9 @@ describe("MainStack - Step Functions", () => {
     const definitionStr = definition.join("");
 
     expect(definitionStr).toContain("PagesStage");
-    expect(definitionStr).toContain("AudioMapPages");
+    expect(definitionStr).toContain("AudioStage");
     expect(definitionStr).toContain("CaptionsStage");
-    expect(definitionStr).toContain("ClipsMapPages");
+    expect(definitionStr).toContain("ClipsStage");
     expect(definitionStr).toContain("ConcatStage");
   });
 });

@@ -44,8 +44,6 @@ export interface ConcatEvent {
   renderId: string;
   /** Stage name */
   stage?: string;
-  /** Clip results from previous stage */
-  clipResults?: unknown;
 }
 
 export interface ConcatResult {

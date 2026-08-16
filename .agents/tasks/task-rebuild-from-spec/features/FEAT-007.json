@@ -1,0 +1,29 @@
+{
+  "id": "FEAT-007",
+  "type": "fix",
+  "description": "Address 5 v2 review issues: marp-render/polly-worker event shape alignment, remove Map states for audio/clips, XML-escape plain text before Polly, and fix presigned URL ContentLength.",
+  "status": "in_progress",
+  "steps": [
+    "Fix #1: Update marp-render handler to accept s3Bucket/s3Prefix instead of bucket/manifestKey",
+    "Fix #2: Update polly-worker handler to accept s3Bucket/s3Prefix instead of bucket/manifestKey",
+    "Fix #3: Remove Map states from state machine - make audio and clips single Task invocations (workers already process all pages)",
+    "Fix #4: XML-escape plain text in buildSpeakTag before wrapping in <speak> tags",
+    "Fix #5: Remove ContentLength from PutObjectCommand and content-length from signableHeaders in presigned URL generation"
+  ],
+  "acceptance_criteria": [
+    "marp-render accepts { s3Bucket, s3Prefix } and derives manifestKey internally",
+    "polly-worker accepts { s3Bucket, s3Prefix } and derives manifestKey internally",
+    "State machine has no Map states - audio and clips are single Task invocations",
+    "buildSpeakTag XML-escapes &, <, >, and \" in plain mode text before lexicon application",
+    "Presigned URL does not include ContentLength or content-length in signableHeaders",
+    "marp-render returns { pages: [...] } array for downstream compatibility",
+    "pnpm build succeeds",
+    "pnpm test passes"
+  ],
+  "verification": [
+    "source /root/.nvm/nvm.sh && cd /projects/sandbox/slide-first-ai-video && pnpm build",
+    "source /root/.nvm/nvm.sh && cd /projects/sandbox/slide-first-ai-video && pnpm test"
+  ],
+  "blocked_reason": null,
+  "findings": null
+}

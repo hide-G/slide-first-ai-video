@@ -104,7 +104,7 @@ describe("Stage 2: Audio handler", () => {
 
   it("calls Polly SynthesizeSpeech with correct parameters", async () => {
     const { handler } = await import("./index.js");
-    const result = await handler({ bucket: "test-bucket", manifestKey: "users/user-1/projects/proj-1/manifest.json" });
+    const result = await handler({ s3Bucket: "test-bucket", s3Prefix: "users/user-1/projects/proj-1/", projectId: "proj-1", userId: "user-1", renderId: "render-1" });
 
     expect(result.success).toBe(true);
     expect(mockPollySend).toHaveBeenCalledTimes(2); // 2 pages
@@ -123,7 +123,7 @@ describe("Stage 2: Audio handler", () => {
 
   it("applies lexicon substitutions", async () => {
     const { handler } = await import("./index.js");
-    await handler({ bucket: "test-bucket", manifestKey: "users/user-1/projects/proj-1/manifest.json" });
+    await handler({ s3Bucket: "test-bucket", s3Prefix: "users/user-1/projects/proj-1/", projectId: "proj-1", userId: "user-1", renderId: "render-1" });
 
     const firstCall = mockPollySend.mock.calls[0][0];
     // AWS should be replaced with sub alias
@@ -133,7 +133,7 @@ describe("Stage 2: Audio handler", () => {
 
   it("measures duration with ffprobe", async () => {
     const { handler } = await import("./index.js");
-    await handler({ bucket: "test-bucket", manifestKey: "users/user-1/projects/proj-1/manifest.json" });
+    await handler({ s3Bucket: "test-bucket", s3Prefix: "users/user-1/projects/proj-1/", projectId: "proj-1", userId: "user-1", renderId: "render-1" });
 
     const mockExecFile = vi.mocked(execFile);
     // Should call ffprobe for each page
@@ -150,7 +150,7 @@ describe("Stage 2: Audio handler", () => {
 
   it("records total RequestCharacters", async () => {
     const { handler } = await import("./index.js");
-    const result = await handler({ bucket: "test-bucket", manifestKey: "users/user-1/projects/proj-1/manifest.json" });
+    const result = await handler({ s3Bucket: "test-bucket", s3Prefix: "users/user-1/projects/proj-1/", projectId: "proj-1", userId: "user-1", renderId: "render-1" });
 
     expect(result.totalCharacters).toBe(84); // 42 * 2 pages
   });
@@ -159,7 +159,7 @@ describe("Stage 2: Audio handler", () => {
     mockPollySend.mockRejectedValue(new Error("Polly throttled"));
 
     const { handler } = await import("./index.js");
-    const result = await handler({ bucket: "test-bucket", manifestKey: "users/user-1/projects/proj-1/manifest.json" });
+    const result = await handler({ s3Bucket: "test-bucket", s3Prefix: "users/user-1/projects/proj-1/", projectId: "proj-1", userId: "user-1", renderId: "render-1" });
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("Polly throttled");
@@ -171,5 +171,37 @@ describe("Stage 2: Audio handler", () => {
     const lastPut = putCalls[putCalls.length - 1][0] as { input: { Body: string } };
     const finalManifest = JSON.parse(lastPut.input.Body);
     expect(finalManifest.stages.audio).toBe("failed");
+  });
+
+  it("XML-escapes plain text before SSML wrapping", async () => {
+    // Override manifest with text containing XML special characters
+    const specialManifest = {
+      ...sampleManifest,
+      lexicon: [],
+      pages: [
+        { pageNumber: 1, imageKey: "pages/page-001.png", script: { mode: "plain" as const, text: "A & B < C" }, audioKey: "audio/page-001.mp3", audioDurationSec: 0, clipKey: "clips/page-001.mp4" },
+      ],
+    };
+    mockS3Send.mockImplementation((cmd: { type: string; input?: { Key?: string } }) => {
+      if (cmd.type === "get") {
+        return Promise.resolve({
+          Body: { transformToString: () => Promise.resolve(JSON.stringify(specialManifest)) },
+        });
+      }
+      if (cmd.type === "head") {
+        return Promise.reject(new Error("NotFound"));
+      }
+      return Promise.resolve({});
+    });
+
+    const { handler } = await import("./index.js");
+    await handler({ s3Bucket: "test-bucket", s3Prefix: "users/user-1/projects/proj-1/", projectId: "proj-1", userId: "user-1", renderId: "render-1" });
+
+    const firstCall = mockPollySend.mock.calls[0][0];
+    // Should contain escaped XML entities, not raw & or <
+    expect(firstCall.input.Text).toContain("&amp;");
+    expect(firstCall.input.Text).toContain("&lt;");
+    expect(firstCall.input.Text).not.toMatch(/A & B/);
+    expect(firstCall.input.Text).toContain("<speak>");
   });
 });

@@ -23,13 +23,24 @@ const execFileAsync = promisify(execFile);
 const s3Client = new S3Client({});
 
 export interface PagesEvent {
-  bucket: string;
-  manifestKey: string;
+  /** S3 bucket name (from state machine payload) */
+  s3Bucket: string;
+  /** S3 prefix e.g. "users/{userId}/projects/{projectId}/" (from state machine payload) */
+  s3Prefix: string;
+  /** Project ID */
+  projectId: string;
+  /** User ID */
+  userId: string;
+  /** Render ID */
+  renderId: string;
+  /** Stage name */
+  stage?: string;
 }
 
 export interface PagesResult {
   success: boolean;
   pageCount: number;
+  pages: Array<{ pageNumber: number }>;
   error?: string;
 }
 
@@ -37,7 +48,8 @@ export interface PagesResult {
  * Lambda handler for Stage 1: Pages.
  */
 export const handler = async (event: PagesEvent): Promise<PagesResult> => {
-  const { bucket, manifestKey } = event;
+  const bucket = event.s3Bucket;
+  const manifestKey = `${event.s3Prefix}manifest.json`;
 
   // 1. Read manifest
   const manifest = await readManifest(bucket, manifestKey);
@@ -109,14 +121,14 @@ export const handler = async (event: PagesEvent): Promise<PagesResult> => {
     manifest.stages.pages = "done";
     await writeManifest(bucket, manifestKey, manifest);
 
-    return { success: true, pageCount: pngFiles.length };
+    return { success: true, pageCount: pngFiles.length, pages: Array.from({ length: pngFiles.length }, (_, i) => ({ pageNumber: i + 1 })) };
   } catch (error: unknown) {
     // Mark stage as failed
     manifest.stages.pages = "failed";
     await writeManifest(bucket, manifestKey, manifest);
 
     const message = error instanceof Error ? error.message : String(error);
-    return { success: false, pageCount: 0, error: message };
+    return { success: false, pageCount: 0, pages: [], error: message };
   }
 };
 

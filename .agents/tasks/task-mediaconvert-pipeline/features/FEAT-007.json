@@ -1,0 +1,34 @@
+{
+  "id": "FEAT-007",
+  "type": "chore",
+  "description": "Task 15: Full verification - ensure pnpm build+test pass, cdk synth succeeds, inspect cdk.out assets for correctness, verify no forbidden strings remain.",
+  "status": "pending",
+  "steps": [
+    "Run pnpm install && pnpm build && pnpm test at repo root - must all pass",
+    "Run cd infra && npx --yes aws-cdk@2 synth - must succeed",
+    "Inspect cdk.out/asset.*/ directories: (a) Find caption-worker asset - verify it contains only index.js (single file), (b) Find mediaconvert-worker asset - verify it contains only index.js (single file), (c) Find marp-render asset - verify it contains index.js, assets/ with 3 files, and node_modules/ with chromium and puppeteer-core",
+    "Verify no asset contains unresolved @slide-first/ require: grep -r '@slide-first' in cdk.out/asset.* directories",
+    "Verify no ffmpeg/ffprobe/pdftoppm/libreoffice references in source: grep -r in lambdas/ packages/ infra/ (excluding node_modules, dist, and .md files)",
+    "Verify no Dockerfile exists: find . -name Dockerfile (excluding node_modules)",
+    "If any issues found, fix them and re-run verification",
+    "Commit with message: 'chore: task 15 final verification and fixes'"
+  ],
+  "acceptance_criteria": [
+    "pnpm install && pnpm build && pnpm test succeeds",
+    "cdk synth succeeds",
+    "caption-worker asset is single index.js file",
+    "mediaconvert-worker asset is single index.js file",
+    "marp-render asset has index.js + assets/ (3 files) + node_modules/",
+    "No @slide-first/ unresolved requires in any asset",
+    "No ffmpeg/ffprobe/pdftoppm/libreoffice in implementation source",
+    "No Dockerfiles exist"
+  ],
+  "verification": [
+    "source $NVM_DIR/nvm.sh && cd /projects/sandbox/slide-first-ai-video && pnpm install && pnpm build && pnpm test",
+    "source $NVM_DIR/nvm.sh && cd /projects/sandbox/slide-first-ai-video/infra && npx --yes aws-cdk@2 synth",
+    "find /projects/sandbox/slide-first-ai-video -name 'Dockerfile' -not -path '*/node_modules/*'",
+    "grep -r 'ffmpeg\\|ffprobe\\|pdftoppm\\|libreoffice' --include='*.ts' --exclude-dir=node_modules --exclude-dir=dist /projects/sandbox/slide-first-ai-video/lambdas/ /projects/sandbox/slide-first-ai-video/packages/ /projects/sandbox/slide-first-ai-video/infra/ 2>/dev/null || echo 'CLEAN'"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

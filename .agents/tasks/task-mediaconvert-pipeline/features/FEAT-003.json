@@ -1,0 +1,30 @@
+{
+  "id": "FEAT-003",
+  "type": "feat",
+  "description": "Tasks 7-8: New mediaconvert-worker implementation and deletion of clip-worker, concat-worker, Dockerfiles, FFmpeg code.",
+  "status": "in_progress",
+  "steps": [
+    "TASK 7 - mediaconvert-worker: Create lambdas/mediaconvert-worker/ with package.json (deps: @slide-first/shared-types workspace:*, @slide-first/core workspace:*, @aws-sdk/client-mediaconvert). Build script uses esbuild to bundle into single dist/index.js (external: @aws-sdk/*). Create src/index.ts implementing: (a) Read manifest from S3, (b) Build MediaConvert job JSON matching the verified template from design doc section 2.1 exactly - Role ARN from env var, AccelerationSettings DISABLED, TimecodeConfig ZEROBASED, Inputs array with one entry per page (AudioSelectors with ExternalAudioFileInput pointing to .wav, VideoGenerator with Duration=frameAlignedDurationMs, ImageInput, 30fps 1920x1080), OutputGroups with FILE_GROUP_SETTINGS, H264 QVBR 5Mbps, AAC 96kbps 48kHz stereo. (c) Submit job via MediaConvert CreateJob. (d) Poll/wait for completion. (e) Update manifest stages.video to done. Create src/job-builder.ts with buildMediaConvertJob() function that generates the job JSON. Create src/job-builder.test.ts unit test verifying the generated JSON structure matches section 2.1 for a 2-page input. Add vitest.config.ts and tsconfig files.",
+    "TASK 8 - Delete obsolete code: (a) Delete lambdas/clip-worker/ directory entirely. (b) Delete lambdas/concat-worker/ directory entirely. (c) Delete all Dockerfiles: lambdas/marp-render/Dockerfile, lambdas/polly-worker/Dockerfile, lambdas/clip-worker/Dockerfile, lambdas/concat-worker/Dockerfile. (d) Delete packages/renderer-ffmpeg/ directory entirely (FFmpeg command builders no longer needed). (e) Delete packages/renderer-port/ directory (abstract port for FFmpeg renderer no longer needed). (f) Remove references to renderer-ffmpeg and renderer-port from pnpm-workspace.yaml if listed, and from any package.json that depends on them. (g) Remove clip-worker and concat-worker from infra imports and construct usage. (h) Clean up any remaining ffmpeg/ffprobe string references in implementation code.",
+    "Update pnpm-workspace.yaml if needed (renderer-ffmpeg and renderer-port are under packages/* glob so they auto-resolve, but after deletion they just won't exist)",
+    "Run pnpm install && pnpm build && pnpm test",
+    "Commit with message: 'feat: task 7-8 mediaconvert-worker, delete clip/concat workers and FFmpeg code'"
+  ],
+  "acceptance_criteria": [
+    "lambdas/mediaconvert-worker/dist/index.js exists as single bundled file after build",
+    "Job builder test passes verifying JSON matches section 2.1 template structure",
+    "lambdas/clip-worker/ does not exist",
+    "lambdas/concat-worker/ does not exist",
+    "No Dockerfile exists anywhere in the repo",
+    "packages/renderer-ffmpeg/ does not exist",
+    "packages/renderer-port/ does not exist",
+    "No ffmpeg/ffprobe/pdftoppm/libreoffice strings in implementation code (grep returns empty)",
+    "pnpm build and pnpm test pass"
+  ],
+  "verification": [
+    "source $NVM_DIR/nvm.sh && cd /projects/sandbox/slide-first-ai-video && pnpm install && pnpm build && pnpm test",
+    "grep -r 'ffmpeg\\|ffprobe\\|pdftoppm\\|libreoffice' --include='*.ts' --exclude-dir=node_modules --exclude-dir=dist /projects/sandbox/slide-first-ai-video/lambdas/ /projects/sandbox/slide-first-ai-video/packages/ /projects/sandbox/slide-first-ai-video/infra/ || echo 'CLEAN'"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

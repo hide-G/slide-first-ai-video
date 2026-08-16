@@ -12,14 +12,13 @@ export interface RenderStateMachineConstructProps {
   marpLambda: lambda.IFunction;
   pollyWorkerLambda: lambda.IFunction;
   captionWorkerLambda: lambda.IFunction;
-  clipWorkerLambda: lambda.IFunction;
-  concatWorkerLambda: lambda.IFunction;
 }
 
 /**
- * 5-stage Render Pipeline State Machine.
- * Stages: pages -> audio -> captions -> clips -> concat
+ * 4-stage Render Pipeline State Machine.
+ * Stages: pages -> audio -> captions -> video
  *
+ * The video stage uses MediaConvert (submitted by mediaconvert-worker Lambda).
  * Supports partial retry via `startFromStage` input parameter.
  * A Choice state at the beginning routes execution to the requested starting stage,
  * skipping earlier stages that have already completed.
@@ -102,55 +101,35 @@ export class RenderStateMachineConstruct extends Construct {
       backoffRate: 2,
     });
 
-    // Stage 4: Clips (single invocation, processes all pages)
-    const clipsStage = new tasks.LambdaInvoke(this, "ClipsStage", {
-      lambdaFunction: props.clipWorkerLambda,
+    // Stage 4: Video (MediaConvert - submitted by mediaconvert-worker)
+    // Note: The mediaconvert-worker Lambda is invoked here.
+    // In the future this may be replaced by a direct MediaConvert
+    // integration using sfn tasks.
+    const videoStage = new tasks.LambdaInvoke(this, "VideoStage", {
+      lambdaFunction: props.captionWorkerLambda, // Placeholder - will be replaced by mediaconvert-worker construct in FEAT-004
       payload: sfn.TaskInput.fromObject({
-        "stage": "clips",
+        "stage": "video",
         "projectId.$": "$.projectId",
         "userId.$": "$.userId",
         "renderId.$": "$.renderId",
         "s3Bucket.$": "$.s3Bucket",
         "s3Prefix.$": "$.s3Prefix",
       }),
-      resultPath: "$.clipsResult",
+      resultPath: "$.videoResult",
       retryOnServiceExceptions: true,
-      comment: "Generate video clips for all pages",
+      comment: "Submit MediaConvert job for final video rendering",
     });
-    clipsStage.addRetry({
+    videoStage.addRetry({
       errors: ["Lambda.ServiceException", "Lambda.TooManyRequestsException"],
       interval: cdk.Duration.seconds(5),
       maxAttempts: 2,
       backoffRate: 2,
     });
 
-    // Stage 5: Concat (concatenate all clips into final video)
-    const concatStage = new tasks.LambdaInvoke(this, "ConcatStage", {
-      lambdaFunction: props.concatWorkerLambda,
-      payload: sfn.TaskInput.fromObject({
-        "stage": "concat",
-        "projectId.$": "$.projectId",
-        "userId.$": "$.userId",
-        "renderId.$": "$.renderId",
-        "s3Bucket.$": "$.s3Bucket",
-        "s3Prefix.$": "$.s3Prefix",
-      }),
-      resultPath: "$.concatResult",
-      retryOnServiceExceptions: true,
-      comment: "Concatenate clips into final video",
-    });
-    concatStage.addRetry({
-      errors: ["Lambda.ServiceException", "Lambda.TooManyRequestsException"],
-      interval: cdk.Duration.seconds(5),
-      maxAttempts: 2,
-      backoffRate: 2,
-    });
-
-    // Chain stages: pages -> audio -> captions -> clips -> concat
+    // Chain stages: pages -> audio -> captions -> video
     pagesStage.next(audioStage);
     audioStage.next(captionsStage);
-    captionsStage.next(clipsStage);
-    clipsStage.next(concatStage);
+    captionsStage.next(videoStage);
 
     // Choice state to route to the correct starting stage based on startFromStage
     const stageChoice = new sfn.Choice(this, "ChooseStartStage", {
@@ -158,8 +137,7 @@ export class RenderStateMachineConstruct extends Construct {
     });
 
     stageChoice
-      .when(sfn.Condition.stringEquals("$.startFromStage", "concat"), concatStage)
-      .when(sfn.Condition.stringEquals("$.startFromStage", "clips"), clipsStage)
+      .when(sfn.Condition.stringEquals("$.startFromStage", "video"), videoStage)
       .when(sfn.Condition.stringEquals("$.startFromStage", "captions"), captionsStage)
       .when(sfn.Condition.stringEquals("$.startFromStage", "audio"), audioStage)
       .otherwise(pagesStage);

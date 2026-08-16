@@ -1,0 +1,7 @@
+{
+  "task_id": "task-mediaconvert-pipeline",
+  "task_description": "Implement all 15 tasks from the design document to replace FFmpeg-based video pipeline with MediaConvert, fix Lambda packaging (esbuild bundles), implement Marp+Chromium slide generation, and update data contracts.",
+  "status": "in_progress",
+  "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003", "FEAT-004", "FEAT-005", "FEAT-006", "FEAT-007"],
+  "blocked_reason": null
+}

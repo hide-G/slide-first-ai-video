@@ -133,8 +133,30 @@ export const handler = async (event: VideoEvent): Promise<VideoResult> => {
       // SUBMITTED or PROGRESSING - continue polling
     }
 
-    // 6. Update stage to done
+    // 6. Update stage to done and add cost entry
     manifest.stages.video = "done";
+
+    // Add MediaConvert cost entry to manifest
+    const outputDurationSec = outputDurationMs / 1000;
+    if (!manifest.cost) {
+      manifest.cost = {
+        currency: "USD",
+        priceListFetchedAt: new Date().toISOString(),
+        stages: [],
+        estimatedTotal: 0,
+        actual: { status: "pending", amount: null, reconciledAt: null },
+      };
+    }
+    manifest.cost.stages.push({
+      stage: "video",
+      service: "mediaconvert",
+      usage: {
+        outputDurationSec,
+        outputResolution: "1920x1080",
+      },
+      estimatedCost: 0.0,
+    });
+
     await writeManifest(bucket, manifestKey, manifest);
 
     return { success: true, outputDurationMs };

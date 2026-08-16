@@ -36,8 +36,17 @@ export async function handleSourceUploadUrl(
   await verifyProjectOwnership(projectId, userId);
   const body = validateBody(SourceUploadUrlSchema, event.body ?? null);
 
+  // Reject .pptx uploads - users must export to PDF first
+  const ext = body.fileName.split(".").pop()?.toLowerCase() ?? "pdf";
+  if (ext === "pptx") {
+    throw new ApiError(
+      400,
+      "PowerPointでPDFに書き出してからアップロードしてください / Please export to PDF from PowerPoint before uploading",
+      "PPTX_NOT_SUPPORTED",
+    );
+  }
+
   // Determine the S3 key for the uploaded file
-  const ext = body.fileName.split(".").pop() ?? "pdf";
   const fileKey = `users/${userId}/projects/${projectId}/input/source.${ext}`;
 
   const command = new PutObjectCommand({
@@ -70,6 +79,16 @@ export async function handleRegisterSource(
 
   await verifyProjectOwnership(projectId, userId);
   const body = validateBody(RegisterSourceSchema, event.body ?? null);
+
+  // Reject .pptx files - users must export to PDF first
+  const ext = body.fileKey.split(".").pop()?.toLowerCase();
+  if (ext === "pptx") {
+    throw new ApiError(
+      400,
+      "PowerPointでPDFに書き出してからアップロードしてください / Please export to PDF from PowerPoint before uploading",
+      "PPTX_NOT_SUPPORTED",
+    );
+  }
 
   // Validate the uploaded object size before allowing downstream stages
   const headResult = await s3Client.send(

@@ -2,7 +2,7 @@
   "id": "FEAT-006",
   "type": "feat",
   "description": "Tasks 13-14: PPTX upload HTTP 400 rejection and cost display with MediaConvert row.",
-  "status": "pending",
+  "status": "in_progress",
   "steps": [
     "TASK 13 - PPTX upload rejection: (a) Modify lambdas/api/src/handlers/source.ts handleRegisterSource: detect .pptx extension in body.fileKey, return HTTP 400 with error code 'PPTX_NOT_SUPPORTED' and bilingual message ('PowerPointでPDFに書き出してからアップロードしてください / Please export to PDF from PowerPoint before uploading'). (b) Add test for this behavior in the API test file. (c) Add note in frontend about PPTX not being supported in the upload zone (check if frontend/src/components/UploadZone.tsx exists and add appropriate messaging). Also ensure the presigned URL endpoint (handleSourceUploadUrl) rejects .pptx file extensions at that stage too.",
     "TASK 14 - Cost display with MediaConvert: (a) Ensure the manifest cost.stages[] can include a 'video' stage with service 'mediaconvert'. The schema already supports this via CostStageEntrySchema. (b) In lambdas/mediaconvert-worker, after job completion, add cost entry: { stage: 'video', service: 'mediaconvert', usage: { outputDurationSec, outputResolution: '1920x1080' }, estimatedCost: 0.0 }. Note: actual pricing comes from AWS Price List API at runtime, stored with priceListFetchedAt date. (c) Verify the frontend CostTable component already renders any stage entries dynamically (it does - it maps over entries array). No frontend code change needed for the table itself, but ensure the backend passes MediaConvert cost data through the artifacts/render endpoint.",

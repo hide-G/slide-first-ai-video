@@ -9,6 +9,6 @@
     "tests": "pass",
     "test_quality": "pass",
     "docker_build": "skipped",
-    "summary": "pnpm build succeeds (11 packages). pnpm test passes (all tests across 8 test suites). cdk synth succeeds. caption-worker asset: single index.js (185KB). mediaconvert-worker asset: single index.js (174KB). marp-render asset: index.js + assets/ (3 files) + node_modules/ = 98MB total (under 200MB). No @slide-first/ unresolved requires. No ffmpeg/ffprobe/pdftoppm/libreoffice in implementation code. No Dockerfiles. All 15 design doc tasks implemented."
+    "summary": "All verification passes: pnpm build succeeds (11 packages), pnpm test passes (143 tests: 5 caption, 10 marp-render, 17 api, 13 mediaconvert, 8 polly, 50 slide-gen, 40 infra). cdk synth succeeds. Assets verified: caption-worker single index.js, mediaconvert-worker single index.js, marp-render index.js+assets(3)+node_modules(98MB). No @slide-first/ unresolved. No forbidden strings. No Dockerfiles. Review v2 APPROVED."
   }
 }

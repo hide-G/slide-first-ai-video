@@ -1,7 +1,14 @@
 {
   "task_id": "task-mediaconvert-pipeline",
   "task_description": "Implement all 15 tasks from the design document to replace FFmpeg-based video pipeline with MediaConvert, fix Lambda packaging (esbuild bundles), implement Marp+Chromium slide generation, and update data contracts.",
-  "status": "in_progress",
+  "status": "completed",
   "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003", "FEAT-004", "FEAT-005", "FEAT-006", "FEAT-007"],
-  "blocked_reason": null
+  "blocked_reason": null,
+  "verification": {
+    "build": "pass",
+    "tests": "pass",
+    "test_quality": "pass",
+    "docker_build": "skipped",
+    "summary": "pnpm build succeeds (11 packages). pnpm test passes (all tests across 8 test suites). cdk synth succeeds. caption-worker asset: single index.js (185KB). mediaconvert-worker asset: single index.js (174KB). marp-render asset: index.js + assets/ (3 files) + node_modules/ = 98MB total (under 200MB). No @slide-first/ unresolved requires. No ffmpeg/ffprobe/pdftoppm/libreoffice in implementation code. No Dockerfiles. All 15 design doc tasks implemented."
+  }
 }

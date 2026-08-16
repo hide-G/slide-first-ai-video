@@ -13,6 +13,7 @@ import {
   MediaConvertClient,
   CreateJobCommand,
   GetJobCommand,
+  DescribeEndpointsCommand,
 } from "@aws-sdk/client-mediaconvert";
 import {
   S3Client,
@@ -23,21 +24,51 @@ import type { Manifest } from "@slide-first/shared-types";
 import { pageImageKey, audioKey } from "@slide-first/shared-types";
 import { buildMediaConvertJob } from "./job-builder.js";
 
-const MEDIACONVERT_ENDPOINT = process.env.MEDIACONVERT_ENDPOINT;
 const MEDIACONVERT_ROLE_ARN = process.env.MEDIACONVERT_ROLE_ARN ?? "";
 const BUCKET_NAME = process.env.BUCKET_NAME ?? "";
 const REGION = process.env.AWS_REGION ?? "ap-northeast-1";
 
 const s3Client = new S3Client({});
-const mediaConvertClient = new MediaConvertClient({
-  endpoint: MEDIACONVERT_ENDPOINT,
-  region: REGION,
-});
+
+/**
+ * Resolves the account-specific MediaConvert endpoint.
+ * Uses MEDIACONVERT_ENDPOINT env var if set, otherwise calls DescribeEndpoints.
+ * The result is cached for the lifetime of the Lambda execution environment.
+ */
+let cachedEndpoint: string | undefined;
+async function getMediaConvertEndpoint(): Promise<string> {
+  if (cachedEndpoint) return cachedEndpoint;
+
+  const envEndpoint = process.env.MEDIACONVERT_ENDPOINT;
+  if (envEndpoint) {
+    cachedEndpoint = envEndpoint;
+    return cachedEndpoint;
+  }
+
+  // Call DescribeEndpoints to get the account-specific endpoint
+  const client = new MediaConvertClient({ region: REGION });
+  const response = await client.send(
+    new DescribeEndpointsCommand({ MaxResults: 1 }),
+  );
+  const endpoint = response.Endpoints?.[0]?.Url;
+  if (!endpoint) {
+    throw new Error(
+      "Failed to resolve MediaConvert endpoint via DescribeEndpoints",
+    );
+  }
+  cachedEndpoint = endpoint;
+  return cachedEndpoint;
+}
+
+/** @internal Reset the cached endpoint (for testing only) */
+export function _resetEndpointCache(): void {
+  cachedEndpoint = undefined;
+}
 
 /** Polling interval in milliseconds */
 const POLL_INTERVAL_MS = 10_000;
-/** Maximum polling attempts (10s * 180 = 30 min max) */
-const MAX_POLL_ATTEMPTS = 180;
+/** Maximum polling attempts (10s * 85 = 850s, within Lambda 900s timeout) */
+const MAX_POLL_ATTEMPTS = 85;
 
 export interface VideoEvent {
   /** S3 bucket name (from state machine payload) */
@@ -71,11 +102,18 @@ export const handler = async (event: VideoEvent): Promise<VideoResult> => {
   const manifest = await readManifest(bucket, manifestKey);
 
   try {
-    // 2. Update stage to running
+    // 2. Resolve MediaConvert endpoint (cached after first call)
+    const endpoint = await getMediaConvertEndpoint();
+    const mediaConvertClient = new MediaConvertClient({
+      endpoint,
+      region: REGION,
+    });
+
+    // 3. Update stage to running
     manifest.stages.video = "running";
     await writeManifest(bucket, manifestKey, manifest);
 
-    // 3. Build MediaConvert job
+    // 4. Build MediaConvert job
     const keyParams = {
       userId: manifest.userId,
       projectId: manifest.projectId,
@@ -96,7 +134,7 @@ export const handler = async (event: VideoEvent): Promise<VideoResult> => {
       outputDestination,
     });
 
-    // 4. Submit job
+    // 5. Submit job
     const createResponse = await mediaConvertClient.send(
       new CreateJobCommand(jobSettings as unknown as Record<string, unknown>),
     );
@@ -106,8 +144,9 @@ export const handler = async (event: VideoEvent): Promise<VideoResult> => {
       throw new Error("MediaConvert CreateJob did not return a job ID");
     }
 
-    // 5. Poll for completion
+    // 6. Poll for completion
     let outputDurationMs = 0;
+    let jobCompleted = false;
     for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
       await sleep(POLL_INTERVAL_MS);
 
@@ -121,6 +160,7 @@ export const handler = async (event: VideoEvent): Promise<VideoResult> => {
         outputDurationMs =
           getResponse.Job?.OutputGroupDetails?.[0]?.OutputDetails?.[0]
             ?.DurationInMs ?? 0;
+        jobCompleted = true;
         break;
       }
 
@@ -133,7 +173,14 @@ export const handler = async (event: VideoEvent): Promise<VideoResult> => {
       // SUBMITTED or PROGRESSING - continue polling
     }
 
-    // 6. Update stage to done and add cost entry
+    // Fail if polling exhausted without reaching terminal status
+    if (!jobCompleted) {
+      throw new Error(
+        `MediaConvert job ${jobId} did not reach terminal status after ${MAX_POLL_ATTEMPTS} polling attempts`,
+      );
+    }
+
+    // 7. Update stage to done and add cost entry
     manifest.stages.video = "done";
 
     // Add MediaConvert cost entry to manifest

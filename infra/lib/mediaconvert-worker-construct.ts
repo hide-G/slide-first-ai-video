@@ -13,13 +13,16 @@ export interface MediaConvertWorkerConstructProps {
 /**
  * MediaConvert Worker Lambda construct.
  * Stage 4: Video - submits MediaConvert jobs for final video rendering.
- * Memory 512MB, timeout 300s.
+ * Memory 512MB, timeout 900s (Lambda maximum).
+ *
+ * The Lambda resolves the account-specific MediaConvert endpoint at runtime
+ * via DescribeEndpoints (cached for container lifetime).
  *
  * Creates:
  * - A MediaConvert IAM service role (assumed by MediaConvert to access S3)
  * - The Lambda function with permissions:
  *   - S3 read/write on the project bucket
- *   - mediaconvert:CreateJob, mediaconvert:GetJob
+ *   - mediaconvert:CreateJob, mediaconvert:GetJob, mediaconvert:DescribeEndpoints
  *   - iam:PassRole restricted to the MediaConvert service role
  */
 export class MediaConvertWorkerConstruct extends Construct {
@@ -67,7 +70,7 @@ export class MediaConvertWorkerConstruct extends Construct {
       handler: "index.handler",
       code: lambda.Code.fromAsset("../lambdas/mediaconvert-worker/dist"),
       memorySize: 512,
-      timeout: cdk.Duration.seconds(300),
+      timeout: cdk.Duration.seconds(900),
       environment: {
         BUCKET_NAME: props.projectBucket.bucketName,
         MEDIACONVERT_ROLE_ARN: this.mediaConvertRole.roleArn,
@@ -81,7 +84,11 @@ export class MediaConvertWorkerConstruct extends Construct {
     this.handler.addToRolePolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: ["mediaconvert:CreateJob", "mediaconvert:GetJob"],
+        actions: [
+          "mediaconvert:CreateJob",
+          "mediaconvert:GetJob",
+          "mediaconvert:DescribeEndpoints",
+        ],
         resources: ["*"],
       }),
     );

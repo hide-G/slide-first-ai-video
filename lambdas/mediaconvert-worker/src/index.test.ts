@@ -6,6 +6,7 @@ vi.mock("@aws-sdk/client-mediaconvert", () => {
     MediaConvertClient: vi.fn(() => ({ send: mockSend })),
     CreateJobCommand: vi.fn((input) => ({ input })),
     GetJobCommand: vi.fn((input) => ({ input })),
+    DescribeEndpointsCommand: vi.fn((input) => ({ input, type: "DescribeEndpoints" })),
     __mockSend: mockSend,
   };
 });
@@ -21,7 +22,7 @@ vi.mock("@aws-sdk/client-s3", () => {
 });
 
 import type { VideoEvent } from "./index.js";
-import { handler } from "./index.js";
+import { handler, _resetEndpointCache } from "./index.js";
 
 function makeManifest(overrides: Record<string, unknown> = {}) {
   return {
@@ -68,6 +69,12 @@ describe("mediaconvert-worker handler", () => {
     // Speed up polling by making setTimeout resolve immediately
     vi.useFakeTimers();
 
+    // Reset endpoint cache between tests
+    _resetEndpointCache();
+
+    // Set MEDIACONVERT_ENDPOINT env var to skip DescribeEndpoints call in tests
+    process.env.MEDIACONVERT_ENDPOINT = "https://mediaconvert.ap-northeast-1.amazonaws.com";
+
     const mcModule = await import("@aws-sdk/client-mediaconvert");
     mockMcSend = (mcModule as unknown as { __mockSend: ReturnType<typeof vi.fn> }).__mockSend;
 
@@ -77,6 +84,7 @@ describe("mediaconvert-worker handler", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    delete process.env.MEDIACONVERT_ENDPOINT;
   });
 
   it("adds mediaconvert cost entry to manifest after job completion", async () => {
@@ -225,5 +233,88 @@ describe("mediaconvert-worker handler", () => {
     // MediaConvert entry should be appended
     expect(writtenManifest.cost.stages[1].stage).toBe("video");
     expect(writtenManifest.cost.stages[1].service).toBe("mediaconvert");
+  });
+
+  it("throws error when polling exhausts MAX_POLL_ATTEMPTS without terminal status", async () => {
+    const manifest = makeManifest();
+
+    // Mock S3 GetObject (read manifest)
+    mockS3Send.mockResolvedValueOnce({
+      Body: { transformToString: async () => JSON.stringify(manifest) },
+    });
+    // Mock S3 PutObject (update manifest - stage running)
+    mockS3Send.mockResolvedValueOnce({});
+
+    // Mock MediaConvert CreateJob
+    mockMcSend.mockResolvedValueOnce({
+      Job: { Id: "job-stuck" },
+    });
+
+    // Mock MediaConvert GetJob - always returns PROGRESSING (never reaches terminal)
+    mockMcSend.mockResolvedValue({
+      Job: { Status: "PROGRESSING" },
+    });
+
+    // Mock S3 PutObject (manifest write for failed state)
+    mockS3Send.mockResolvedValue({});
+
+    const resultPromise = handler(baseEvent);
+    await vi.runAllTimersAsync();
+    const result = await resultPromise;
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("did not reach terminal status");
+    expect(result.error).toContain("job-stuck");
+
+    // Verify that the manifest was written with "failed" stage
+    const putCalls = mockS3Send.mock.calls;
+    const lastPutCall = putCalls[putCalls.length - 1][0];
+    const writtenManifest = JSON.parse(lastPutCall.input.Body);
+    expect(writtenManifest.stages.video).toBe("failed");
+  });
+
+  it("resolves endpoint via DescribeEndpoints when env var is not set", async () => {
+    // Remove env var and reset cache to trigger DescribeEndpoints path
+    delete process.env.MEDIACONVERT_ENDPOINT;
+    _resetEndpointCache();
+
+    const manifest = makeManifest();
+
+    // Mock S3 GetObject (read manifest)
+    mockS3Send.mockResolvedValueOnce({
+      Body: { transformToString: async () => JSON.stringify(manifest) },
+    });
+    // Mock S3 PutObject (update manifest - stage running)
+    mockS3Send.mockResolvedValueOnce({});
+
+    // Mock DescribeEndpoints response
+    mockMcSend.mockResolvedValueOnce({
+      Endpoints: [{ Url: "https://abcdefg.mediaconvert.ap-northeast-1.amazonaws.com" }],
+    });
+
+    // Mock MediaConvert CreateJob
+    mockMcSend.mockResolvedValueOnce({
+      Job: { Id: "job-endpoint-test" },
+    });
+
+    // Mock MediaConvert GetJob (COMPLETE)
+    mockMcSend.mockResolvedValueOnce({
+      Job: {
+        Status: "COMPLETE",
+        OutputGroupDetails: [
+          { OutputDetails: [{ DurationInMs: 4000 }] },
+        ],
+      },
+    });
+
+    // Mock S3 PutObject (final manifest write)
+    mockS3Send.mockResolvedValueOnce({});
+
+    const resultPromise = handler(baseEvent);
+    await vi.runAllTimersAsync();
+    const result = await resultPromise;
+
+    expect(result.success).toBe(true);
+    expect(result.outputDurationMs).toBe(4000);
   });
 });

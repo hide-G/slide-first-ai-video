@@ -6,7 +6,7 @@
 
 import type { APIGatewayProxyEvent } from "aws-lambda";
 import { UnauthorizedError, ForbiddenError } from "./errors.js";
-import { getProject } from "../db/index.js";
+import { getProjectByUser } from "../db/index.js";
 
 /**
  * Extract authenticated Cognito user's sub claim.
@@ -29,18 +29,16 @@ export function requireAuth(event: APIGatewayProxyEvent): string {
 
 /**
  * Verify that the authenticated user owns the project.
- * Throws ForbiddenError if project belongs to another user.
- * Throws NotFoundError (via caller) if project does not exist.
+ * Uses direct GetItem on primary key (PK=USER#{userId}, SK=PROJECT#{projectId})
+ * which is both faster and inherently proves ownership without needing a GSI.
+ * Throws ForbiddenError if project does not exist under this user.
  */
 export async function verifyProjectOwnership(
   projectId: string,
   userId: string,
 ): Promise<void> {
-  const project = await getProject(projectId);
+  const project = await getProjectByUser(userId, projectId);
   if (!project) {
     throw new ForbiddenError("Project not found or access denied");
-  }
-  if (project.userId !== userId) {
-    throw new ForbiddenError("Access denied");
   }
 }

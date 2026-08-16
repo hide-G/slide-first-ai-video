@@ -20,8 +20,9 @@ export interface RenderStateMachineConstructProps {
  * 5-stage Render Pipeline State Machine.
  * Stages: pages -> audio -> captions -> clips -> concat
  *
- * Each stage checks manifest.stages[stage] and skips if already 'done'.
- * Failed stages can be retried independently via startFromStage parameter.
+ * Supports partial retry via `startFromStage` input parameter.
+ * A Choice state at the beginning routes execution to the requested starting stage,
+ * skipping earlier stages that have already completed.
  */
 export class RenderStateMachineConstruct extends Construct {
   public readonly stateMachine: sfn.StateMachine;
@@ -163,16 +164,28 @@ export class RenderStateMachineConstruct extends Construct {
       backoffRate: 2,
     });
 
-    // Chain: pages -> audio (map) -> captions -> clips (map) -> concat
-    const definition = pagesStage
-      .next(audioMap)
-      .next(captionsStage)
-      .next(clipsMap)
-      .next(concatStage);
+    // Chain stages from each starting point
+    // pages -> audio -> captions -> clips -> concat
+    pagesStage.next(audioMap);
+    audioMap.next(captionsStage);
+    captionsStage.next(clipsMap);
+    clipsMap.next(concatStage);
+
+    // Choice state to route to the correct starting stage based on startFromStage
+    const stageChoice = new sfn.Choice(this, "ChooseStartStage", {
+      comment: "Route to the requested starting stage (skip completed stages)",
+    });
+
+    stageChoice
+      .when(sfn.Condition.stringEquals("$.startFromStage", "concat"), concatStage)
+      .when(sfn.Condition.stringEquals("$.startFromStage", "clips"), clipsMap)
+      .when(sfn.Condition.stringEquals("$.startFromStage", "captions"), captionsStage)
+      .when(sfn.Condition.stringEquals("$.startFromStage", "audio"), audioMap)
+      .otherwise(pagesStage);
 
     this.stateMachine = new sfn.StateMachine(this, "RenderStateMachine", {
       stateMachineName: `${productSlug}-${environment}-render-pipeline`,
-      definitionBody: sfn.DefinitionBody.fromChainable(definition),
+      definitionBody: sfn.DefinitionBody.fromChainable(stageChoice),
       stateMachineType: sfn.StateMachineType.STANDARD,
       timeout: cdk.Duration.hours(2),
     });

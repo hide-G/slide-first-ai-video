@@ -32,9 +32,20 @@ const s3Client = new S3Client({});
 const DURATION_TOLERANCE_SEC = 0.2;
 
 export interface ConcatEvent {
-  bucket: string;
-  manifestKey: string;
+  /** S3 bucket name (from state machine payload) */
+  s3Bucket: string;
+  /** S3 prefix e.g. "users/{userId}/projects/{projectId}/" (from state machine payload) */
+  s3Prefix: string;
+  /** Project ID */
+  projectId: string;
+  /** User ID */
+  userId: string;
+  /** Render ID */
   renderId: string;
+  /** Stage name */
+  stage?: string;
+  /** Clip results from previous stage */
+  clipResults?: unknown;
 }
 
 export interface ConcatResult {
@@ -48,7 +59,9 @@ export interface ConcatResult {
  * Lambda handler for Stage 5: Concat.
  */
 export const handler = async (event: ConcatEvent): Promise<ConcatResult> => {
-  const { bucket, manifestKey, renderId } = event;
+  const bucket = event.s3Bucket;
+  const manifestKey = `${event.s3Prefix}manifest.json`;
+  const renderId = event.renderId;
 
   // 1. Read manifest
   const manifest = await readManifest(bucket, manifestKey);

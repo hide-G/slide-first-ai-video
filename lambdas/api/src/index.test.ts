@@ -28,6 +28,7 @@ vi.mock("@aws-sdk/client-s3", () => {
     S3Client: vi.fn(() => ({ send: mockSend })),
     GetObjectCommand: vi.fn((input) => ({ input })),
     PutObjectCommand: vi.fn((input) => ({ input })),
+    HeadObjectCommand: vi.fn((input) => ({ input, type: "Head" })),
     ListObjectsV2Command: vi.fn((input) => ({ input })),
     __mockSend: mockSend,
   };
@@ -162,9 +163,9 @@ describe("API Router", () => {
   });
 
   it("routes POST /projects/{id}/outline (generate outline)", async () => {
-    // First mock: getProject (via GSI1 query) returns project owned by user
+    // First mock: getProjectByUser (via GetCommand) returns project owned by user
     mockDynamoSend.mockResolvedValueOnce({
-      Items: [{ projectId: "proj-001", userId: "user-123", status: "DRAFT" }],
+      Item: { projectId: "proj-001", userId: "user-123", status: "DRAFT" },
     });
     // Second mock: Lambda invoke for outline generation
     mockLambdaSend.mockResolvedValueOnce({
@@ -185,7 +186,7 @@ describe("API Router", () => {
 
   it("routes PUT /projects/{id}/outline (save outline)", async () => {
     mockDynamoSend.mockResolvedValueOnce({
-      Items: [{ projectId: "proj-001", userId: "user-123", status: "OUTLINE_GENERATED" }],
+      Item: { projectId: "proj-001", userId: "user-123", status: "OUTLINE_GENERATED" },
     });
     mockDynamoSend.mockResolvedValueOnce({});
 
@@ -199,7 +200,7 @@ describe("API Router", () => {
 
   it("routes POST /projects/{id}/source-upload-url (presigned URL)", async () => {
     mockDynamoSend.mockResolvedValueOnce({
-      Items: [{ projectId: "proj-001", userId: "user-123", status: "DRAFT" }],
+      Item: { projectId: "proj-001", userId: "user-123", status: "DRAFT" },
     });
 
     const event = makeEvent("POST", "/projects/proj-001/source-upload-url", {
@@ -215,8 +216,14 @@ describe("API Router", () => {
 
   it("routes POST /projects/{id}/source (register source)", async () => {
     mockDynamoSend.mockResolvedValueOnce({
-      Items: [{ projectId: "proj-001", userId: "user-123", status: "DRAFT" }],
+      Item: { projectId: "proj-001", userId: "user-123", status: "DRAFT" },
     });
+
+    // Mock S3 HeadObject for size validation
+    const s3Module = await import("@aws-sdk/client-s3");
+    const s3MockSend = (s3Module as unknown as { __mockSend: ReturnType<typeof vi.fn> }).__mockSend;
+    s3MockSend.mockResolvedValueOnce({ ContentLength: 5000000 }); // 5MB file
+
     mockDynamoSend.mockResolvedValueOnce({});
 
     const event = makeEvent("POST", "/projects/proj-001/source", {
@@ -231,7 +238,7 @@ describe("API Router", () => {
 
   it("routes PUT /projects/{id}/output (save output settings)", async () => {
     mockDynamoSend.mockResolvedValueOnce({
-      Items: [{ projectId: "proj-001", userId: "user-123", status: "DRAFT" }],
+      Item: { projectId: "proj-001", userId: "user-123", status: "DRAFT" },
     });
     mockDynamoSend.mockResolvedValueOnce({});
 
@@ -247,7 +254,7 @@ describe("API Router", () => {
 
   it("routes POST /projects/{id}/renders (start render)", async () => {
     mockDynamoSend.mockResolvedValueOnce({
-      Items: [{ projectId: "proj-001", userId: "user-123", status: "NARRATION_CONFIRMED" }],
+      Item: { projectId: "proj-001", userId: "user-123", status: "NARRATION_CONFIRMED" },
     });
     mockDynamoSend.mockResolvedValueOnce({});
 
@@ -264,7 +271,7 @@ describe("API Router", () => {
 
   it("routes GET /projects/{id}/renders/{renderId} (render status)", async () => {
     mockDynamoSend.mockResolvedValueOnce({
-      Items: [{ projectId: "proj-001", userId: "user-123", status: "NARRATION_CONFIRMED" }],
+      Item: { projectId: "proj-001", userId: "user-123", status: "NARRATION_CONFIRMED" },
     });
     mockDynamoSend.mockResolvedValueOnce({
       Item: {
@@ -289,7 +296,7 @@ describe("API Router", () => {
 
   it("routes GET /projects/{id}/renders/{renderId}/artifacts", async () => {
     mockDynamoSend.mockResolvedValueOnce({
-      Items: [{ projectId: "proj-001", userId: "user-123", status: "DONE" }],
+      Item: { projectId: "proj-001", userId: "user-123", status: "DONE" },
     });
     mockDynamoSend.mockResolvedValueOnce({
       Item: {
@@ -334,8 +341,10 @@ describe("API Router", () => {
   });
 
   it("returns 403 for project owned by another user", async () => {
+    // With GetItem on PK=USER#{userId}, SK=PROJECT#{projectId},
+    // a project owned by another user simply won't be found
     mockDynamoSend.mockResolvedValueOnce({
-      Items: [{ projectId: "proj-001", userId: "other-user", status: "DRAFT" }],
+      Item: undefined,
     });
 
     const event = makeEvent("PUT", "/projects/proj-001/outline", {
@@ -348,7 +357,7 @@ describe("API Router", () => {
   });
 
   it("returns 403 when project does not exist", async () => {
-    mockDynamoSend.mockResolvedValueOnce({ Items: [] });
+    mockDynamoSend.mockResolvedValueOnce({ Item: undefined });
 
     const event = makeEvent("PUT", "/projects/nonexistent/output", {
       body: JSON.stringify({ aspect: "16:9", width: 1920, height: 1080, fps: 30, captions: "burn" }),
@@ -377,8 +386,8 @@ describe("API Router", () => {
     ];
 
     for (const { method, path } of routePaths) {
-      // Reset mocks for ownership check
-      mockDynamoSend.mockResolvedValue({ Items: [] });
+      // Reset mocks for ownership check (GetCommand returns no Item -> 403)
+      mockDynamoSend.mockResolvedValue({ Items: [], Item: undefined });
       const event = makeEvent(method, path, {
         body: JSON.stringify({}),
       });

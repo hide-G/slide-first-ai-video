@@ -1,0 +1,28 @@
+{
+  "id": "FEAT-006",
+  "type": "fix",
+  "description": "Address 5 review issues: startFromStage Choice states in state machine, event shape alignment between state machine and Lambda handlers, presigned upload size validation, ownership check optimization, and concat subtitles path escaping.",
+  "status": "completed",
+  "steps": [
+    "Fix #1: Add Choice states in render-state-machine-construct.ts to skip completed stages based on startFromStage input parameter",
+    "Fix #2: Align event shapes - change Lambda handlers (caption-worker, clip-worker, concat-worker) to accept the state machine payload shape (s3Bucket, s3Prefix) and derive manifestKey from those fields",
+    "Fix #3: Add content-length validation in handleRegisterSource and add size constraint to presigned URL",
+    "Fix #4: Replace GSI query in verifyProjectOwnership with direct GetItem on PK=USER#{userId}, SK=PROJECT#{projectId}",
+    "Fix #5: Escape srtPath in buildConcatArgs to handle FFmpeg filter metacharacters"
+  ],
+  "acceptance_criteria": [
+    "State machine uses Choice states to skip stages when startFromStage is set beyond pages",
+    "Lambda handlers accept the payload shape sent by the state machine (s3Bucket, s3Prefix, projectId, userId)",
+    "Presigned upload URL includes content-length-range condition or handleRegisterSource validates size",
+    "verifyProjectOwnership uses GetItem on primary key instead of GSI query",
+    "buildConcatArgs properly escapes the SRT path for FFmpeg subtitles filter",
+    "pnpm build succeeds",
+    "pnpm test passes"
+  ],
+  "verification": [
+    "source /root/.nvm/nvm.sh && cd /projects/sandbox/slide-first-ai-video && pnpm build",
+    "source /root/.nvm/nvm.sh && cd /projects/sandbox/slide-first-ai-video && pnpm test"
+  ],
+  "blocked_reason": null,
+  "findings": "All 5 fixes implemented successfully. The state machine now uses a Choice state for startFromStage routing. Lambda handlers accept s3Bucket/s3Prefix and derive manifestKey internally. The ownership check uses direct GetItem instead of GSI query - the existing test that verified 403 for 'another user' was adapted since the new approach simply returns no item (the user partition key inherently proves ownership). The concat subtitles filter now wraps paths with proper FFmpeg escaping. Test count increased from 291 to 297 with new escapeFfmpegPath tests."
+}

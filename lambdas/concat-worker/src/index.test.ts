@@ -107,9 +107,12 @@ describe("Stage 5: Concat handler", () => {
   it("uses subtitles filter when captions is burn", async () => {
     const { handler } = await import("./index.js");
     const result = await handler({
-      bucket: "test-bucket",
-      manifestKey: "users/user-1/projects/proj-1/manifest.json",
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
       renderId: "render-001",
+      stage: "concat",
     });
 
     expect(result.success).toBe(true);
@@ -130,9 +133,12 @@ describe("Stage 5: Concat handler", () => {
   it("writes concat list file with correct format", async () => {
     const { handler } = await import("./index.js");
     await handler({
-      bucket: "test-bucket",
-      manifestKey: "users/user-1/projects/proj-1/manifest.json",
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
       renderId: "render-001",
+      stage: "concat",
     });
 
     const mockWriteFile = vi.mocked(writeFile);
@@ -151,9 +157,12 @@ describe("Stage 5: Concat handler", () => {
   it("runs decode check", async () => {
     const { handler } = await import("./index.js");
     await handler({
-      bucket: "test-bucket",
-      manifestKey: "users/user-1/projects/proj-1/manifest.json",
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
       renderId: "render-001",
+      stage: "concat",
     });
 
     const mockExecFile = vi.mocked(execFile);
@@ -169,9 +178,12 @@ describe("Stage 5: Concat handler", () => {
     // Duration should be close to 10.5 (3.5 + 4.2 + 2.8)
     const { handler } = await import("./index.js");
     const result = await handler({
-      bucket: "test-bucket",
-      manifestKey: "users/user-1/projects/proj-1/manifest.json",
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
       renderId: "render-001",
+      stage: "concat",
     });
 
     expect(result.success).toBe(true);
@@ -195,9 +207,12 @@ describe("Stage 5: Concat handler", () => {
 
     const { handler } = await import("./index.js");
     const result = await handler({
-      bucket: "test-bucket",
-      manifestKey: "users/user-1/projects/proj-1/manifest.json",
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
       renderId: "render-001",
+      stage: "concat",
     });
 
     expect(result.success).toBe(false);
@@ -225,9 +240,12 @@ describe("Stage 5: Concat handler", () => {
 
     const { handler } = await import("./index.js");
     await handler({
-      bucket: "test-bucket",
-      manifestKey: "users/user-1/projects/proj-1/manifest.json",
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
       renderId: "render-001",
+      stage: "concat",
     });
 
     const mockExecFile = vi.mocked(execFile);
@@ -241,9 +259,12 @@ describe("Stage 5: Concat handler", () => {
   it("uploads to correct output key", async () => {
     const { handler } = await import("./index.js");
     const result = await handler({
-      bucket: "test-bucket",
-      manifestKey: "users/user-1/projects/proj-1/manifest.json",
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
       renderId: "render-001",
+      stage: "concat",
     });
 
     expect(result.outputKey).toBe("users/user-1/projects/proj-1/output/render-001/video.mp4");
@@ -252,9 +273,12 @@ describe("Stage 5: Concat handler", () => {
   it("no shell usage in any execFile call", async () => {
     const { handler } = await import("./index.js");
     await handler({
-      bucket: "test-bucket",
-      manifestKey: "users/user-1/projects/proj-1/manifest.json",
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
       renderId: "render-001",
+      stage: "concat",
     });
 
     const mockExecFile = vi.mocked(execFile);

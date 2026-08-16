@@ -18,8 +18,20 @@ import { generateSrt, totalDurationSec } from "@slide-first/core";
 const s3Client = new S3Client({});
 
 export interface CaptionsEvent {
-  bucket: string;
-  manifestKey: string;
+  /** S3 bucket name (from state machine payload) */
+  s3Bucket: string;
+  /** S3 prefix e.g. "users/{userId}/projects/{projectId}/" (from state machine payload) */
+  s3Prefix: string;
+  /** Project ID */
+  projectId: string;
+  /** User ID */
+  userId: string;
+  /** Render ID */
+  renderId: string;
+  /** Stage name */
+  stage?: string;
+  /** Audio results from previous stage */
+  audioResults?: unknown;
 }
 
 export interface CaptionsResult {
@@ -33,7 +45,8 @@ export interface CaptionsResult {
  * Lambda handler for Stage 3: Captions.
  */
 export const handler = async (event: CaptionsEvent): Promise<CaptionsResult> => {
-  const { bucket, manifestKey } = event;
+  const bucket = event.s3Bucket;
+  const manifestKey = `${event.s3Prefix}manifest.json`;
 
   // 1. Read manifest
   const manifest = await readManifest(bucket, manifestKey);

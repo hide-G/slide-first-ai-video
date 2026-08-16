@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildConcatArgs, buildConcatListContent } from "./concat-command.js";
+import { buildConcatArgs, buildConcatListContent, escapeFfmpegPath } from "./concat-command.js";
 
 describe("buildConcatArgs", () => {
   it("generates copy mode args when captions is 'none'", () => {
@@ -43,9 +43,9 @@ describe("buildConcatArgs", () => {
     expect(args).toContain("-vf");
     const vfIdx = args.indexOf("-vf");
     const vf = args[vfIdx + 1];
-    // Must use subtitles filter with file path (NOT drawtext)
+    // Must use subtitles filter with escaped file path (NOT drawtext)
     expect(vf).toContain("subtitles=");
-    expect(vf).toContain("/tmp/captions.srt");
+    expect(vf).toContain("captions.srt");
     expect(vf).not.toContain("drawtext");
 
     // Must re-encode with libx264
@@ -96,5 +96,39 @@ describe("buildConcatListContent", () => {
   it("handles single clip", () => {
     const content = buildConcatListContent(["/tmp/clip.mp4"]);
     expect(content).toBe("file '/tmp/clip.mp4'\n");
+  });
+});
+
+describe("escapeFfmpegPath", () => {
+  it("wraps simple paths in single quotes", () => {
+    const result = escapeFfmpegPath("/tmp/captions.srt");
+    expect(result).toBe("'/tmp/captions.srt'");
+  });
+
+  it("escapes colons in paths", () => {
+    const result = escapeFfmpegPath("/tmp/project:abc/captions.srt");
+    expect(result).toContain("\\:");
+    expect(result).not.toContain("project:abc");
+  });
+
+  it("escapes square brackets in paths", () => {
+    const result = escapeFfmpegPath("/tmp/[test]/captions.srt");
+    expect(result).toContain("\\[");
+    expect(result).toContain("\\]");
+  });
+
+  it("escapes semicolons in paths", () => {
+    const result = escapeFfmpegPath("/tmp/a;b/captions.srt");
+    expect(result).toContain("\\;");
+  });
+
+  it("escapes single quotes in paths", () => {
+    const result = escapeFfmpegPath("/tmp/it's/captions.srt");
+    expect(result).toContain("\\\\'");
+  });
+
+  it("escapes backslashes in paths", () => {
+    const result = escapeFfmpegPath("/tmp/back\\slash/captions.srt");
+    expect(result).toContain("\\\\");
   });
 });

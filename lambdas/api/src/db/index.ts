@@ -2,6 +2,7 @@ export { docClient, TABLE_NAME } from "./client.js";
 export {
   createProject,
   getProject,
+  getProjectByUser,
   updateProject,
   listProjectsByUser,
 } from "./projects.js";

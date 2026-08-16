@@ -5,7 +5,7 @@
  */
 
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
   requireAuth,
@@ -20,6 +20,9 @@ import { updateProject } from "../db/index.js";
 
 const s3Client = new S3Client({});
 const BUCKET_NAME = process.env.BUCKET_NAME ?? "";
+
+/** Maximum allowed upload size: 100 MB */
+const MAX_UPLOAD_SIZE_BYTES = 100 * 1024 * 1024;
 
 export async function handleSourceUploadUrl(
   event: APIGatewayProxyEvent,
@@ -41,13 +44,19 @@ export async function handleSourceUploadUrl(
     Bucket: BUCKET_NAME,
     Key: fileKey,
     ContentType: body.contentType,
+    ContentLength: MAX_UPLOAD_SIZE_BYTES,
   });
 
-  const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+  // Sign with Content-Length constraint so uploads exceeding the limit are rejected
+  const uploadUrl = await getSignedUrl(s3Client, command, {
+    expiresIn: 3600,
+    signableHeaders: new Set(["content-length"]),
+  });
 
   return buildResponse(200, {
     uploadUrl,
     fileKey,
+    maxSizeBytes: MAX_UPLOAD_SIZE_BYTES,
   });
 }
 
@@ -62,6 +71,27 @@ export async function handleRegisterSource(
 
   await verifyProjectOwnership(projectId, userId);
   const body = validateBody(RegisterSourceSchema, event.body ?? null);
+
+  // Validate the uploaded object size before allowing downstream stages
+  const headResult = await s3Client.send(
+    new HeadObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: body.fileKey,
+    }),
+  );
+
+  const objectSize = headResult.ContentLength ?? 0;
+  if (objectSize > MAX_UPLOAD_SIZE_BYTES) {
+    throw new ApiError(
+      400,
+      `Uploaded file exceeds maximum size of ${MAX_UPLOAD_SIZE_BYTES} bytes (actual: ${objectSize})`,
+      "FILE_TOO_LARGE",
+    );
+  }
+
+  if (objectSize === 0) {
+    throw new ApiError(400, "Uploaded file is empty", "EMPTY_FILE");
+  }
 
   await updateProject(userId, projectId, {
     source: {

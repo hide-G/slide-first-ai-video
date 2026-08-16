@@ -89,7 +89,14 @@ describe("Stage 4: Clips handler", () => {
 
   it("calls ffmpeg with correct clip args including -t", async () => {
     const { handler } = await import("./index.js");
-    const result = await handler({ bucket: "test-bucket", manifestKey: "users/user-1/projects/proj-1/manifest.json" });
+    const result = await handler({
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
+      renderId: "render-1",
+      stage: "clips",
+    });
 
     expect(result.success).toBe(true);
     expect(result.clipCount).toBe(2);
@@ -118,7 +125,14 @@ describe("Stage 4: Clips handler", () => {
 
   it("validates clip duration with ffprobe", async () => {
     const { handler } = await import("./index.js");
-    await handler({ bucket: "test-bucket", manifestKey: "users/user-1/projects/proj-1/manifest.json" });
+    await handler({
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
+      renderId: "render-1",
+      stage: "clips",
+    });
 
     const mockExecFile = vi.mocked(execFile);
     const ffprobeCalls = mockExecFile.mock.calls.filter((call) => call[0] === "ffprobe");
@@ -141,7 +155,14 @@ describe("Stage 4: Clips handler", () => {
     });
 
     const { handler } = await import("./index.js");
-    const result = await handler({ bucket: "test-bucket", manifestKey: "users/user-1/projects/proj-1/manifest.json" });
+    const result = await handler({
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
+      renderId: "render-1",
+      stage: "clips",
+    });
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("duration drift too large");
@@ -149,7 +170,14 @@ describe("Stage 4: Clips handler", () => {
 
   it("does not use shell option in execFile", async () => {
     const { handler } = await import("./index.js");
-    await handler({ bucket: "test-bucket", manifestKey: "users/user-1/projects/proj-1/manifest.json" });
+    await handler({
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
+      renderId: "render-1",
+      stage: "clips",
+    });
 
     const mockExecFile = vi.mocked(execFile);
     for (const call of mockExecFile.mock.calls) {
@@ -163,7 +191,14 @@ describe("Stage 4: Clips handler", () => {
 
   it("does not embed text in ffmpeg command args", async () => {
     const { handler } = await import("./index.js");
-    await handler({ bucket: "test-bucket", manifestKey: "users/user-1/projects/proj-1/manifest.json" });
+    await handler({
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
+      renderId: "render-1",
+      stage: "clips",
+    });
 
     const mockExecFile = vi.mocked(execFile);
     const ffmpegCalls = mockExecFile.mock.calls.filter((call) => call[0] === "ffmpeg");

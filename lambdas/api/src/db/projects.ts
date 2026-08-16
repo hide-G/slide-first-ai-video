@@ -43,6 +43,7 @@ export async function createProject(project: ProjectRecord): Promise<void> {
 
 /**
  * Get a project by ID (query GSI1 by projectId).
+ * Used when the caller does not have the userId context.
  */
 export async function getProject(
   projectId: string,
@@ -65,6 +66,32 @@ export async function getProject(
   }
 
   return result.Items[0] as ProjectRecord;
+}
+
+/**
+ * Get a project by userId + projectId using the primary key (GetItem).
+ * Faster and cheaper than getProject (which uses GSI).
+ * Inherently proves ownership since the PK includes the userId.
+ */
+export async function getProjectByUser(
+  userId: string,
+  projectId: string,
+): Promise<ProjectRecord | null> {
+  const result = await docClient.send(
+    new GetCommand({
+      TableName: TABLE_NAME,
+      Key: {
+        PK: `USER#${userId}`,
+        SK: `PROJECT#${projectId}`,
+      },
+    }),
+  );
+
+  if (!result.Item) {
+    return null;
+  }
+
+  return result.Item as ProjectRecord;
 }
 
 /**

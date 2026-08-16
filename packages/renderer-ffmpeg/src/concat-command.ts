@@ -43,7 +43,7 @@ export function buildConcatArgs(options: ConcatCommandOptions): string[] {
     if (!srtPath) {
       throw new Error("srtPath is required when captionsMode is 'burn'");
     }
-    args.push("-vf", `subtitles=${srtPath}`);
+    args.push("-vf", `subtitles=${escapeFfmpegPath(srtPath)}`);
     args.push("-c:v", "libx264");
     args.push("-c:a", "aac");
     args.push("-b:a", "96k");
@@ -61,6 +61,28 @@ export function buildConcatArgs(options: ConcatCommandOptions): string[] {
  */
 export function buildConcatListContent(clipPaths: string[]): string {
   return clipPaths.map((p) => `file '${p}'`).join("\n") + "\n";
+}
+
+/**
+ * Escape a file path for use in FFmpeg's subtitles filter.
+ *
+ * FFmpeg filter syntax uses ':', '[', ']', ';', and "'" as metacharacters.
+ * The subtitles filter accepts a path wrapped in single quotes with
+ * internal single quotes escaped as "'\\''".
+ * Additionally, colons, backslashes, brackets, and semicolons inside the
+ * quoted path must be escaped with a backslash.
+ */
+export function escapeFfmpegPath(path: string): string {
+  // Escape special characters for FFmpeg filter graph:
+  // backslash, colon, single quote, semicolons, brackets
+  const escaped = path
+    .replace(/\\/g, "\\\\")
+    .replace(/'/g, "'\\\\''")
+    .replace(/:/g, "\\:")
+    .replace(/\[/g, "\\[")
+    .replace(/\]/g, "\\]")
+    .replace(/;/g, "\\;");
+  return `'${escaped}'`;
 }
 
 /**

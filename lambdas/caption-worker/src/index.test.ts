@@ -60,7 +60,14 @@ describe("Stage 3: Captions handler", () => {
 
   it("generates SRT with correct subtitle count", async () => {
     const { handler } = await import("./index.js");
-    const result = await handler({ bucket: "test-bucket", manifestKey: "users/user-1/projects/proj-1/manifest.json" });
+    const result = await handler({
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
+      renderId: "render-1",
+      stage: "captions",
+    });
 
     expect(result.success).toBe(true);
     expect(result.subtitleCount).toBe(3);
@@ -69,7 +76,14 @@ describe("Stage 3: Captions handler", () => {
 
   it("uploads SRT to correct S3 key", async () => {
     const { handler } = await import("./index.js");
-    await handler({ bucket: "test-bucket", manifestKey: "users/user-1/projects/proj-1/manifest.json" });
+    await handler({
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
+      renderId: "render-1",
+      stage: "captions",
+    });
 
     const putCalls = mockSend.mock.calls.filter(
       (call: unknown[]) => (call[0] as { type: string }).type === "put",
@@ -88,7 +102,14 @@ describe("Stage 3: Captions handler", () => {
 
   it("generates monotonically increasing timestamps", async () => {
     const { handler } = await import("./index.js");
-    await handler({ bucket: "test-bucket", manifestKey: "users/user-1/projects/proj-1/manifest.json" });
+    await handler({
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
+      renderId: "render-1",
+      stage: "captions",
+    });
 
     const putCalls = mockSend.mock.calls.filter(
       (call: unknown[]) => (call[0] as { type: string }).type === "put",
@@ -125,7 +146,14 @@ describe("Stage 3: Captions handler", () => {
     });
 
     const { handler } = await import("./index.js");
-    const result = await handler({ bucket: "test-bucket", manifestKey: "users/user-1/projects/proj-1/manifest.json" });
+    const result = await handler({
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
+      renderId: "render-1",
+      stage: "captions",
+    });
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("no measured audioDurationSec");
@@ -133,7 +161,14 @@ describe("Stage 3: Captions handler", () => {
 
   it("sets stage to done on success", async () => {
     const { handler } = await import("./index.js");
-    await handler({ bucket: "test-bucket", manifestKey: "users/user-1/projects/proj-1/manifest.json" });
+    await handler({
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
+      renderId: "render-1",
+      stage: "captions",
+    });
 
     const putCalls = mockSend.mock.calls.filter(
       (call: unknown[]) => (call[0] as { type: string }).type === "put",

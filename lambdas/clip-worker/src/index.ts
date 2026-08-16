@@ -27,8 +27,20 @@ const s3Client = new S3Client({});
 const DURATION_TOLERANCE_SEC = 0.05;
 
 export interface ClipsEvent {
-  bucket: string;
-  manifestKey: string;
+  /** S3 bucket name (from state machine payload) */
+  s3Bucket: string;
+  /** S3 prefix e.g. "users/{userId}/projects/{projectId}/" (from state machine payload) */
+  s3Prefix: string;
+  /** Project ID */
+  projectId: string;
+  /** User ID */
+  userId: string;
+  /** Render ID */
+  renderId: string;
+  /** Stage name */
+  stage?: string;
+  /** Page data when invoked from Map state */
+  page?: unknown;
 }
 
 export interface ClipsResult {
@@ -41,7 +53,8 @@ export interface ClipsResult {
  * Lambda handler for Stage 4: Clips.
  */
 export const handler = async (event: ClipsEvent): Promise<ClipsResult> => {
-  const { bucket, manifestKey } = event;
+  const bucket = event.s3Bucket;
+  const manifestKey = `${event.s3Prefix}manifest.json`;
 
   // 1. Read manifest
   const manifest = await readManifest(bucket, manifestKey);

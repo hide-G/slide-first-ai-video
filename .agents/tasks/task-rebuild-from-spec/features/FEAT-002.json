@@ -2,7 +2,7 @@
   "id": "FEAT-002",
   "type": "chore",
   "description": "Create docs/migration.md documenting what existing code maps to what in the new architecture (Task #2 from spec). Also update packages/core to align with the new data contract - rewrite s3-keys.ts, duration.ts, and related modules to use the new manifest structure.",
-  "status": "pending",
+  "status": "in_progress",
   "steps": [
     "Inventory all existing constructs in infra/lib/ and map them to new spec: storage-construct (keep), auth-construct (keep), api-construct (rebuild routes per section 5), marp-lambda-construct (keep for slide gen), polly-worker-construct (keep), render-state-machine-construct (rebuild as 5-stage pipeline), content-state-machine-construct (rebuild for new flow), teaser-* (remove - not in spec), delivery-construct (keep), frontend-construct (keep), composition-builder-construct (remove/replace with clips stage), slide-generator-construct (keep for outline gen)",
     "Inventory all existing lambdas and map: api (rebuild routes per section 5), marp-render (keep, adapt), polly-worker (keep, change output to MP3), render-worker (rebuild as per-page clip generator), slide-generator (keep for outline+deck gen), composition-builder (replace with concat stage), teaser-* (remove)",

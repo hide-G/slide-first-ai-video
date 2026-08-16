@@ -1,79 +1,116 @@
 import { describe, it, expect } from "vitest";
 import { generateSrt, formatSrtTimestamp } from "./srt-generator.js";
-import type { CaptionSegment } from "./caption-builder.js";
 
-describe("formatSrtTimestamp", () => {
-  it("formats zero ms", () => {
-    expect(formatSrtTimestamp(0)).toBe("00:00:00,000");
+describe("SRT generator", () => {
+  describe("formatSrtTimestamp", () => {
+    it("formats 0 seconds", () => {
+      expect(formatSrtTimestamp(0)).toBe("00:00:00,000");
+    });
+
+    it("formats fractional seconds", () => {
+      expect(formatSrtTimestamp(5.5)).toBe("00:00:05,500");
+    });
+
+    it("formats minutes", () => {
+      expect(formatSrtTimestamp(65.123)).toBe("00:01:05,123");
+    });
+
+    it("formats hours", () => {
+      expect(formatSrtTimestamp(3661.5)).toBe("01:01:01,500");
+    });
+
+    it("handles sub-millisecond precision by rounding", () => {
+      expect(formatSrtTimestamp(1.9999)).toBe("00:00:02,000");
+    });
   });
 
-  it("formats milliseconds only", () => {
-    expect(formatSrtTimestamp(500)).toBe("00:00:00,500");
-  });
+  describe("generateSrt", () => {
+    it("generates SRT from pages with cumulative timing", () => {
+      const pages = [
+        {
+          pageNumber: 1,
+          audioDurationSec: 5.0,
+          script: { mode: "plain" as const, text: "First page narration" },
+        },
+        {
+          pageNumber: 2,
+          audioDurationSec: 3.5,
+          script: { mode: "plain" as const, text: "Second page narration" },
+        },
+        {
+          pageNumber: 3,
+          audioDurationSec: 4.2,
+          script: { mode: "plain" as const, text: "Third page narration" },
+        },
+      ];
 
-  it("formats seconds and milliseconds", () => {
-    expect(formatSrtTimestamp(1500)).toBe("00:00:01,500");
-  });
+      const srt = generateSrt(pages);
 
-  it("formats minutes", () => {
-    expect(formatSrtTimestamp(65000)).toBe("00:01:05,000");
-  });
+      expect(srt).toBe(
+        "1\n00:00:00,000 --> 00:00:05,000\nFirst page narration\n\n" +
+          "2\n00:00:05,000 --> 00:00:08,500\nSecond page narration\n\n" +
+          "3\n00:00:08,500 --> 00:00:12,700\nThird page narration\n",
+      );
+    });
 
-  it("formats hours", () => {
-    expect(formatSrtTimestamp(3661500)).toBe("01:01:01,500");
-  });
+    it("returns empty string for empty pages", () => {
+      expect(generateSrt([])).toBe("");
+    });
 
-  it("uses comma separator (not dot)", () => {
-    const result = formatSrtTimestamp(1234);
-    expect(result).toContain(",");
-    // Should have exactly one comma, for the ms separator
-    expect(result.split(",")).toHaveLength(2);
-  });
-});
+    it("skips pages with empty script text", () => {
+      const pages = [
+        {
+          pageNumber: 1,
+          audioDurationSec: 3.0,
+          script: { mode: "plain" as const, text: "Hello" },
+        },
+        {
+          pageNumber: 2,
+          audioDurationSec: 2.0,
+          script: { mode: "plain" as const, text: "" },
+        },
+        {
+          pageNumber: 3,
+          audioDurationSec: 4.0,
+          script: { mode: "plain" as const, text: "World" },
+        },
+      ];
 
-describe("generateSrt", () => {
-  it("generates valid SRT format with sequential numbering", () => {
-    const segments: CaptionSegment[] = [
-      { text: "Hello world", startMs: 0, endMs: 2000, highlight: [] },
-      { text: "Good morning", startMs: 2000, endMs: 4000, highlight: [] },
-    ];
+      const srt = generateSrt(pages);
 
-    const srt = generateSrt(segments);
+      // Entry numbers should be sequential (1, 2) skipping the empty page
+      expect(srt).toBe(
+        "1\n00:00:00,000 --> 00:00:03,000\nHello\n\n" +
+          "2\n00:00:05,000 --> 00:00:09,000\nWorld\n",
+      );
+    });
 
-    expect(srt).toContain("1\n00:00:00,000 --> 00:00:02,000\nHello world");
-    expect(srt).toContain("2\n00:00:02,000 --> 00:00:04,000\nGood morning");
-  });
+    it("handles single page", () => {
+      const pages = [
+        {
+          pageNumber: 1,
+          audioDurationSec: 10.0,
+          script: { mode: "plain" as const, text: "Solo page" },
+        },
+      ];
 
-  it("separates cues with blank lines", () => {
-    const segments: CaptionSegment[] = [
-      { text: "First", startMs: 0, endMs: 1000, highlight: [] },
-      { text: "Second", startMs: 1000, endMs: 2000, highlight: [] },
-    ];
+      const srt = generateSrt(pages);
 
-    const srt = generateSrt(segments);
-    // SRT blocks separated by double newline
-    expect(srt).toContain("First\n\n2\n");
-  });
+      expect(srt).toBe("1\n00:00:00,000 --> 00:00:10,000\nSolo page\n");
+    });
 
-  it("generates empty-ish SRT for no segments", () => {
-    const srt = generateSrt([]);
-    expect(srt).toBe("\n");
-  });
+    it("trims script text whitespace", () => {
+      const pages = [
+        {
+          pageNumber: 1,
+          audioDurationSec: 2.0,
+          script: { mode: "plain" as const, text: "  trimmed  " },
+        },
+      ];
 
-  it("handles multi-line captions", () => {
-    const segments: CaptionSegment[] = [
-      { text: "Line one\nLine two", startMs: 0, endMs: 3000, highlight: [] },
-    ];
-
-    const srt = generateSrt(segments);
-    expect(srt).toContain("Line one\nLine two");
-  });
-
-  it("ends with a newline", () => {
-    const segments: CaptionSegment[] = [
-      { text: "Hello", startMs: 0, endMs: 1000, highlight: [] },
-    ];
-    const srt = generateSrt(segments);
-    expect(srt.endsWith("\n")).toBe(true);
+      const srt = generateSrt(pages);
+      expect(srt).toContain("trimmed");
+      expect(srt).not.toContain("  trimmed  ");
+    });
   });
 });

@@ -1,128 +1,85 @@
 /**
- * S3 key builder functions following the design document structure:
+ * S3 key builder functions for packages/core.
  *
- * Bucket: {productSlug}-{purpose}-{env}-{accountId}-{region}
+ * These re-export and extend the canonical key builders from @slide-first/shared-types.
+ * The canonical layout (section 4.1):
  *
- * Key structure:
- *   {userId}/{projectId}/versions/v{NNNN}/...
- *     slides/deck.001.png
- *     audio/slide-001.pcm
- *     audio/slide-001-marks.json
- *     captions/captions.json
- *     captions/full.ja.vtt
- *     captions/full.ja.srt
- *     video/video-manifest.json
- *     output/lt-full-16x9.mp4
+ *   users/{userId}/projects/{projectId}/
+ *     input/source.pdf | input/source.pptx
+ *     deck/deck.md, deck/deck.pdf, deck/deck.pptx
+ *     pages/page-001.png, page-002.png, ...
+ *     audio/page-001.mp3, page-002.mp3, ...
+ *     captions/captions.srt
+ *     clips/page-001.mp4, page-002.mp4, ...
+ *     output/{renderId}/video.mp4
+ *     manifest.json
  */
 
-export interface BucketNameParams {
-  productSlug: string;
-  purpose: string;
-  env: string;
-  accountId: string;
-  region: string;
-}
+import {
+  inputSourceKey,
+  deckKey,
+  pageImageKey,
+  audioKey,
+  captionsSrtKey,
+  clipKey,
+  outputVideoKey,
+  manifestKey,
+  projectPrefix,
+} from "@slide-first/shared-types";
 
-export interface KeyPrefixParams {
-  userId: string;
-  projectId: string;
-  versionNumber: number;
+import type { S3KeyParams } from "@slide-first/shared-types";
+
+export type { S3KeyParams };
+
+// Re-export all canonical key builders
+export {
+  inputSourceKey,
+  deckKey,
+  pageImageKey,
+  audioKey,
+  captionsSrtKey,
+  clipKey,
+  outputVideoKey,
+  manifestKey,
+  projectPrefix,
+};
+
+/**
+ * Build all page-related keys for a given page number.
+ * Useful when processing a single page through the pipeline.
+ */
+export function pageKeys(
+  params: S3KeyParams,
+  pageNumber: number,
+): { image: string; audio: string; clip: string } {
+  return {
+    image: pageImageKey(params, pageNumber),
+    audio: audioKey(params, pageNumber),
+    clip: clipKey(params, pageNumber),
+  };
 }
 
 /**
- * Build the S3 bucket name following the convention:
- * {productSlug}-{purpose}-{env}-{accountId}-{region}
+ * Build all keys for a complete project render.
  */
-export function buildBucketName(params: BucketNameParams): string {
-  const { productSlug, purpose, env, accountId, region } = params;
-  return `${productSlug}-${purpose}-${env}-${accountId}-${region}`;
-}
+export function renderKeys(
+  params: S3KeyParams,
+  renderId: string,
+  pageCount: number,
+): {
+  manifest: string;
+  captionsSrt: string;
+  outputVideo: string;
+  pages: { image: string; audio: string; clip: string }[];
+} {
+  const pages = Array.from({ length: pageCount }, (_, i) =>
+    pageKeys(params, i + 1),
+  );
 
-/**
- * Build the project prefix:
- * {userId}/{projectId}/
- */
-export function buildProjectPrefix(params: Pick<KeyPrefixParams, "userId" | "projectId">): string {
-  return `${params.userId}/${params.projectId}/`;
-}
-
-/**
- * Build the version prefix:
- * {userId}/{projectId}/versions/v{NNNN}/
- */
-export function buildVersionPrefix(params: KeyPrefixParams): string {
-  const versionPadded = String(params.versionNumber).padStart(4, "0");
-  return `${params.userId}/${params.projectId}/versions/v${versionPadded}/`;
-}
-
-/**
- * Build S3 key for a slide image.
- * Example: {userId}/{projectId}/versions/v0001/slides/deck.001.png
- */
-export function buildSlideImageKey(
-  params: KeyPrefixParams,
-  slideNumber: number,
-): string {
-  const prefix = buildVersionPrefix(params);
-  const paddedSlide = String(slideNumber).padStart(3, "0");
-  return `${prefix}slides/deck.${paddedSlide}.png`;
-}
-
-/**
- * Build S3 key for slide audio (PCM).
- * Example: {userId}/{projectId}/versions/v0001/audio/slide-001.pcm
- */
-export function buildAudioKey(
-  params: KeyPrefixParams,
-  slideNumber: number,
-): string {
-  const prefix = buildVersionPrefix(params);
-  const paddedSlide = String(slideNumber).padStart(3, "0");
-  return `${prefix}audio/slide-${paddedSlide}.pcm`;
-}
-
-/**
- * Build S3 key for speech marks JSON.
- * Example: {userId}/{projectId}/versions/v0001/audio/slide-001-marks.json
- */
-export function buildSpeechMarksKey(
-  params: KeyPrefixParams,
-  slideNumber: number,
-): string {
-  const prefix = buildVersionPrefix(params);
-  const paddedSlide = String(slideNumber).padStart(3, "0");
-  return `${prefix}audio/slide-${paddedSlide}-marks.json`;
-}
-
-/**
- * Build S3 key for the video manifest.
- * Example: {userId}/{projectId}/versions/v0001/video/video-manifest.json
- */
-export function buildManifestKey(params: KeyPrefixParams): string {
-  const prefix = buildVersionPrefix(params);
-  return `${prefix}video/video-manifest.json`;
-}
-
-/**
- * Build S3 key for final video output.
- * Example: {userId}/{projectId}/versions/v0001/output/lt-full-16x9.mp4
- */
-export function buildOutputKey(
-  params: KeyPrefixParams,
-  outputName: string,
-): string {
-  const prefix = buildVersionPrefix(params);
-  return `${prefix}output/${outputName}.mp4`;
-}
-
-/**
- * Build S3 key for captions file.
- * Example: {userId}/{projectId}/versions/v0001/captions/full.ja.vtt
- */
-export function buildCaptionsKey(
-  params: KeyPrefixParams,
-  filename: string,
-): string {
-  const prefix = buildVersionPrefix(params);
-  return `${prefix}captions/${filename}`;
+  return {
+    manifest: manifestKey(params),
+    captionsSrt: captionsSrtKey(params),
+    outputVideo: outputVideoKey(params, renderId),
+    pages,
+  };
 }

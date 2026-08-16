@@ -2,7 +2,7 @@
   "id": "FEAT-001",
   "type": "feat",
   "description": "Implement the data contract as specified in section 4 of 実装指示プロンプト.md. Replace existing shared-types with the new manifest.json schema, S3 layout, and runtime validation. Create docs/contract.md. This is Task #1 from the spec.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Read 実装指示プロンプト.md sections 4.1, 4.2, 4.3 carefully for the exact schema",
     "Rewrite packages/shared-types/src/ to define: Manifest type matching section 4.2 exactly (schemaVersion, projectId, userId, contentLanguage, source, voice, output, lexicon, pages, stages, cost). Include all sub-types: source.kind ('generated'|'uploaded'), script.mode ('plain'|'ssml'), lexicon[].method ('sub'|'phoneme'|'spell'), stages values ('pending'|'running'|'done'|'failed'), output.aspect ('16:9'|'9:16'|'1:1'|'4:5'), output.captions ('burn'|'srt'|'none')",
@@ -28,5 +28,5 @@
     "source /root/.nvm/nvm.sh && cd /projects/sandbox/slide-first-ai-video && pnpm --filter @slide-first/shared-types test"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "All 46 tests pass. Build succeeds. zod 3.25.76 used for runtime validation. Other packages that import from shared-types will break (expected per plan). vitest.config.ts added with CJS Vite deprecation warning (cosmetic only, tests pass). The package uses CJS output (module: Node16) consistent with root tsconfig."
 }

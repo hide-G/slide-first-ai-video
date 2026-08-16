@@ -2,7 +2,7 @@
   "id": "FEAT-003",
   "type": "feat",
   "description": "Implement the 5 processing stages as independent Lambda handlers (Tasks #3-7 from spec). Each stage reads from and writes to S3, updates manifest.json stages field, and can be re-run independently. Adapt renderer-port and renderer-ffmpeg for the new clip-based pipeline.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Rewrite packages/renderer-port/src/index.ts to define the new stage interfaces: PagesStage (input -> PNG), AudioStage (script -> MP3 + measured duration), CaptionsStage (script + durations -> SRT), ClipsStage (PNG + MP3 + duration -> per-page MP4), ConcatStage (clips + optional subtitles -> final MP4). Each stage takes manifest + S3 client and returns updated manifest.",
     "Rewrite packages/renderer-ffmpeg/src/ffmpeg-renderer.ts to implement the FFmpeg commands for stages 4 and 5. Stage 4 (clips): for each page, create MP4 from PNG + MP3 using -t with measured audioDurationSec (rule 7.1), -loop 1 for image, H.264 1920x1080 30fps yuv420p, AAC 96kbps. Stage 5 (concat): concat all clips with ffmpeg concat demuxer, optionally burn subtitles using subtitles filter with SRT file (rule 3.5 - never embed text in drawtext). All commands use execFile with array args, no shell (rule 3.5).",
@@ -34,5 +34,5 @@
     "source /root/.nvm/nvm.sh && cd /projects/sandbox/slide-first-ai-video && pnpm build && pnpm test"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "All 285 tests pass across 12 workspace projects. Build succeeds for the full workspace. The 5 processing stages are implemented as independent Lambda handlers. Removed obsolete packages (evaluation, renderer-hyperframes, renderer-contract-tests) and lambdas (composition-builder, render-worker, teaser-*). Updated infra/CDK to remove references to deleted constructs (composition-builder, teaser-*). Added buildVersionPrefix compat helper to core for the API lambda. Fixed slide-generator to use local SlideImportance type instead of removed shared-types export. CJS Vite deprecation warning is cosmetic only."
 }

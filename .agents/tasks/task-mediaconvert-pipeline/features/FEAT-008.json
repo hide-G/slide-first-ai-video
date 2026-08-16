@@ -2,7 +2,7 @@
   "id": "FEAT-008",
   "type": "fix",
   "description": "Address review findings: increase Lambda timeout to 900s, add DescribeEndpoints call, fix silent polling exhaustion, add IAM permission for DescribeEndpoints.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Fix silent polling exhaustion: throw error after polling loop exhausts MAX_POLL_ATTEMPTS without terminal status",
     "Add DescribeEndpoints call in Lambda at startup to resolve account-specific MediaConvert endpoint",
@@ -24,5 +24,5 @@
     "source $NVM_DIR/nvm.sh && cd /projects/sandbox/slide-first-ai-video/infra && npx --yes aws-cdk@2 synth"
   ],
   "blocked_reason": null,
-  "findings": null
+  "findings": "All 4 review issues fixed. Lambda timeout increased to 900s, MAX_POLL_ATTEMPTS reduced to 85 (fits within timeout). DescribeEndpoints called at runtime with caching; env var MEDIACONVERT_ENDPOINT still works as override. Polling exhaustion now throws an error caught by the try/catch which sets stages.video=failed. All 143 tests pass across all packages. CDK synth confirms timeout=900 and DescribeEndpoints permission in template."
 }

@@ -17,7 +17,7 @@
 import { build } from "esbuild";
 import { cp, mkdir, rm, readdir, readFile, stat, unlink, realpath, lstat } from "node:fs/promises";
 import { join, resolve, dirname } from "node:path";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, realpathSync, readdirSync, statSync } from "node:fs";
 
 const ROOT = resolve(import.meta.dirname);
 const DIST = join(ROOT, "dist");
@@ -202,7 +202,29 @@ if (symlinks.length > 0) {
 }
 
 // 6. Report final size
-const { execSync } = await import("node:child_process");
-const sizeOutput = execSync(`du -sh ${DIST}`, { encoding: "utf-8" }).trim();
-console.log(`[marp-render] dist size: ${sizeOutput}`);
+// du はWindowsに存在しないため、Nodeでサイズを集計する（開発機はWindows 10のためシェル依存を避ける）
+function directorySize(dir) {
+  let total = 0;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      total += directorySize(full);
+    } else if (entry.isFile()) {
+      total += statSync(full).size;
+    }
+  }
+  return total;
+}
+
+const distBytes = directorySize(DIST);
+const distMb = (distBytes / 1024 / 1024).toFixed(1);
+console.log(`[marp-render] dist size: ${distMb} MB`);
+
+// Lambdaの展開後サイズ上限は250MB。余裕を見て200MBを超えたら失敗させる
+const LIMIT_MB = 200;
+if (Number(distMb) > LIMIT_MB) {
+  console.error(`[marp-render] ERROR: dist size ${distMb} MB exceeds ${LIMIT_MB} MB`);
+  process.exit(1);
+}
+
 console.log("[marp-render] build complete");

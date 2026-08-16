@@ -1,7 +1,7 @@
 {
   "task_id": "task-rebuild-from-spec",
   "task_description": "Rebuild slide-first-ai-video from scratch per 実装指示プロンプト.md specification. Implement new data contract, 5-stage video pipeline, 11 API endpoints, and 4-screen frontend matching mockups exactly.",
-  "status": "in_progress",
+  "status": "completed",
   "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003", "FEAT-004", "FEAT-005", "FEAT-006", "FEAT-007"],
   "blocked_reason": null,
   "verification": {

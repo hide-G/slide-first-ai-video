@@ -27,11 +27,7 @@ export interface RenderStateMachineConstructProps {
 export class RenderStateMachineConstruct extends Construct {
   public readonly stateMachine: sfn.StateMachine;
 
-  constructor(
-    scope: Construct,
-    id: string,
-    props: RenderStateMachineConstructProps,
-  ) {
+  constructor(scope: Construct, id: string, props: RenderStateMachineConstructProps) {
     super(scope, id);
 
     const { productSlug, environment } = props;
@@ -40,7 +36,7 @@ export class RenderStateMachineConstruct extends Construct {
     const pagesStage = new tasks.LambdaInvoke(this, "PagesStage", {
       lambdaFunction: props.marpLambda,
       payload: sfn.TaskInput.fromObject({
-        "stage": "pages",
+        stage: "pages",
         "projectId.$": "$.projectId",
         "userId.$": "$.userId",
         "renderId.$": "$.renderId",
@@ -62,7 +58,7 @@ export class RenderStateMachineConstruct extends Construct {
     const audioStage = new tasks.LambdaInvoke(this, "AudioStage", {
       lambdaFunction: props.pollyWorkerLambda,
       payload: sfn.TaskInput.fromObject({
-        "stage": "audio",
+        stage: "audio",
         "projectId.$": "$.projectId",
         "userId.$": "$.userId",
         "renderId.$": "$.renderId",
@@ -84,7 +80,7 @@ export class RenderStateMachineConstruct extends Construct {
     const captionsStage = new tasks.LambdaInvoke(this, "CaptionsStage", {
       lambdaFunction: props.captionWorkerLambda,
       payload: sfn.TaskInput.fromObject({
-        "stage": "captions",
+        stage: "captions",
         "projectId.$": "$.projectId",
         "userId.$": "$.userId",
         "renderId.$": "$.renderId",
@@ -106,7 +102,7 @@ export class RenderStateMachineConstruct extends Construct {
     const videoStage = new tasks.LambdaInvoke(this, "VideoStage", {
       lambdaFunction: props.mediaconvertWorkerLambda,
       payload: sfn.TaskInput.fromObject({
-        "stage": "video",
+        stage: "video",
         "projectId.$": "$.projectId",
         "userId.$": "$.userId",
         "renderId.$": "$.renderId",
@@ -140,7 +136,9 @@ export class RenderStateMachineConstruct extends Construct {
 
     /** 工程の結果を確認し、失敗なら実行を止める */
     const checkStage = (id: string, resultPath: string, onSuccess: sfn.IChainable) =>
-      new sfn.Choice(this, id, { comment: "Fail the execution when the stage reports success=false" })
+      new sfn.Choice(this, id, {
+        comment: "Fail the execution when the stage reports success=false",
+      })
         .when(sfn.Condition.booleanEquals(`${resultPath}.Payload.success`, false), renderFailed)
         .otherwise(onSuccess);
 

@@ -2,24 +2,24 @@ import { fetchAuthSession } from "aws-amplify/auth";
 import type {
   CreateProjectRequest,
   CreateProjectResponse,
-  GenerateOutlineRequest,
-  GenerateOutlineResponse,
-  UpdateOutlineRequest,
   GenerateDeckRequest,
   GenerateDeckResponse,
-  SourceUploadUrlRequest,
-  SourceUploadUrlResponse,
-  RegisterSourceRequest,
-  RegisterSourceResponse,
-  UpdateOutputRequest,
   GenerateNarrationRequest,
   GenerateNarrationResponse,
-  UpdateNarrationRequest,
+  GenerateOutlineRequest,
+  GenerateOutlineResponse,
+  GetArtifactsResponse,
+  GetRenderResponse,
+  ListProjectsResponse,
+  RegisterSourceRequest,
+  RegisterSourceResponse,
+  SaveNarrationRequest,
+  SourceUploadUrlRequest,
+  SourceUploadUrlResponse,
   StartRenderRequest,
   StartRenderResponse,
-  GetRenderResponse,
-  GetArtifactsResponse,
-  ListProjectsResponse,
+  UpdateOutlineRequest,
+  UpdateOutputRequest,
   ErrorResponse,
 } from "./types.js";
 
@@ -62,98 +62,139 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
       return { Authorization: `Bearer ${idToken}` };
     }
   } catch {
-    // Not authenticated - no header
+    // 未認証時はAuthorizationヘッダーを付けず、APIの認可応答に委ねる。
   }
   return {};
 }
 
-async function request<T>(
-  method: string,
-  path: string,
-  body?: unknown,
-): Promise<T> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(await getAuthHeaders()),
-  };
-
+async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const response = await fetch(`${getApiBaseUrl()}${path}`, {
     method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
+    headers: {
+      "Content-Type": "application/json",
+      ...(await getAuthHeaders()),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
   });
 
   if (!response.ok) {
-    const errorBody = (await response.json()) as ErrorResponse;
+    let errorBody: ErrorResponse;
+    try {
+      errorBody = (await response.json()) as ErrorResponse;
+    } catch {
+      errorBody = { error: "REQUEST_FAILED", message: "API request failed" };
+    }
     throw new ApiError(response.status, errorBody);
   }
 
   return (await response.json()) as T;
 }
 
+/** 署名付きS3 URLへPDFをアップロードする。API認証ヘッダーは送らない。 */
+async function uploadToPresignedUrl(uploadUrl: string, file: File): Promise<void> {
+  const response = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: { "Content-Type": "application/pdf" },
+    body: file,
+  });
+  if (!response.ok) {
+    throw new Error("PDFのアップロードに失敗しました。");
+  }
+}
+
 export const apiClient = {
-  /** GET /projects */
   listProjects(): Promise<ListProjectsResponse> {
     return request<ListProjectsResponse>("GET", "/v1/projects");
   },
 
-  /** POST /projects */
   createProject(data: CreateProjectRequest): Promise<CreateProjectResponse> {
-    return request<CreateProjectResponse>("POST", "/v1/projects", data);
+    return request<CreateProjectResponse>("POST", "/v1/projects", {
+      title: data.title,
+      ...(data.contentLanguage ? { contentLanguage: data.contentLanguage } : {}),
+      ...(data.kind ? { kind: data.kind } : {}),
+    });
   },
 
-  /** POST /projects/{id}/outline */
-  generateOutline(projectId: string, data: GenerateOutlineRequest): Promise<GenerateOutlineResponse> {
-    return request<GenerateOutlineResponse>("POST", `/v1/projects/${projectId}/outline`, data);
+  generateOutline(
+    projectId: string,
+    data: GenerateOutlineRequest,
+  ): Promise<GenerateOutlineResponse> {
+    return request<GenerateOutlineResponse>("POST", `/v1/projects/${projectId}/outline`, {
+      topic: data.topic,
+      sourceText: data.sourceText,
+      referenceUrls: data.referenceUrls,
+      audience: data.audience,
+      pages: data.pages,
+      tone: data.tone,
+      theme: data.theme,
+      contentLanguage: data.contentLang === "ja" ? "ja-JP" : "en-US",
+    });
   },
 
-  /** PUT /projects/{id}/outline */
   updateOutline(projectId: string, data: UpdateOutlineRequest): Promise<void> {
-    return request<void>("PUT", `/v1/projects/${projectId}/outline`, data);
+    return request<void>("PUT", `/v1/projects/${projectId}/outline`, {
+      outline: data.pages.map((page, index) => ({
+        pageNumber: index + 1,
+        title: page.title || `Slide ${index + 1}`,
+        bullets: page.body
+          .split("\n")
+          .map((bullet) => bullet.trim())
+          .filter(Boolean),
+        presenterNotes: page.notes,
+      })),
+    });
   },
 
-  /** POST /projects/{id}/deck */
   generateDeck(projectId: string, data: GenerateDeckRequest): Promise<GenerateDeckResponse> {
-    return request<GenerateDeckResponse>("POST", `/v1/projects/${projectId}/deck`, data);
+    return request<GenerateDeckResponse>("POST", `/v1/projects/${projectId}/deck`, {
+      ...(data.theme ? { theme: data.theme } : {}),
+    });
   },
 
-  /** POST /projects/{id}/source-upload-url */
-  getSourceUploadUrl(projectId: string, data: SourceUploadUrlRequest): Promise<SourceUploadUrlResponse> {
-    return request<SourceUploadUrlResponse>("POST", `/v1/projects/${projectId}/source-upload-url`, data);
+  getSourceUploadUrl(
+    projectId: string,
+    data: SourceUploadUrlRequest,
+  ): Promise<SourceUploadUrlResponse> {
+    return request<SourceUploadUrlResponse>(
+      "POST",
+      `/v1/projects/${projectId}/source-upload-url`,
+      data,
+    );
   },
 
-  /** POST /projects/{id}/source */
+  uploadToPresignedUrl,
+
   registerSource(projectId: string, data: RegisterSourceRequest): Promise<RegisterSourceResponse> {
     return request<RegisterSourceResponse>("POST", `/v1/projects/${projectId}/source`, data);
   },
 
-  /** PUT /projects/{id}/output */
   updateOutput(projectId: string, data: UpdateOutputRequest): Promise<void> {
     return request<void>("PUT", `/v1/projects/${projectId}/output`, data);
   },
 
-  /** POST /projects/{id}/narration */
-  generateNarration(projectId: string, data: GenerateNarrationRequest): Promise<GenerateNarrationResponse> {
+  generateNarration(
+    projectId: string,
+    data: GenerateNarrationRequest,
+  ): Promise<GenerateNarrationResponse> {
     return request<GenerateNarrationResponse>("POST", `/v1/projects/${projectId}/narration`, data);
   },
 
-  /** PUT /projects/{id}/narration */
-  updateNarration(projectId: string, data: UpdateNarrationRequest): Promise<void> {
+  updateNarration(projectId: string, data: SaveNarrationRequest): Promise<void> {
     return request<void>("PUT", `/v1/projects/${projectId}/narration`, data);
   },
 
-  /** POST /projects/{id}/renders */
-  startRender(projectId: string, data: StartRenderRequest): Promise<StartRenderResponse> {
+  startRender(projectId: string, data: StartRenderRequest = {}): Promise<StartRenderResponse> {
     return request<StartRenderResponse>("POST", `/v1/projects/${projectId}/renders`, data);
   },
 
-  /** GET /projects/{id}/renders/{renderId} */
   getRender(projectId: string, renderId: string): Promise<GetRenderResponse> {
     return request<GetRenderResponse>("GET", `/v1/projects/${projectId}/renders/${renderId}`);
   },
 
-  /** GET /projects/{id}/renders/{renderId}/artifacts */
   getArtifacts(projectId: string, renderId: string): Promise<GetArtifactsResponse> {
-    return request<GetArtifactsResponse>("GET", `/v1/projects/${projectId}/renders/${renderId}/artifacts`);
+    return request<GetArtifactsResponse>(
+      "GET",
+      `/v1/projects/${projectId}/renders/${renderId}/artifacts`,
+    );
   },
 };

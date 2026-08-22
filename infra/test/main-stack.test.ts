@@ -25,7 +25,7 @@ function createTestStack(): Template {
 
 beforeAll(() => {
   createTestStack();
-});
+}, 600_000);
 
 describe("MainStack - Storage", () => {
   it("creates S3 bucket with Block Public Access", () => {
@@ -234,17 +234,11 @@ describe("MainStack - API Gateway", () => {
       "gatewayresponse.header.Access-Control-Allow-Origin": "'*'",
       "gatewayresponse.header.Access-Control-Allow-Headers":
         "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,Idempotency-Key'",
-      "gatewayresponse.header.Access-Control-Allow-Methods":
-        "'GET,POST,PUT,DELETE,OPTIONS'",
+      "gatewayresponse.header.Access-Control-Allow-Methods": "'GET,POST,PUT,DELETE,OPTIONS'",
     };
 
     template.resourceCountIs("AWS::ApiGateway::GatewayResponse", 4);
-    for (const responseType of [
-      "DEFAULT_4XX",
-      "DEFAULT_5XX",
-      "UNAUTHORIZED",
-      "ACCESS_DENIED",
-    ]) {
+    for (const responseType of ["DEFAULT_4XX", "DEFAULT_5XX", "UNAUTHORIZED", "ACCESS_DENIED"]) {
       template.hasResourceProperties("AWS::ApiGateway::GatewayResponse", {
         ResponseType: responseType,
         ResponseParameters: corsResponseParameters,
@@ -254,12 +248,8 @@ describe("MainStack - API Gateway", () => {
 
   it("creates 13 protected API methods (section 5 endpoints)", () => {
     const template = createTestStack();
-    const methods = Object.values(
-      template.findResources("AWS::ApiGateway::Method"),
-    );
-    const protectedMethods = methods.filter(
-      (method) => method.Properties.HttpMethod !== "OPTIONS",
-    );
+    const methods = Object.values(template.findResources("AWS::ApiGateway::Method"));
+    const protectedMethods = methods.filter((method) => method.Properties.HttpMethod !== "OPTIONS");
 
     // 13 protected methods: GET+POST /projects, POST+PUT /projects/{id}/outline,
     // POST /projects/{id}/deck, POST /projects/{id}/source-upload-url,
@@ -271,12 +261,8 @@ describe("MainStack - API Gateway", () => {
 
   it("creates OPTIONS preflight methods for CORS", () => {
     const template = createTestStack();
-    const methods = Object.values(
-      template.findResources("AWS::ApiGateway::Method"),
-    );
-    const preflightMethods = methods.filter(
-      (method) => method.Properties.HttpMethod === "OPTIONS",
-    );
+    const methods = Object.values(template.findResources("AWS::ApiGateway::Method"));
+    const preflightMethods = methods.filter((method) => method.Properties.HttpMethod === "OPTIONS");
 
     // OPTIONS on each resource path that has methods
     expect(preflightMethods.length).toBeGreaterThan(0);
@@ -316,20 +302,16 @@ describe("MainStack - Step Functions", () => {
   it("render pipeline has single Task states for audio processing (no Map states)", () => {
     const template = createTestStack();
 
-    const stateMachines = template.findResources(
-      "AWS::StepFunctions::StateMachine",
-      {
-        Properties: {
-          StateMachineName: "testapp-dev-render-pipeline",
-        },
+    const stateMachines = template.findResources("AWS::StepFunctions::StateMachine", {
+      Properties: {
+        StateMachineName: "testapp-dev-render-pipeline",
       },
-    );
+    });
 
     const smKeys = Object.keys(stateMachines);
     expect(smKeys.length).toBe(1);
 
-    const definition =
-      stateMachines[smKeys[0]].Properties.DefinitionString["Fn::Join"][1];
+    const definition = stateMachines[smKeys[0]].Properties.DefinitionString["Fn::Join"][1];
     const definitionStr = definition.join("");
 
     // Verify single Task states for audio (no Map)
@@ -341,18 +323,14 @@ describe("MainStack - Step Functions", () => {
   it("render pipeline includes all 4 stages: pages, audio, captions, video", () => {
     const template = createTestStack();
 
-    const stateMachines = template.findResources(
-      "AWS::StepFunctions::StateMachine",
-      {
-        Properties: {
-          StateMachineName: "testapp-dev-render-pipeline",
-        },
+    const stateMachines = template.findResources("AWS::StepFunctions::StateMachine", {
+      Properties: {
+        StateMachineName: "testapp-dev-render-pipeline",
       },
-    );
+    });
 
     const smKeys = Object.keys(stateMachines);
-    const definition =
-      stateMachines[smKeys[0]].Properties.DefinitionString["Fn::Join"][1];
+    const definition = stateMachines[smKeys[0]].Properties.DefinitionString["Fn::Join"][1];
     const definitionStr = definition.join("");
 
     expect(definitionStr).toContain("PagesStage");
@@ -366,9 +344,7 @@ describe("MainStack - No Teaser Resources", () => {
   it("does not create any teaser-related state machines", () => {
     const template = createTestStack();
 
-    const stateMachines = template.findResources(
-      "AWS::StepFunctions::StateMachine",
-    );
+    const stateMachines = template.findResources("AWS::StepFunctions::StateMachine");
 
     for (const [, sm] of Object.entries(stateMachines)) {
       const name = sm.Properties.StateMachineName ?? "";
@@ -419,10 +395,7 @@ describe("MainStack - CloudFront", () => {
   it("uses OAC for S3 access", () => {
     const template = createTestStack();
 
-    template.resourceCountIs(
-      "AWS::CloudFront::OriginAccessControl",
-      2,
-    );
+    template.resourceCountIs("AWS::CloudFront::OriginAccessControl", 2);
   });
 });
 
@@ -549,5 +522,31 @@ describe("MainStack - Environment Variables", () => {
         }),
       },
     });
+  });
+});
+
+describe("MainStack - Render status synchronization", () => {
+  it("allows the API Lambda to inspect only executions of the render state machine", () => {
+    const template = createTestStack();
+
+    template.hasResourceProperties("AWS::IAM::Policy", {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: ["states:DescribeExecution", "states:GetExecutionHistory"],
+            Effect: "Allow",
+          }),
+        ]),
+      },
+    });
+  });
+
+  it("formats render execution ARNs with the Step Functions colon separator", () => {
+    const template = createTestStack();
+    const policies = template.findResources("AWS::IAM::Policy");
+    const renderedPolicies = JSON.stringify(policies);
+
+    expect(renderedPolicies).toContain(":execution:");
+    expect(renderedPolicies).not.toContain(":execution/");
   });
 });

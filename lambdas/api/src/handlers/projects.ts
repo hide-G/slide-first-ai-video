@@ -18,16 +18,15 @@ export async function handleListProjects(
   const userId = requireAuth(event);
 
   const nextToken = event.queryStringParameters?.nextToken;
-  const { projects, nextToken: resultToken } = await listProjectsByUser(
-    userId,
-    nextToken,
-  );
+  const { projects, nextToken: resultToken } = await listProjectsByUser(userId, nextToken);
 
   return buildResponse(200, {
     projects: projects.map((project) => ({
       projectId: project.projectId,
       title: project.title,
+      kind: project.kind,
       status: project.status,
+      latestRender: project.latestRender,
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
     })),
@@ -47,6 +46,7 @@ export async function handleCreateProject(
     projectId,
     userId,
     title: body.title,
+    kind: body.kind ?? "video",
     contentLanguage: body.contentLanguage,
     status: "DRAFT",
     createdAt: now,

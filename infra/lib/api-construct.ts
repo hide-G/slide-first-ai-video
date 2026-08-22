@@ -52,9 +52,7 @@ export class ApiConstruct extends Construct {
     super(scope, id);
 
     const { productSlug, environment } = props;
-    const repositoryRoot = findRepositoryRoot(
-      path.dirname(fileURLToPath(import.meta.url)),
-    );
+    const repositoryRoot = findRepositoryRoot(path.dirname(fileURLToPath(import.meta.url)));
 
     this.apiHandler = new lambdaNodejs.NodejsFunction(this, "ApiHandler", {
       functionName: `${productSlug}-${environment}-api`,
@@ -89,22 +87,30 @@ export class ApiConstruct extends Construct {
     // Grant S3 read/write access (for presigned URLs and artifact listing)
     props.projectBucket.grantReadWrite(this.apiHandler);
 
-    // Grant Step Functions start execution
+    // レンダリング開始に加え、実行状態と工程履歴を API から照会できるようにする。
     props.renderStateMachine.grantStartExecution(this.apiHandler);
+    const renderExecutionArn = cdk.Stack.of(this).formatArn({
+      service: "states",
+      resource: "execution",
+      resourceName: `${props.renderStateMachine.stateMachineName}:*`,
+      arnFormat: cdk.ArnFormat.COLON_RESOURCE_NAME,
+    });
+    this.apiHandler.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["states:DescribeExecution", "states:GetExecutionHistory"],
+        resources: [renderExecutionArn],
+      }),
+    );
 
     // Grant Lambda invoke for slide-generator and marp
     props.slideGeneratorLambda.grantInvoke(this.apiHandler);
     props.marpLambda.grantInvoke(this.apiHandler);
 
     // Cognito authorizer
-    const authorizer = new apigateway.CognitoUserPoolsAuthorizer(
-      this,
-      "CognitoAuthorizer",
-      {
-        cognitoUserPools: [props.userPool],
-        authorizerName: `${productSlug}-${environment}-cognito-authorizer`,
-      },
-    );
+    const authorizer = new apigateway.CognitoUserPoolsAuthorizer(this, "CognitoAuthorizer", {
+      cognitoUserPools: [props.userPool],
+      authorizerName: `${productSlug}-${environment}-cognito-authorizer`,
+    });
 
     const corsAllowHeaders = [
       "Content-Type",
@@ -154,9 +160,7 @@ export class ApiConstruct extends Construct {
       responseHeaders: corsResponseHeaders,
     });
 
-    const lambdaIntegration = new apigateway.LambdaIntegration(
-      this.apiHandler,
-    );
+    const lambdaIntegration = new apigateway.LambdaIntegration(this.apiHandler);
     const authOptions: apigateway.MethodOptions = {
       authorizer,
       authorizationType: apigateway.AuthorizationType.COGNITO,

@@ -42,7 +42,9 @@ vi.mock("@aws-sdk/client-sfn", () => {
   const mockSend = vi.fn();
   return {
     SFNClient: vi.fn(() => ({ send: mockSend })),
-    StartExecutionCommand: vi.fn((input) => ({ input })),
+    StartExecutionCommand: vi.fn((input) => ({ input, type: "StartExecution" })),
+    DescribeExecutionCommand: vi.fn((input) => ({ input, type: "DescribeExecution" })),
+    GetExecutionHistoryCommand: vi.fn((input) => ({ input, type: "GetExecutionHistory" })),
     __mockSend: mockSend,
   };
 });
@@ -81,8 +83,7 @@ const mockContext: Context = {
 
 const expectedCorsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "Content-Type,Authorization,X-Amz-Date,X-Api-Key,Idempotency-Key",
+  "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Amz-Date,X-Api-Key,Idempotency-Key",
   "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
 };
 
@@ -109,21 +110,17 @@ describe("API Router", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     const dynamoModule = await import("@aws-sdk/lib-dynamodb");
-    mockDynamoSend = (
-      dynamoModule as unknown as { __mockSend: ReturnType<typeof vi.fn> }
-    ).__mockSend;
+    mockDynamoSend = (dynamoModule as unknown as { __mockSend: ReturnType<typeof vi.fn> })
+      .__mockSend;
     mockDynamoSend.mockResolvedValue({ Items: [] });
 
     const sfnModule = await import("@aws-sdk/client-sfn");
-    mockSfnSend = (
-      sfnModule as unknown as { __mockSend: ReturnType<typeof vi.fn> }
-    ).__mockSend;
+    mockSfnSend = (sfnModule as unknown as { __mockSend: ReturnType<typeof vi.fn> }).__mockSend;
     mockSfnSend.mockResolvedValue({ executionArn: "arn:aws:states:us-east-1:123:execution:test" });
 
     const lambdaModule = await import("@aws-sdk/client-lambda");
-    mockLambdaSend = (
-      lambdaModule as unknown as { __mockSend: ReturnType<typeof vi.fn> }
-    ).__mockSend;
+    mockLambdaSend = (lambdaModule as unknown as { __mockSend: ReturnType<typeof vi.fn> })
+      .__mockSend;
     mockLambdaSend.mockResolvedValue({
       Payload: Buffer.from(JSON.stringify({ outline: [] })),
     });
@@ -149,9 +146,9 @@ describe("API Router", () => {
     expect(body.projects).toEqual([]);
   });
 
-  it("routes POST /projects (create project)", async () => {
+  it("routes POST /projects (create project with kind)", async () => {
     const event = makeEvent("POST", "/projects", {
-      body: JSON.stringify({ title: "Router Test" }),
+      body: JSON.stringify({ title: "Router Test", kind: "video" }),
     });
 
     const result = await handler(event, mockContext);
@@ -160,6 +157,7 @@ describe("API Router", () => {
     const body = JSON.parse(result.body);
     expect(body.project.projectId).toBe("01TESTROUTERID00001");
     expect(body.project.title).toBe("Router Test");
+    expect(body.project.kind).toBe("video");
   });
 
   it("routes POST /projects/{id}/outline (generate outline)", async () => {
@@ -224,49 +222,64 @@ describe("API Router", () => {
     const s3MockSend = (s3Module as unknown as { __mockSend: ReturnType<typeof vi.fn> }).__mockSend;
     s3MockSend.mockResolvedValueOnce({ ContentLength: 5000000 }); // 5MB file
 
+    // ページ数はクライアント値ではなく、marp-render Lambdaのpdf.js計測結果を使う
+    mockLambdaSend.mockResolvedValueOnce({
+      Payload: Buffer.from(JSON.stringify({ success: true, pageCount: 3 })),
+    });
     mockDynamoSend.mockResolvedValueOnce({});
 
     const event = makeEvent("POST", "/projects/proj-001/source", {
-      body: JSON.stringify({ kind: "uploaded", fileKey: "users/user-123/projects/proj-001/input/source.pdf", pageCount: 10 }),
+      body: JSON.stringify({
+        kind: "uploaded",
+        fileKey: "users/user-123/projects/proj-001/input/source.pdf",
+        fileName: "../源内ハンズオン_概要編.pdf",
+        pageCount: 10,
+      }),
     });
     const result = await handler(event, mockContext);
 
     expect(result.statusCode).toBe(200);
     const body = JSON.parse(result.body);
     expect(body.source.kind).toBe("uploaded");
+    expect(body.source.pageCount).toBe(3);
+    expect(body.source.fileName).toBe("源内ハンズオン_概要編.pdf");
   });
 
-  it("rejects .pptx in POST /projects/{id}/source with PPTX_NOT_SUPPORTED", async () => {
+  it("rejects non-PDF files in POST /projects/{id}/source with PDF_REQUIRED", async () => {
     mockDynamoSend.mockResolvedValueOnce({
       Item: { projectId: "proj-001", userId: "user-123", status: "DRAFT" },
     });
 
     const event = makeEvent("POST", "/projects/proj-001/source", {
-      body: JSON.stringify({ kind: "uploaded", fileKey: "users/user-123/projects/proj-001/input/source.pptx", pageCount: 10 }),
+      body: JSON.stringify({
+        kind: "uploaded",
+        fileKey: "users/user-123/projects/proj-001/input/source.pptx",
+      }),
     });
     const result = await handler(event, mockContext);
 
     expect(result.statusCode).toBe(400);
     const body = JSON.parse(result.body);
-    expect(body.error).toBe("PPTX_NOT_SUPPORTED");
-    expect(body.message).toContain("PowerPoint");
+    expect(body.error).toBe("PDF_REQUIRED");
     expect(body.message).toContain("PDF");
   });
 
-  it("rejects .pptx in POST /projects/{id}/source-upload-url with PPTX_NOT_SUPPORTED", async () => {
+  it("rejects non-PDF files in POST /projects/{id}/source-upload-url with PDF_REQUIRED", async () => {
     mockDynamoSend.mockResolvedValueOnce({
       Item: { projectId: "proj-001", userId: "user-123", status: "DRAFT" },
     });
 
     const event = makeEvent("POST", "/projects/proj-001/source-upload-url", {
-      body: JSON.stringify({ fileName: "slides.pptx", contentType: "application/vnd.openxmlformats-officedocument.presentationml.presentation" }),
+      body: JSON.stringify({
+        fileName: "slides.pptx",
+        contentType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      }),
     });
     const result = await handler(event, mockContext);
 
     expect(result.statusCode).toBe(400);
     const body = JSON.parse(result.body);
-    expect(body.error).toBe("PPTX_NOT_SUPPORTED");
-    expect(body.message).toContain("PowerPoint");
+    expect(body.error).toBe("PDF_REQUIRED");
     expect(body.message).toContain("PDF");
   });
 
@@ -277,7 +290,13 @@ describe("API Router", () => {
     mockDynamoSend.mockResolvedValueOnce({});
 
     const event = makeEvent("PUT", "/projects/proj-001/output", {
-      body: JSON.stringify({ aspect: "16:9", width: 1920, height: 1080, fps: 30, captions: "burn" }),
+      body: JSON.stringify({
+        aspect: "16:9",
+        width: 1920,
+        height: 1080,
+        fps: 30,
+        captions: "burn",
+      }),
     });
     const result = await handler(event, mockContext);
 
@@ -322,6 +341,7 @@ describe("API Router", () => {
       source: {
         kind: "uploaded",
         fileKey: "users/user-123/projects/proj-001/input/source.pdf",
+        fileName: "源内ハンズオン_概要編.pdf",
         pageCount: 2,
       },
       output: { aspect: "16:9", fps: 30, captions: "burn" },
@@ -344,6 +364,19 @@ describe("API Router", () => {
     const body = JSON.parse(result.body);
     expect(body.renderId).toBe("01TESTROUTERID00001");
     expect(body.status).toBe("RUNNING");
+
+    const s3Module = await import("@aws-sdk/client-s3");
+    const s3MockSend = (s3Module as unknown as { __mockSend: ReturnType<typeof vi.fn> }).__mockSend;
+    const manifestPut = s3MockSend.mock.calls
+      .map((call: unknown[]) => call[0] as { input?: { Key?: string; Body?: string } })
+      .find((command) => command.input?.Key?.endsWith("manifest.json"));
+    const manifest = JSON.parse(manifestPut?.input?.Body ?? "{}");
+    expect(manifest.source.fileName).toBe("源内ハンズオン_概要編.pdf");
+    expect(manifest.progress).toMatchObject({
+      stage: "pages",
+      currentPage: 0,
+      totalPages: 2,
+    });
   });
 
   it("rejects starting a render when narration is missing", async () => {
@@ -381,6 +414,10 @@ describe("API Router", () => {
         userId: "user-123",
         status: "RUNNING",
         currentStage: "audio",
+        currentPage: 1,
+        totalPages: 3,
+        progressMessage: "ページ 1/3 のナレーション音声を生成しました。",
+        progressUpdatedAt: "2024-01-01T00:01:00.000Z",
         startedAt: "2024-01-01T00:00:00.000Z",
         updatedAt: "2024-01-01T00:01:00.000Z",
       },
@@ -393,11 +430,28 @@ describe("API Router", () => {
     const body = JSON.parse(result.body);
     expect(body.renderId).toBe("render-001");
     expect(body.status).toBe("RUNNING");
+    expect(body.progress).toMatchObject({
+      stage: "audio",
+      currentPage: 1,
+      totalPages: 3,
+      message: "ページ 1/3 のナレーション音声を生成しました。",
+    });
   });
 
   it("routes GET /projects/{id}/renders/{renderId}/artifacts", async () => {
     mockDynamoSend.mockResolvedValueOnce({
-      Item: { projectId: "proj-001", userId: "user-123", status: "DONE" },
+      Item: {
+        projectId: "proj-001",
+        userId: "user-123",
+        title: "予備タイトル",
+        status: "DONE",
+        source: {
+          kind: "uploaded",
+          fileKey: "users/user-123/projects/proj-001/input/source.pdf",
+          fileName: "源内ハンズオン_概要編.pdf",
+          pageCount: 2,
+        },
+      },
     });
     mockDynamoSend.mockResolvedValueOnce({
       Item: {
@@ -412,11 +466,18 @@ describe("API Router", () => {
 
     const s3Module = await import("@aws-sdk/client-s3");
     const s3MockSend = (s3Module as unknown as { __mockSend: ReturnType<typeof vi.fn> }).__mockSend;
-    s3MockSend.mockResolvedValueOnce({
-      Contents: [
-        { Key: "users/user-123/projects/proj-001/output/render-001/video.mp4", Size: 1024000, LastModified: new Date("2024-01-01") },
-      ],
-    });
+    s3MockSend
+      .mockResolvedValueOnce({
+        Contents: [
+          {
+            Key: "users/user-123/projects/proj-001/output/render-001/video.mp4",
+            Size: 1024000,
+            LastModified: new Date("2024-01-01"),
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ Contents: [] })
+      .mockResolvedValueOnce({ Contents: [] });
 
     const event = makeEvent("GET", "/projects/proj-001/renders/render-001/artifacts");
     const result = await handler(event, mockContext);
@@ -425,6 +486,7 @@ describe("API Router", () => {
     const body = JSON.parse(result.body);
     expect(body.artifacts).toHaveLength(1);
     expect(body.artifacts[0].url).toBe("https://presigned.example.com");
+    expect(body.artifacts[0].downloadName).toBe("源内ハンズオン_概要編_20240101-090000.mp4");
   });
 
   it("returns 401 for unauthenticated requests", async () => {
@@ -461,7 +523,13 @@ describe("API Router", () => {
     mockDynamoSend.mockResolvedValueOnce({ Item: undefined });
 
     const event = makeEvent("PUT", "/projects/nonexistent/output", {
-      body: JSON.stringify({ aspect: "16:9", width: 1920, height: 1080, fps: 30, captions: "burn" }),
+      body: JSON.stringify({
+        aspect: "16:9",
+        width: 1920,
+        height: 1080,
+        fps: 30,
+        captions: "burn",
+      }),
     });
     const result = await handler(event, mockContext);
 

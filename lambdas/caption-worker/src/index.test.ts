@@ -13,7 +13,9 @@ vi.mock("@aws-sdk/client-s3", () => {
 
 import type { Manifest } from "@slide-first/shared-types";
 
-const { __mockSend: mockSend } = await import("@aws-sdk/client-s3") as unknown as { __mockSend: ReturnType<typeof vi.fn> };
+const { __mockSend: mockSend } = (await import("@aws-sdk/client-s3")) as unknown as {
+  __mockSend: ReturnType<typeof vi.fn>;
+};
 
 const sampleManifest: Manifest = {
   schemaVersion: 1,
@@ -37,9 +39,30 @@ const sampleManifest: Manifest = {
   },
   lexicon: [],
   pages: [
-    { pageNumber: 1, imageKey: "pages/page-001.png", script: { mode: "plain", text: "First page text" }, audioKey: "audio/page-001.wav", audioDurationSec: 3.5, frameAlignedDurationMs: 3534 },
-    { pageNumber: 2, imageKey: "pages/page-002.png", script: { mode: "plain", text: "Second page text" }, audioKey: "audio/page-002.wav", audioDurationSec: 4.2, frameAlignedDurationMs: 4200 },
-    { pageNumber: 3, imageKey: "pages/page-003.png", script: { mode: "plain", text: "Third page text" }, audioKey: "audio/page-003.wav", audioDurationSec: 2.8, frameAlignedDurationMs: 2800 },
+    {
+      pageNumber: 1,
+      imageKey: "pages/page-001.png",
+      script: { mode: "plain", text: "First page text" },
+      audioKey: "audio/page-001.wav",
+      audioDurationSec: 3.5,
+      frameAlignedDurationMs: 3534,
+    },
+    {
+      pageNumber: 2,
+      imageKey: "pages/page-002.png",
+      script: { mode: "plain", text: "Second page text" },
+      audioKey: "audio/page-002.wav",
+      audioDurationSec: 4.2,
+      frameAlignedDurationMs: 4200,
+    },
+    {
+      pageNumber: 3,
+      imageKey: "pages/page-003.png",
+      script: { mode: "plain", text: "Third page text" },
+      audioKey: "audio/page-003.wav",
+      audioDurationSec: 2.8,
+      frameAlignedDurationMs: 2800,
+    },
   ],
   stages: { pages: "done", audio: "done", captions: "pending", video: "pending" },
 };
@@ -90,7 +113,9 @@ describe("Stage 3: Captions handler", () => {
     );
     // Find the SRT upload (not manifest writes)
     const srtPut = putCalls.find(
-      (call: unknown[]) => (call[0] as { input: { ContentType?: string } }).input.ContentType === "text/plain; charset=utf-8",
+      (call: unknown[]) =>
+        (call[0] as { input: { ContentType?: string } }).input.ContentType ===
+        "text/plain; charset=utf-8",
     );
     expect(srtPut).toBeDefined();
     const srtInput = (srtPut![0] as { input: { Key: string; Body: string } }).input;
@@ -115,7 +140,9 @@ describe("Stage 3: Captions handler", () => {
       (call: unknown[]) => (call[0] as { type: string }).type === "put",
     );
     const srtPut = putCalls.find(
-      (call: unknown[]) => (call[0] as { input: { ContentType?: string } }).input.ContentType === "text/plain; charset=utf-8",
+      (call: unknown[]) =>
+        (call[0] as { input: { ContentType?: string } }).input.ContentType ===
+        "text/plain; charset=utf-8",
     );
     const srtContent = (srtPut![0] as { input: { Body: string } }).input.Body;
 
@@ -157,9 +184,28 @@ describe("Stage 3: Captions handler", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("no measured audioDurationSec");
+
+    const manifestPuts = mockSend.mock.calls
+      .filter((call: unknown[]) => (call[0] as { type: string }).type === "put")
+      .filter(
+        (call: unknown[]) =>
+          (call[0] as { input: { ContentType?: string } }).input.ContentType === "application/json",
+      );
+    const failedManifest = JSON.parse(
+      (manifestPuts[manifestPuts.length - 1][0] as { input: { Body: string } }).input.Body,
+    );
+    expect(failedManifest).toMatchObject({
+      stages: { captions: "failed" },
+      progress: {
+        stage: "captions",
+        currentPage: 0,
+        totalPages: 3,
+        message: "字幕の生成に失敗しました。",
+      },
+    });
   });
 
-  it("sets stage to done on success", async () => {
+  it("字幕生成の開始・完了進捗をmanifestへ保存する", async () => {
     const { handler } = await import("./index.js");
     await handler({
       s3Bucket: "test-bucket",
@@ -174,9 +220,26 @@ describe("Stage 3: Captions handler", () => {
       (call: unknown[]) => (call[0] as { type: string }).type === "put",
     );
     const manifestPuts = putCalls.filter(
-      (call: unknown[]) => (call[0] as { input: { ContentType?: string } }).input.ContentType === "application/json",
+      (call: unknown[]) =>
+        (call[0] as { input: { ContentType?: string } }).input.ContentType === "application/json",
     );
-    const lastManifest = JSON.parse((manifestPuts[manifestPuts.length - 1][0] as { input: { Body: string } }).input.Body);
-    expect(lastManifest.stages.captions).toBe("done");
+    const manifests = manifestPuts.map((call: unknown[]) =>
+      JSON.parse((call[0] as { input: { Body: string } }).input.Body),
+    );
+
+    expect(manifests).toHaveLength(2);
+    expect(manifests[0]).toMatchObject({
+      stages: { captions: "running" },
+      progress: { stage: "captions", currentPage: 0, totalPages: 3 },
+    });
+    expect(manifests[1]).toMatchObject({
+      stages: { captions: "done" },
+      progress: {
+        stage: "captions",
+        currentPage: 3,
+        totalPages: 3,
+        message: "3件の字幕を生成しました。",
+      },
+    });
   });
 });

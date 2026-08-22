@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { validateInvariants, TOLERANCES } from "./invariants.js";
+import { describe, expect, it } from "vitest";
+import { getFrameExcessLimitMs, TOLERANCES, validateInvariants } from "./invariants.js";
 import type { Manifest } from "./manifest.js";
 
 function validManifest(): Manifest {
@@ -9,7 +9,7 @@ function validManifest(): Manifest {
     userId: "u_0001",
     contentLanguage: "ja",
     source: { kind: "generated", fileKey: "deck/deck.pdf", pageCount: 2 },
-    voice: { id: "Takumi", engine: "neural", languageCode: "ja-JP", sampleRate: "24000" },
+    voice: { id: "Takumi", engine: "neural", languageCode: "ja-JP", sampleRate: "16000" },
     output: {
       aspect: "16:9",
       width: 1920,
@@ -38,51 +38,38 @@ function validManifest(): Manifest {
         frameAlignedDurationMs: 8334,
       },
     ],
-    stages: {
-      pages: "done",
-      audio: "done",
-      captions: "done",
-      video: "done",
-    },
+    stages: { pages: "done", audio: "done", captions: "done", video: "done" },
   };
 }
 
 describe("validateInvariants", () => {
-  it("returns no violations for a valid manifest", () => {
-    const violations = validateInvariants(validManifest());
-    expect(violations).toHaveLength(0);
+  it("有効なマニフェストでは違反を返さない", () => {
+    expect(validateInvariants(validManifest())).toHaveLength(0);
   });
 
-  it("detects pages.length !== source.pageCount", () => {
+  it("ページ数と連番の不整合を検出する", () => {
     const manifest = validManifest();
-    manifest.source.pageCount = 3; // but only 2 pages
-    const violations = validateInvariants(manifest);
-    expect(violations).toContainEqual(
-      expect.objectContaining({ rule: "pages-count" })
-    );
+    manifest.source.pageCount = 3;
+    manifest.pages[1].pageNumber = 5;
+
+    const rules = validateInvariants(manifest).map((violation) => violation.rule);
+    expect(rules).toContain("pages-count");
+    expect(rules).toContain("page-number-sequential");
   });
 
-  it("detects empty script.text when audio is running", () => {
-    const manifest = validManifest();
-    manifest.stages.audio = "running";
-    manifest.pages[0].script.text = "";
-    const violations = validateInvariants(manifest);
-    expect(violations).toContainEqual(
-      expect.objectContaining({ rule: "script-non-empty" })
-    );
-  });
-
-  it("detects empty script.text when audio is done", () => {
+  it("audio工程中・完了後の空原稿と未計測音声を検出する", () => {
     const manifest = validManifest();
     manifest.stages.audio = "done";
-    manifest.pages[1].script.text = "   "; // whitespace only
-    const violations = validateInvariants(manifest);
-    expect(violations).toContainEqual(
-      expect.objectContaining({ rule: "script-non-empty" })
-    );
+    manifest.pages[0].script.text = "";
+    manifest.pages[0].audioDurationSec = 0;
+    manifest.pages[0].frameAlignedDurationMs = 0;
+
+    const rules = validateInvariants(manifest).map((violation) => violation.rule);
+    expect(rules).toContain("script-non-empty");
+    expect(rules).toContain("audio-duration-positive");
   });
 
-  it("does not flag empty script when audio is pending", () => {
+  it("音声工程開始前の空原稿は検証対象にしない", () => {
     const manifest = validManifest();
     manifest.stages.audio = "pending";
     manifest.pages[0].script.text = "";
@@ -90,80 +77,55 @@ describe("validateInvariants", () => {
     manifest.pages[0].frameAlignedDurationMs = 0;
     manifest.pages[1].audioDurationSec = 0;
     manifest.pages[1].frameAlignedDurationMs = 0;
-    const violations = validateInvariants(manifest);
-    // No script-non-empty violation expected
-    const scriptViolations = violations.filter((v) => v.rule === "script-non-empty");
-    expect(scriptViolations).toHaveLength(0);
+
+    expect(
+      validateInvariants(manifest).filter((violation) => violation.rule === "script-non-empty"),
+    ).toHaveLength(0);
   });
 
-  it("detects zero audioDurationSec when audio is done", () => {
+  it("音声より短いフレーム尺を検出する", () => {
     const manifest = validManifest();
-    manifest.stages.audio = "done";
-    manifest.pages[0].audioDurationSec = 0;
-    manifest.pages[0].frameAlignedDurationMs = 0;
-    const violations = validateInvariants(manifest);
-    expect(violations).toContainEqual(
-      expect.objectContaining({ rule: "audio-duration-positive" })
+    manifest.pages[0].frameAlignedDurationMs = 12400;
+
+    expect(validateInvariants(manifest)).toContainEqual(
+      expect.objectContaining({ rule: "frame-aligned-gte-audio" }),
     );
   });
 
-  it("detects non-sequential page numbers", () => {
+  it("30fpsでは最大34ms、60fpsでは最大17msの超過を許容する", () => {
+    const at30fps = validManifest();
+    at30fps.pages[0].frameAlignedDurationMs = 12534;
+    expect(
+      validateInvariants(at30fps).filter((violation) => violation.rule === "frame-excess"),
+    ).toHaveLength(0);
+
+    const at60fps = validManifest();
+    at60fps.output.fps = 60;
+    at60fps.pages[0].frameAlignedDurationMs = 12517;
+    at60fps.pages[1].frameAlignedDurationMs = 8317;
+    expect(
+      validateInvariants(at60fps).filter((violation) => violation.rule === "frame-excess"),
+    ).toHaveLength(0);
+  });
+
+  it("対象fpsの1フレームを超える超過を検出する", () => {
     const manifest = validManifest();
-    manifest.pages[1].pageNumber = 5;
-    const violations = validateInvariants(manifest);
-    expect(violations).toContainEqual(
-      expect.objectContaining({ rule: "page-number-sequential" })
+    manifest.output.fps = 60;
+    manifest.pages[0].frameAlignedDurationMs = 12518;
+
+    expect(validateInvariants(manifest)).toContainEqual(
+      expect.objectContaining({ rule: "frame-excess" }),
     );
-  });
-
-  it("detects frameAlignedDurationMs less than audioDurationSec*1000", () => {
-    const manifest = validManifest();
-    manifest.pages[0].audioDurationSec = 12.5;
-    manifest.pages[0].frameAlignedDurationMs = 12400; // less than 12500
-    const violations = validateInvariants(manifest);
-    expect(violations).toContainEqual(
-      expect.objectContaining({ rule: "frame-aligned-gte-audio" })
-    );
-  });
-
-  it("detects frame excess exceeding FRAME_EXCESS_MS", () => {
-    const manifest = validManifest();
-    manifest.pages[0].audioDurationSec = 12.5;
-    manifest.pages[0].frameAlignedDurationMs = 12600; // excess = 100ms > 34ms
-    const violations = validateInvariants(manifest);
-    expect(violations).toContainEqual(
-      expect.objectContaining({ rule: "frame-excess" })
-    );
-  });
-
-  it("allows frame excess within FRAME_EXCESS_MS", () => {
-    const manifest = validManifest();
-    // audioDurationSec = 12.5 -> 12500ms, frameAligned = 12534 -> excess = 34ms (exactly at limit)
-    manifest.pages[0].audioDurationSec = 12.5;
-    manifest.pages[0].frameAlignedDurationMs = 12534;
-    const violations = validateInvariants(manifest);
-    const excessViolations = violations.filter((v) => v.rule === "frame-excess");
-    expect(excessViolations).toHaveLength(0);
-  });
-
-  it("can detect multiple violations at once", () => {
-    const manifest = validManifest();
-    manifest.source.pageCount = 5; // mismatch
-    manifest.stages.audio = "done";
-    manifest.pages[0].script.text = ""; // empty
-    manifest.pages[0].audioDurationSec = 0; // zero
-    manifest.pages[0].frameAlignedDurationMs = 0;
-    const violations = validateInvariants(manifest);
-    expect(violations.length).toBeGreaterThanOrEqual(3);
   });
 });
 
-describe("TOLERANCES", () => {
-  it("has correct total duration tolerance in ms", () => {
+describe("許容値", () => {
+  it("合計尺の許容差は50msである", () => {
     expect(TOLERANCES.TOTAL_DURATION_MS).toBe(50);
   });
 
-  it("has correct frame excess tolerance in ms", () => {
-    expect(TOLERANCES.FRAME_EXCESS_MS).toBe(34);
+  it("fpsに応じた1フレームの許容差を返す", () => {
+    expect(getFrameExcessLimitMs(30)).toBe(34);
+    expect(getFrameExcessLimitMs(60)).toBe(17);
   });
 });

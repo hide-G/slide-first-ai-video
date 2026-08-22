@@ -13,9 +13,7 @@ const STEPS = [
   { labelKey: "slide.stepC" as const },
 ];
 
-const INITIAL_OUTLINE: OutlinePage[] = [
-  { title: "", body: "", notes: "" },
-];
+const INITIAL_OUTLINE: OutlinePage[] = [{ title: "", body: "", notes: "" }];
 
 export function SlideStudioPage() {
   const { t } = useLanguage();
@@ -40,7 +38,7 @@ export function SlideStudioPage() {
   const [costs, setCosts] = useState<CostEntry[]>([]);
   const [totalCost, setTotalCost] = useState("-");
   const [generating, setGenerating] = useState(false);
-  const [projectId] = useState<string | null>(null);
+  const [projectId, setProjectId] = useState<string | null>(null);
 
   const addUrl = useCallback(() => {
     setReferenceUrls((prev) => [...prev, ""]);
@@ -57,9 +55,13 @@ export function SlideStudioPage() {
   async function handleGenerateOutline() {
     setGenerating(true);
     try {
-      // Create project first if needed
-      const projRes = await apiClient.createProject({ title: topic || "Untitled", kind: "slide" });
+      const projRes = await apiClient.createProject({
+        title: topic || "Untitled",
+        contentLanguage: contentLang === "ja" ? "ja-JP" : "en-US",
+        kind: "slide",
+      });
       const pid = projRes.project.projectId;
+      setProjectId(pid);
 
       const res = await apiClient.generateOutline(pid, {
         contentLang,
@@ -72,7 +74,7 @@ export function SlideStudioPage() {
         theme,
       });
       setOutline(res.outline.pages);
-      setCosts(res.costs);
+      setCosts(res.costs ?? []);
       setCurrentStep(1);
     } catch {
       // Handle error silently for now
@@ -83,17 +85,19 @@ export function SlideStudioPage() {
 
   async function handleGenerateDeck() {
     if (!projectId) {
-      // Use costs from outline generation for demo
-      setCurrentStep(2);
       return;
     }
     setGenerating(true);
     try {
       await apiClient.updateOutline(projectId, { pages: outline });
-      const res = await apiClient.generateDeck(projectId, { format: ["markdown", "pdf", "pptx"] });
-      setCosts(res.costs);
-      const sum = res.costs.reduce((acc, c) => acc + parseFloat(c.estimate || "0"), 0);
-      setTotalCost(`${sum.toFixed(4)} USD`);
+      const res = await apiClient.generateDeck(projectId, {
+        format: ["markdown", "pdf", "pptx"],
+        theme,
+      });
+      const generatedCosts = res.costs ?? [];
+      setCosts(generatedCosts);
+      const sum = generatedCosts.reduce((acc, cost) => acc + parseFloat(cost.estimate || "0"), 0);
+      setTotalCost(generatedCosts.length > 0 ? `${sum.toFixed(4)} USD` : "-");
       setCurrentStep(2);
     } catch {
       // Handle error
@@ -105,7 +109,10 @@ export function SlideStudioPage() {
   function handleMoveUp() {
     if (selectedPage <= 0) return;
     const newOutline = [...outline];
-    [newOutline[selectedPage - 1], newOutline[selectedPage]] = [newOutline[selectedPage], newOutline[selectedPage - 1]];
+    [newOutline[selectedPage - 1], newOutline[selectedPage]] = [
+      newOutline[selectedPage],
+      newOutline[selectedPage - 1],
+    ];
     setOutline(newOutline);
     setSelectedPage(selectedPage - 1);
   }
@@ -113,7 +120,10 @@ export function SlideStudioPage() {
   function handleMoveDown() {
     if (selectedPage >= outline.length - 1) return;
     const newOutline = [...outline];
-    [newOutline[selectedPage], newOutline[selectedPage + 1]] = [newOutline[selectedPage + 1], newOutline[selectedPage]];
+    [newOutline[selectedPage], newOutline[selectedPage + 1]] = [
+      newOutline[selectedPage + 1],
+      newOutline[selectedPage],
+    ];
     setOutline(newOutline);
     setSelectedPage(selectedPage + 1);
   }
@@ -228,7 +238,11 @@ export function SlideStudioPage() {
             <div className="field">
               <span className="field-label">{t("slide.refUrls")}</span>
               {referenceUrls.map((url, index) => (
-                <div key={index} className="url-row" style={{ display: "flex", gap: 8, marginBottom: 4 }}>
+                <div
+                  key={index}
+                  className="url-row"
+                  style={{ display: "flex", gap: 8, marginBottom: 4 }}
+                >
                   <input
                     type="url"
                     value={url}
@@ -253,7 +267,11 @@ export function SlideStudioPage() {
             <div className="grid-2">
               <div className="field">
                 <label htmlFor="deck-audience">{t("slide.audience")}</label>
-                <select id="deck-audience" value={audience} onChange={(e) => setAudience(e.target.value)}>
+                <select
+                  id="deck-audience"
+                  value={audience}
+                  onChange={(e) => setAudience(e.target.value)}
+                >
                   <option value="audience1">{t("slide.audience1")}</option>
                   <option value="audience2">{t("slide.audience2")}</option>
                   <option value="audience3">{t("slide.audience3")}</option>
@@ -299,7 +317,9 @@ export function SlideStudioPage() {
               type="button"
               className="btn btn-primary"
               disabled={generating}
-              onClick={() => { void handleGenerateOutline(); }}
+              onClick={() => {
+                void handleGenerateOutline();
+              }}
             >
               {t("slide.genOutline")}
             </button>
@@ -314,11 +334,16 @@ export function SlideStudioPage() {
             <h2>{t("slide.s2Title")}</h2>
             <p className="card-sub">{t("slide.s2Sub")}</p>
 
-            <div className="split" style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 24 }}>
+            <div
+              className="split"
+              style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 24 }}
+            >
               <div>
                 <h3>{t("slide.outlineList")}</h3>
                 <PageList
-                  items={outline.map((p, i) => ({ label: `${i + 1}. ${p.title || `Slide ${i + 1}`}` }))}
+                  items={outline.map((p, i) => ({
+                    label: `${i + 1}. ${p.title || `Slide ${i + 1}`}`,
+                  }))}
                   selectedIndex={selectedPage}
                   onSelect={setSelectedPage}
                 />
@@ -332,7 +357,11 @@ export function SlideStudioPage() {
                   <button type="button" className="btn btn-ghost btn-sm" onClick={handleAddSlide}>
                     {t("slide.addSlide")}
                   </button>
-                  <button type="button" className="btn btn-danger btn-sm" onClick={handleDeleteSlide}>
+                  <button
+                    type="button"
+                    className="btn btn-danger btn-sm"
+                    onClick={handleDeleteSlide}
+                  >
                     {t("common.remove")}
                   </button>
                 </div>
@@ -399,7 +428,9 @@ export function SlideStudioPage() {
               type="button"
               className="btn btn-primary"
               disabled={generating}
-              onClick={() => { void handleGenerateDeck(); }}
+              onClick={() => {
+                void handleGenerateDeck();
+              }}
             >
               {t("slide.genDeck")}
             </button>
@@ -413,9 +444,24 @@ export function SlideStudioPage() {
           <div className="card">
             <h2>{t("slide.s3Title")}</h2>
             <p className="card-sub">{t("slide.s3Sub")}</p>
-            <div className="thumb-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 12 }}>
+            <div
+              className="thumb-grid"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+                gap: 12,
+              }}
+            >
               {outline.map((page, i) => (
-                <div key={i} style={{ background: "#f0f0f0", padding: 16, borderRadius: 4, textAlign: "center" }}>
+                <div
+                  key={i}
+                  style={{
+                    background: "#f0f0f0",
+                    padding: 16,
+                    borderRadius: 4,
+                    textAlign: "center",
+                  }}
+                >
                   <strong>{page.title || `Slide ${i + 1}`}</strong>
                 </div>
               ))}
@@ -432,16 +478,20 @@ export function SlideStudioPage() {
               <button type="button" className="btn btn-ghost" onClick={() => handleDownload("pdf")}>
                 deck.pdf (PDF)
               </button>
-              <button type="button" className="btn btn-ghost" onClick={() => handleDownload("pptx")}>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => handleDownload("pptx")}
+              >
                 deck.pptx (PowerPoint)
               </button>
             </div>
-            <p className="note" style={{ marginTop: 16 }}>{t("slide.pptxNote")}</p>
+            <p className="note" style={{ marginTop: 16 }}>
+              {t("slide.pptxNote")}
+            </p>
           </div>
 
-          {costs.length > 0 && (
-            <CostTable entries={costs} totalCost={totalCost} />
-          )}
+          {costs.length > 0 && <CostTable entries={costs} totalCost={totalCost} />}
 
           <div className="step-actions">
             <button
@@ -454,7 +504,13 @@ export function SlideStudioPage() {
             <button
               type="button"
               className="btn btn-primary"
-              onClick={() => navigate("/video-studio?from=slide")}
+              onClick={() =>
+                navigate(
+                  projectId
+                    ? `/video-studio?from=slide&projectId=${encodeURIComponent(projectId)}`
+                    : "/video-studio?from=slide",
+                )
+              }
             >
               {t("slide.toVideo")}
             </button>

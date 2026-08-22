@@ -32,6 +32,8 @@ export async function handleSaveOutput(
     height: body.height,
     fps: body.fps,
     captions: body.captions,
+    narrationMode: body.narrationMode ?? "spoken",
+    silentPageDurationSec: body.silentPageDurationSec ?? 5,
     verticalLayout: body.verticalLayout ?? null,
     padColor: body.padColor ?? null,
   };

@@ -1,34 +1,57 @@
-/**
- * API types for the frontend matching all 13 API endpoints.
- */
+/** フロントエンドからAPI Gatewayへ送受信するデータ契約。 */
+
+export type AspectRatio = "16:9" | "9:16" | "1:1" | "4:5";
+export type CaptionsOption = "burn" | "srt" | "none";
+export type NarrationMode = "spoken" | "none";
+export type RenderStatus = "RUNNING" | "COMPLETED" | "FAILED";
+export type RenderStageName = "pages" | "audio" | "captions" | "video";
+
+export interface RenderProgress {
+  stage: RenderStageName;
+  currentPage: number;
+  totalPages: number;
+  message: string;
+  updatedAt: string;
+}
+
+export interface RenderSummary {
+  renderId: string;
+  status: RenderStatus;
+  startedAt: string;
+  updatedAt: string;
+  currentStage?: RenderStageName;
+  currentPage?: number;
+  totalPages?: number;
+  progressMessage?: string;
+  progressUpdatedAt?: string;
+  completedAt?: string;
+  error?: string;
+}
 
 export interface Project {
   projectId: string;
-  userId: string;
+  userId?: string;
   title: string;
-  kind: "slide" | "video";
-  status: "draft" | "running" | "done";
+  kind?: "slide" | "video";
+  status: string;
   output?: string;
   estimatedCost?: number;
+  latestRender?: RenderSummary;
   createdAt: string;
   updatedAt: string;
 }
 
+/** スライド画面が使用する表示モデル。 */
 export interface OutlinePage {
   title: string;
   body: string;
   notes: string;
 }
 
-export interface Outline {
-  contentLang: "ja" | "en";
-  pages: OutlinePage[];
-}
-
 export interface OutputSettings {
-  aspect: "16:9" | "9:16" | "1:1" | "4:5";
+  aspect: AspectRatio;
   fps: 30 | 60;
-  subtitleMode: "burn" | "srt" | "none";
+  subtitleMode: CaptionsOption;
   subtitleSize?: "S" | "M" | "L";
   subtitlePosition?: "bottom" | "center-bottom" | "top";
   voiceId: string;
@@ -38,36 +61,23 @@ export interface OutputSettings {
   verticalLayout?: string;
   verticalBg?: string;
   safeArea?: boolean;
+  narrationMode?: NarrationMode;
+  silentPageDurationSec?: number;
 }
 
+/** 動画画面で編集するページごとの原稿。 */
 export interface NarrationPage {
   pageIndex: number;
   mode: "plain" | "ssml";
   script: string;
+  /** 原稿の由来。抽出文とAI案はユーザー編集前に置換できる。 */
+  origin?: "pdf-extracted" | "ai" | "user";
 }
 
 export interface DictionaryEntry {
   word: string;
   reading: string;
   method: "sub" | "phoneme" | "spell";
-}
-
-export interface Narration {
-  pages: NarrationPage[];
-  dictionary: DictionaryEntry[];
-}
-
-export interface RenderStage {
-  name: string;
-  state: "wait" | "running" | "done" | "failed";
-}
-
-export interface Render {
-  renderId: string;
-  projectId: string;
-  status: "pending" | "running" | "done" | "failed";
-  stages: RenderStage[];
-  progress: number;
 }
 
 export interface CostEntry {
@@ -78,16 +88,17 @@ export interface CostEntry {
 }
 
 export interface Artifact {
-  type: "mp4" | "srt" | "audio" | "markdown" | "pdf" | "pptx";
+  key: string;
+  size?: number;
+  lastModified?: string;
   url: string;
-  filename: string;
-  metadata?: Record<string, string>;
+  downloadName?: string;
 }
 
-// Request types
 export interface CreateProjectRequest {
   title: string;
-  kind: "slide" | "video";
+  contentLanguage?: string;
+  kind?: "slide" | "video";
 }
 
 export interface GenerateOutlineRequest {
@@ -107,80 +118,116 @@ export interface UpdateOutlineRequest {
 
 export interface GenerateDeckRequest {
   format: ("markdown" | "pdf" | "pptx")[];
+  theme?: string;
 }
 
 export interface SourceUploadUrlRequest {
-  filename: string;
+  fileName: string;
   contentType: string;
 }
 
+export interface SourceUploadUrlResponse {
+  uploadUrl: string;
+  fileKey: string;
+  maxSizeBytes: number;
+}
+
 export interface RegisterSourceRequest {
-  s3Key: string;
-  pageCount: number;
+  kind: "generated" | "uploaded";
+  fileKey: string;
+  fileName?: string;
+}
+
+export interface RegisterSourceResponse {
+  source: {
+    kind: "generated" | "uploaded";
+    fileKey: string;
+    pageCount: number;
+    fileName?: string;
+  };
 }
 
 export interface UpdateOutputRequest {
-  settings: OutputSettings;
+  aspect: AspectRatio;
+  width: number;
+  height: number;
+  fps: 30 | 60;
+  captions: CaptionsOption;
+  verticalLayout: "top" | "center" | "crop" | null;
+  padColor: "white" | "navy" | "auto" | null;
+  narrationMode: NarrationMode;
+  silentPageDurationSec: number;
+}
+
+export interface SaveNarrationRequest {
+  scripts: Array<{
+    pageNumber: number;
+    mode: "plain" | "ssml";
+    text: string;
+  }>;
+  lexicon: Array<{
+    written: string;
+    reading: string;
+    method: "sub" | "phoneme" | "spell";
+  }>;
+  voice: {
+    id: string;
+    engine: "neural" | "standard";
+    languageCode: string;
+    sampleRate: "16000";
+  };
 }
 
 export interface GenerateNarrationRequest {
-  pageCount: number;
-}
-
-export interface UpdateNarrationRequest {
-  narration: Narration;
+  pageNumber: number;
+  pageText: string;
 }
 
 export interface StartRenderRequest {
-  outputSettings: OutputSettings;
-  narration: Narration;
+  startFromStage?: RenderStageName;
 }
 
-// Response types
+export interface StartRenderResponse {
+  renderId: string;
+  status: RenderStatus;
+  startedAt: string;
+  executionArn?: string;
+}
+
+export interface GetRenderResponse extends RenderSummary {
+  progress?: RenderProgress;
+}
+
+export interface GetArtifactsResponse {
+  artifacts: Artifact[];
+}
+
 export interface ListProjectsResponse {
   projects: Project[];
+  nextToken?: string;
 }
 
 export interface CreateProjectResponse {
   project: Project;
 }
 
+/** 既存のスライド画面向けの互換型。 */
 export interface GenerateOutlineResponse {
-  outline: Outline;
-  costs: CostEntry[];
+  outline: { pages: OutlinePage[] };
+  costs?: CostEntry[];
 }
 
 export interface GenerateDeckResponse {
-  artifacts: Artifact[];
-  costs: CostEntry[];
-}
-
-export interface SourceUploadUrlResponse {
-  uploadUrl: string;
-  s3Key: string;
-}
-
-export interface RegisterSourceResponse {
-  pageCount: number;
-  thumbnails: string[];
+  source?: RegisterSourceResponse["source"];
+  deckKey?: string;
+  pageCount?: number;
+  costs?: CostEntry[];
 }
 
 export interface GenerateNarrationResponse {
-  narration: Narration;
-}
-
-export interface StartRenderResponse {
-  render: Render;
-}
-
-export interface GetRenderResponse {
-  render: Render;
-}
-
-export interface GetArtifactsResponse {
-  artifacts: Artifact[];
-  costs: CostEntry[];
-  totalCost: string;
+  script: SaveNarrationRequest["scripts"][number];
+  inputTokens?: number;
+  outputTokens?: number;
 }
 
 export interface ErrorResponse {

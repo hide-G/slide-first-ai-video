@@ -15,10 +15,7 @@ const mockPage = {
   setContent: vi.fn().mockResolvedValue(undefined),
   evaluate: vi.fn(),
   pdf: vi.fn().mockResolvedValue(Buffer.from("%PDF-fake")),
-  $$: vi.fn().mockResolvedValue([
-    { screenshot: mockScreenshot },
-    { screenshot: mockScreenshot },
-  ]),
+  $$: vi.fn().mockResolvedValue([{ screenshot: mockScreenshot }, { screenshot: mockScreenshot }]),
   newPage: undefined as unknown,
 };
 
@@ -52,7 +49,7 @@ vi.mock("pptxgenjs", () => {
 vi.mock("@marp-team/marp-core", () => ({
   Marp: vi.fn().mockImplementation(() => ({
     render: vi.fn().mockReturnValue({
-      html: '<section>Slide 1</section><section>Slide 2</section>',
+      html: "<section>Slide 1</section><section>Slide 2</section>",
       css: "section { width: 1920px; height: 1080px; }",
     }),
   })),
@@ -87,7 +84,7 @@ describe("marp-render handler", () => {
     vi.clearAllMocks();
 
     // Default: font verification passes
-    mockPage.evaluate.mockImplementation((fn: Function | string) => {
+    mockPage.evaluate.mockImplementation((fn: (() => unknown) | string) => {
       // document.fonts.ready
       if (typeof fn === "function" && fn.toString().includes("fonts.ready")) {
         return Promise.resolve(undefined);
@@ -96,7 +93,11 @@ describe("marp-render handler", () => {
       if (typeof fn === "function" && fn.toString().includes("measureText")) {
         return Promise.resolve(true);
       }
-      // pdf.js evaluate (for pages stage)
+      // inspectSource（PDFページ数取得）
+      if (typeof fn === "function" && fn.toString().includes("return doc.numPages")) {
+        return Promise.resolve(3);
+      }
+      // pdf.js evaluate（ページラスタライズ）
       if (typeof fn === "function" && fn.toString().includes("getDocument")) {
         return Promise.resolve([
           "data:image/png;base64,AAAA",
@@ -113,32 +114,76 @@ describe("marp-render handler", () => {
         if (cmd.input?.Key?.endsWith("manifest.json")) {
           return Promise.resolve({
             Body: {
-              transformToString: () => Promise.resolve(JSON.stringify({
-                schemaVersion: 1,
-                projectId: "proj-1",
-                userId: "user-1",
-                contentLanguage: "ja-JP",
-                source: {
-                  kind: "uploaded",
-                  fileKey: "users/user-1/projects/proj-1/input/source.pdf",
-                  pageCount: 3,
-                },
-                voice: { id: "Takumi", engine: "neural", languageCode: "ja-JP", sampleRate: "24000" },
-                output: { aspect: "16:9", width: 1920, height: 1080, fps: 30, captions: "burn", verticalLayout: null, padColor: null },
-                lexicon: [],
-                pages: [
-                  { pageNumber: 1, imageKey: "pages/page-001.png", script: { mode: "plain", text: "Hello" }, audioKey: "audio/page-001.wav", audioDurationSec: 0, frameAlignedDurationMs: 0 },
-                  { pageNumber: 2, imageKey: "pages/page-002.png", script: { mode: "plain", text: "World" }, audioKey: "audio/page-002.wav", audioDurationSec: 0, frameAlignedDurationMs: 0 },
-                  { pageNumber: 3, imageKey: "pages/page-003.png", script: { mode: "plain", text: "End" }, audioKey: "audio/page-003.wav", audioDurationSec: 0, frameAlignedDurationMs: 0 },
-                ],
-                stages: { pages: "pending", audio: "pending", captions: "pending", video: "pending" },
-              })),
+              transformToString: () =>
+                Promise.resolve(
+                  JSON.stringify({
+                    schemaVersion: 1,
+                    projectId: "proj-1",
+                    userId: "user-1",
+                    contentLanguage: "ja-JP",
+                    source: {
+                      kind: "uploaded",
+                      fileKey: "users/user-1/projects/proj-1/input/source.pdf",
+                      pageCount: 3,
+                    },
+                    voice: {
+                      id: "Takumi",
+                      engine: "neural",
+                      languageCode: "ja-JP",
+                      sampleRate: "24000",
+                    },
+                    output: {
+                      aspect: "16:9",
+                      width: 1920,
+                      height: 1080,
+                      fps: 30,
+                      captions: "burn",
+                      verticalLayout: null,
+                      padColor: null,
+                    },
+                    lexicon: [],
+                    pages: [
+                      {
+                        pageNumber: 1,
+                        imageKey: "pages/page-001.png",
+                        script: { mode: "plain", text: "Hello" },
+                        audioKey: "audio/page-001.wav",
+                        audioDurationSec: 0,
+                        frameAlignedDurationMs: 0,
+                      },
+                      {
+                        pageNumber: 2,
+                        imageKey: "pages/page-002.png",
+                        script: { mode: "plain", text: "World" },
+                        audioKey: "audio/page-002.wav",
+                        audioDurationSec: 0,
+                        frameAlignedDurationMs: 0,
+                      },
+                      {
+                        pageNumber: 3,
+                        imageKey: "pages/page-003.png",
+                        script: { mode: "plain", text: "End" },
+                        audioKey: "audio/page-003.wav",
+                        audioDurationSec: 0,
+                        frameAlignedDurationMs: 0,
+                      },
+                    ],
+                    stages: {
+                      pages: "pending",
+                      audio: "pending",
+                      captions: "pending",
+                      video: "pending",
+                    },
+                  }),
+                ),
             },
           });
         }
         // PDF download
         return Promise.resolve({
-          Body: { transformToByteArray: () => Promise.resolve(new Uint8Array([0x25, 0x50, 0x44, 0x46])) },
+          Body: {
+            transformToByteArray: () => Promise.resolve(new Uint8Array([0x25, 0x50, 0x44, 0x46])),
+          },
         });
       }
       return Promise.resolve({});
@@ -180,7 +225,7 @@ describe("marp-render handler", () => {
 
       // Check keys
       const keys = putCalls.map(
-        (call: unknown[]) => ((call[0] as { input: { Key: string } }).input.Key),
+        (call: unknown[]) => (call[0] as { input: { Key: string } }).input.Key,
       );
       expect(keys).toContain("users/user-1/projects/proj-1/deck/deck.md");
       expect(keys).toContain("users/user-1/projects/proj-1/deck/deck.pdf");
@@ -190,7 +235,7 @@ describe("marp-render handler", () => {
     });
 
     it("returns error when font verification fails", async () => {
-      mockPage.evaluate.mockImplementation((fn: Function | string) => {
+      mockPage.evaluate.mockImplementation((fn: (() => unknown) | string) => {
         if (typeof fn === "function" && fn.toString().includes("fonts.ready")) {
           return Promise.resolve(undefined);
         }
@@ -215,7 +260,7 @@ describe("marp-render handler", () => {
     });
 
     it("closes browser even on error", async () => {
-      mockPage.evaluate.mockImplementation((fn: Function | string) => {
+      mockPage.evaluate.mockImplementation((fn: (() => unknown) | string) => {
         if (typeof fn === "function" && fn.toString().includes("fonts.ready")) {
           return Promise.resolve(undefined);
         }
@@ -236,6 +281,21 @@ describe("marp-render handler", () => {
       });
 
       expect(mockBrowser.close).toHaveBeenCalled();
+    });
+  });
+
+  describe("action: inspectSource", () => {
+    it("PDFのページ数をpdf.jsで取得する", async () => {
+      const { handler } = await import("./index.js");
+      const result = await handler({
+        action: "inspectSource",
+        s3Bucket: "test-bucket",
+        projectId: "proj-1",
+        userId: "user-1",
+        sourceKey: "users/user-1/projects/proj-1/input/source.pdf",
+      });
+
+      expect(result).toEqual({ success: true, pageCount: 3 });
     });
   });
 
@@ -260,7 +320,7 @@ describe("marp-render handler", () => {
       ]);
     });
 
-    it("uploads page PNGs to S3 and updates manifest", async () => {
+    it("ページPNGとページ単位の進捗付きmanifestをS3へ保存する", async () => {
       const { handler } = await import("./index.js");
       await handler({
         stage: "pages",
@@ -274,12 +334,135 @@ describe("marp-render handler", () => {
       const putCalls = mockSend.mock.calls.filter(
         (call: unknown[]) => (call[0] as { type: string }).type === "put",
       );
-      // manifest "running" + 3 PNGs + manifest "done" = 5
-      expect(putCalls.length).toBe(5);
+      const manifestPuts = putCalls.filter(
+        (call: unknown[]) =>
+          (call[0] as { input: { ContentType?: string } }).input.ContentType === "application/json",
+      );
+      const manifests = manifestPuts.map((call: unknown[]) =>
+        JSON.parse((call[0] as { input: { Body: string } }).input.Body),
+      );
+
+      // 初期manifest、3ページのPNG、各ページ進捗、完了manifestの合計。
+      expect(putCalls).toHaveLength(8);
+      expect(manifests).toHaveLength(5);
+      expect(manifests[0]).toMatchObject({
+        stages: { pages: "running" },
+        progress: { stage: "pages", currentPage: 0, totalPages: 3 },
+      });
+      expect(manifests.slice(1, 4).map((manifest) => manifest.progress.currentPage)).toEqual([
+        1, 2, 3,
+      ]);
+      expect(manifests[4]).toMatchObject({
+        stages: { pages: "done" },
+        progress: {
+          stage: "pages",
+          currentPage: 3,
+          totalPages: 3,
+          message: "ページ画像の準備が完了しました。",
+        },
+      });
+    });
+
+    it("9:16プロファイルを1080x1920の固定キャンバスと縦レイアウトへ渡す", async () => {
+      mockSend.mockImplementation((cmd: { type: string; input?: { Key?: string } }) => {
+        if (cmd.type === "get") {
+          if (cmd.input?.Key?.endsWith("manifest.json")) {
+            return Promise.resolve({
+              Body: {
+                transformToString: () =>
+                  Promise.resolve(
+                    JSON.stringify({
+                      schemaVersion: 1,
+                      projectId: "proj-1",
+                      userId: "user-1",
+                      contentLanguage: "ja-JP",
+                      source: {
+                        kind: "uploaded",
+                        fileKey: "users/user-1/projects/proj-1/input/source.pdf",
+                        pageCount: 3,
+                      },
+                      voice: {
+                        id: "Takumi",
+                        engine: "neural",
+                        languageCode: "ja-JP",
+                        sampleRate: "24000",
+                      },
+                      output: {
+                        aspect: "9:16",
+                        width: 1080,
+                        height: 1920,
+                        fps: 60,
+                        captions: "burn",
+                        verticalLayout: "top",
+                        padColor: "navy",
+                      },
+                      lexicon: [],
+                      pages: [
+                        {
+                          pageNumber: 1,
+                          imageKey: "pages/page-001.png",
+                          script: { mode: "plain", text: "Hello" },
+                          audioKey: "audio/page-001.wav",
+                          audioDurationSec: 0,
+                          frameAlignedDurationMs: 0,
+                        },
+                        {
+                          pageNumber: 2,
+                          imageKey: "pages/page-002.png",
+                          script: { mode: "plain", text: "World" },
+                          audioKey: "audio/page-002.wav",
+                          audioDurationSec: 0,
+                          frameAlignedDurationMs: 0,
+                        },
+                        {
+                          pageNumber: 3,
+                          imageKey: "pages/page-003.png",
+                          script: { mode: "plain", text: "End" },
+                          audioKey: "audio/page-003.wav",
+                          audioDurationSec: 0,
+                          frameAlignedDurationMs: 0,
+                        },
+                      ],
+                      stages: {
+                        pages: "pending",
+                        audio: "pending",
+                        captions: "pending",
+                        video: "pending",
+                      },
+                    }),
+                  ),
+              },
+            });
+          }
+          return Promise.resolve({
+            Body: {
+              transformToByteArray: () => Promise.resolve(new Uint8Array([0x25, 0x50, 0x44, 0x46])),
+            },
+          });
+        }
+        return Promise.resolve({});
+      });
+
+      const { handler } = await import("./index.js");
+      const result = await handler({
+        stage: "pages",
+        s3Bucket: "test-bucket",
+        s3Prefix: "users/user-1/projects/proj-1/",
+        projectId: "proj-1",
+        userId: "user-1",
+        renderId: "render-1",
+      });
+
+      expect(result).toMatchObject({ success: true });
+      const rasterizeCall = mockPage.evaluate.mock.calls.find(
+        (call: unknown[]) =>
+          typeof call[0] === "function" && call[0].toString().includes("getDocument"),
+      );
+      expect(rasterizeCall?.slice(4)).toEqual([1080, 1920, "top", "navy"]);
     });
 
     it("sets stage to failed on error and closes browser", async () => {
-      mockPage.evaluate.mockImplementation((fn: Function | string) => {
+      mockPage.evaluate.mockImplementation((fn: (() => unknown) | string) => {
         if (typeof fn === "function" && fn.toString().includes("getDocument")) {
           return Promise.reject(new Error("pdf.js parse error"));
         }
@@ -307,6 +490,13 @@ describe("marp-render handler", () => {
       const lastPutInput = putCalls[putCalls.length - 1][0] as { input: { Body: string } };
       const finalManifest = JSON.parse(lastPutInput.input.Body);
       expect(finalManifest.stages.pages).toBe("failed");
+      expect(finalManifest.progress).toMatchObject({
+        stage: "pages",
+        currentPage: 0,
+        totalPages: 3,
+        message: "ページ画像の準備に失敗しました。",
+      });
+      expect(Number.isNaN(Date.parse(finalManifest.progress.updatedAt))).toBe(false);
     });
   });
 

@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "lint": "eslint src/ bin/",
-    "test": "vitest run --passWithNoTests --pool=forks --poolOptions.forks.singleFork --reporter=dot"
+    "test": "vitest run --passWithNoTests --pool=forks --reporter=dot"
   },
   "dependencies": {
     "aws-cdk-lib": "2.189.0",

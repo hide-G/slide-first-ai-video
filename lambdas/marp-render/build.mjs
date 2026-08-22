@@ -35,11 +35,7 @@ await build({
   target: "node22",
   format: "cjs",
   outfile: join(DIST, "index.js"),
-  external: [
-    "@sparticuz/chromium",
-    "puppeteer-core",
-    "@aws-sdk/*",
-  ],
+  external: ["@sparticuz/chromium", "puppeteer-core", "@aws-sdk/*"],
   minify: false,
   sourcemap: false,
 });
@@ -51,7 +47,10 @@ const assetsDir = join(DIST, "assets");
 await mkdir(assetsDir, { recursive: true });
 
 // Font file
-const fontSrc = join(NODE_MODULES, "@fontsource/noto-sans-jp/files/noto-sans-jp-japanese-400-normal.woff2");
+const fontSrc = join(
+  NODE_MODULES,
+  "@fontsource/noto-sans-jp/files/noto-sans-jp-japanese-400-normal.woff2",
+);
 await cp(fontSrc, join(assetsDir, "noto-sans-jp.woff2"));
 
 // pdf.js files

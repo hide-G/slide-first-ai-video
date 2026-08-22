@@ -1,28 +1,32 @@
 import type { Manifest } from "./manifest.js";
 
-/**
- * Invariant validation errors with descriptions.
- */
+/** 不変条件の検証エラー。 */
 export interface InvariantViolation {
   rule: string;
   message: string;
 }
 
 /**
- * Validates the structural invariants:
+ * 指定fpsでのフレーム丸めに許容する最大超過時間をミリ秒で返す。
+ * 音声の尺は次フレーム境界へ切り上げるため、超過は最大1フレーム分となる。
+ */
+export function getFrameExcessLimitMs(fps: number): number {
+  return Math.ceil(1000 / fps);
+}
+
+/**
+ * 構造上の不変条件を検証する。
  *
  * 1. pages.length === source.pageCount
- * 2. All script.text must be non-empty before audio stage starts
- *    (if stages.audio is "running" or "done")
- * 3. audioDurationSec must be positive for all pages when audio stage is "done"
- * 4. frameAlignedDurationMs >= audioDurationSec * 1000 for each page
- * 5. Frame excess (frameAlignedDurationMs - audioDurationSec*1000) <= 34ms per page
- * 6. pageNumber must be sequential starting from 1
+ * 2. audio工程開始後は全script.textが空でない
+ * 3. audio工程完了後は全audioDurationSecが正
+ * 4. frameAlignedDurationMs >= audioDurationSec * 1000
+ * 5. フレーム丸め超過は対象fpsの1フレーム以内
+ * 6. pageNumberは1から連番
  */
 export function validateInvariants(manifest: Manifest): InvariantViolation[] {
   const violations: InvariantViolation[] = [];
 
-  // Rule 1: pages.length === source.pageCount
   if (manifest.pages.length !== manifest.source.pageCount) {
     violations.push({
       rule: "pages-count",
@@ -30,10 +34,8 @@ export function validateInvariants(manifest: Manifest): InvariantViolation[] {
     });
   }
 
-  // Rule 2: All script.text non-empty before audio stage starts
-  const audioActive =
-    manifest.stages.audio === "running" || manifest.stages.audio === "done";
-  if (audioActive) {
+  const audioActive = manifest.stages.audio === "running" || manifest.stages.audio === "done";
+  if (audioActive && manifest.output.narrationMode !== "none") {
     for (const page of manifest.pages) {
       if (!page.script.text || page.script.text.trim().length === 0) {
         violations.push({
@@ -44,7 +46,6 @@ export function validateInvariants(manifest: Manifest): InvariantViolation[] {
     }
   }
 
-  // Rule 3: audioDurationSec must be positive when audio is done
   if (manifest.stages.audio === "done") {
     for (const page of manifest.pages) {
       if (page.audioDurationSec <= 0) {
@@ -56,31 +57,29 @@ export function validateInvariants(manifest: Manifest): InvariantViolation[] {
     }
   }
 
-  // Rule 4 & 5: frameAlignedDurationMs constraints when audio is done
   if (manifest.stages.audio === "done") {
+    const frameExcessLimitMs = getFrameExcessLimitMs(manifest.output.fps);
     for (const page of manifest.pages) {
       if (page.frameAlignedDurationMs > 0 && page.audioDurationSec > 0) {
         const audioMs = page.audioDurationSec * 1000;
-        // Must be >= audio duration in ms
         if (page.frameAlignedDurationMs < audioMs) {
           violations.push({
             rule: "frame-aligned-gte-audio",
             message: `Page ${page.pageNumber}: frameAlignedDurationMs (${page.frameAlignedDurationMs}) must be >= audioDurationSec*1000 (${audioMs})`,
           });
         }
-        // Excess must be <= FRAME_EXCESS_MS
+
         const excess = page.frameAlignedDurationMs - audioMs;
-        if (excess > TOLERANCES.FRAME_EXCESS_MS) {
+        if (excess > frameExcessLimitMs) {
           violations.push({
             rule: "frame-excess",
-            message: `Page ${page.pageNumber}: frame excess ${excess.toFixed(3)}ms exceeds maximum ${TOLERANCES.FRAME_EXCESS_MS}ms`,
+            message: `Page ${page.pageNumber}: frame excess ${excess.toFixed(3)}ms exceeds maximum ${frameExcessLimitMs}ms at ${manifest.output.fps}fps`,
           });
         }
       }
     }
   }
 
-  // Rule 6: pageNumber must be sequential starting from 1
   for (let i = 0; i < manifest.pages.length; i++) {
     if (manifest.pages[i].pageNumber !== i + 1) {
       violations.push({
@@ -93,12 +92,8 @@ export function validateInvariants(manifest: Manifest): InvariantViolation[] {
   return violations;
 }
 
-/**
- * Tolerance constants for the MediaConvert pipeline.
- */
+/** MediaConvertパイプライン共通の許容値。 */
 export const TOLERANCES = {
-  /** Maximum total duration drift in milliseconds */
+  /** 合計尺の最大差分（ミリ秒） */
   TOTAL_DURATION_MS: 50,
-  /** Maximum frame-aligned excess per page in milliseconds (one frame at 30fps = 33.33ms) */
-  FRAME_EXCESS_MS: 34,
 } as const;

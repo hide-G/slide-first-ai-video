@@ -15,6 +15,10 @@ export interface RenderRecord {
   updatedAt: string;
   completedAt?: string;
   currentStage?: string;
+  currentPage?: number;
+  totalPages?: number;
+  progressMessage?: string;
+  progressUpdatedAt?: string;
   error?: string;
   executionArn?: string;
 }
@@ -30,7 +34,7 @@ export async function createRender(render: RenderRecord): Promise<void> {
         PK: `PROJECT#${render.projectId}`,
         SK: `RENDER#${render.renderId}`,
         GSI1PK: `RENDER#${render.renderId}`,
-        GSI1SK: `META`,
+        GSI1SK: "META",
         ...render,
       },
     }),
@@ -40,10 +44,7 @@ export async function createRender(render: RenderRecord): Promise<void> {
 /**
  * Get a render by projectId and renderId.
  */
-export async function getRender(
-  projectId: string,
-  renderId: string,
-): Promise<RenderRecord | null> {
+export async function getRender(projectId: string, renderId: string): Promise<RenderRecord | null> {
   const result = await docClient.send(
     new GetCommand({
       TableName: TABLE_NAME,
@@ -60,9 +61,7 @@ export async function getRender(
 /**
  * List renders for a project.
  */
-export async function listRendersByProject(
-  projectId: string,
-): Promise<RenderRecord[]> {
+export async function listRendersByProject(projectId: string): Promise<RenderRecord[]> {
   const result = await docClient.send(
     new QueryCommand({
       TableName: TABLE_NAME,
@@ -100,6 +99,8 @@ export async function updateRenderStatus(
 
   if (additionalUpdates) {
     for (const [key, value] of Object.entries(additionalUpdates)) {
+      // DynamoDB の式属性値に undefined は渡せないため、任意項目は明示的に除外する。
+      if (value === undefined) continue;
       updateExpression += `, #${key} = :${key}`;
       expressionNames[`#${key}`] = key;
       expressionValues[`:${key}`] = value;

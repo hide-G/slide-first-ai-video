@@ -38,52 +38,36 @@ export interface SlideGeneratorConstructProps {
 export class SlideGeneratorConstruct extends Construct {
   public readonly handler: lambda.Function;
 
-  constructor(
-    scope: Construct,
-    id: string,
-    props: SlideGeneratorConstructProps,
-  ) {
+  constructor(scope: Construct, id: string, props: SlideGeneratorConstructProps) {
     super(scope, id);
 
     const { productSlug, environment } = props;
-    const repositoryRoot = findRepositoryRoot(
-      path.dirname(fileURLToPath(import.meta.url)),
-    );
+    const repositoryRoot = findRepositoryRoot(path.dirname(fileURLToPath(import.meta.url)));
 
     // ローカルesbuildでworkspace依存とAWS SDKをバンドルする。
-    this.handler = new lambdaNodejs.NodejsFunction(
-      this,
-      "SlideGeneratorHandler",
-      {
-        functionName: `${productSlug}-${environment}-slide-generator`,
-        runtime: lambda.Runtime.NODEJS_22_X,
-        entry: path.join(
-          repositoryRoot,
-          "lambdas",
-          "slide-generator",
-          "src",
-          "index.ts",
-        ),
-        handler: "handler",
-        depsLockFilePath: path.join(repositoryRoot, "pnpm-lock.yaml"),
-        projectRoot: repositoryRoot,
-        memorySize: 1024,
-        timeout: cdk.Duration.seconds(120),
-        environment: {
-          BUCKET_NAME: props.projectBucket.bucketName,
-          BEDROCK_MODEL_ID: "anthropic.claude-sonnet-4-20250514",
-        },
-        bundling: {
-          bundleAwsSDK: true,
-          externalModules: [],
-          forceDockerBundling: false,
-          format: lambdaNodejs.OutputFormat.CJS,
-          minify: false,
-          sourceMap: false,
-          target: "node22",
-        },
+    this.handler = new lambdaNodejs.NodejsFunction(this, "SlideGeneratorHandler", {
+      functionName: `${productSlug}-${environment}-slide-generator`,
+      runtime: lambda.Runtime.NODEJS_22_X,
+      entry: path.join(repositoryRoot, "lambdas", "slide-generator", "src", "index.ts"),
+      handler: "handler",
+      depsLockFilePath: path.join(repositoryRoot, "pnpm-lock.yaml"),
+      projectRoot: repositoryRoot,
+      memorySize: 1024,
+      timeout: cdk.Duration.seconds(120),
+      environment: {
+        BUCKET_NAME: props.projectBucket.bucketName,
+        BEDROCK_MODEL_ID: "jp.anthropic.claude-haiku-4-5-20251001-v1:0",
       },
-    );
+      bundling: {
+        bundleAwsSDK: true,
+        externalModules: [],
+        forceDockerBundling: false,
+        format: lambdaNodejs.OutputFormat.CJS,
+        minify: false,
+        sourceMap: false,
+        target: "node22",
+      },
+    });
 
     // 既存どおり、Bedrockモデル呼び出しを許可する。
     this.handler.addToRolePolicy(

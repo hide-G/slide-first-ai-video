@@ -37,7 +37,15 @@ export interface PagesEvent {
   renderId: string;
 }
 
-export type MarpRenderEvent = GenerateDeckEvent | PagesEvent;
+export interface InspectSourceEvent {
+  action: "inspectSource";
+  s3Bucket: string;
+  projectId: string;
+  userId: string;
+  sourceKey: string;
+}
+
+export type MarpRenderEvent = GenerateDeckEvent | PagesEvent | InspectSourceEvent;
 
 export interface GenerateDeckResult {
   success: boolean;
@@ -52,11 +60,22 @@ export interface PagesResult {
   error?: string;
 }
 
+export interface InspectSourceResult {
+  success: boolean;
+  pageCount: number;
+  error?: string;
+}
+
 // --- Main handler ---
 
-export const handler = async (event: MarpRenderEvent): Promise<GenerateDeckResult | PagesResult> => {
+export const handler = async (
+  event: MarpRenderEvent,
+): Promise<GenerateDeckResult | PagesResult | InspectSourceResult> => {
   if ("action" in event && event.action === "generateDeck") {
     return handleGenerateDeck(event);
+  }
+  if ("action" in event && event.action === "inspectSource") {
+    return handleInspectSource(event);
   }
   if ("stage" in event && event.stage === "pages") {
     return handlePages(event);
@@ -76,7 +95,12 @@ async function handleGenerateDeck(event: GenerateDeckEvent): Promise<GenerateDec
     const html = await convertMarkdownToHtml(markdown);
 
     // 2. Upload deck.md
-    await uploadObject(s3Bucket, deckKey(keyParams, "md"), Buffer.from(markdown, "utf-8"), "text/markdown");
+    await uploadObject(
+      s3Bucket,
+      deckKey(keyParams, "md"),
+      Buffer.from(markdown, "utf-8"),
+      "text/markdown",
+    );
 
     // 3. Launch browser
     browser = await launchBrowser();
@@ -108,7 +132,12 @@ async function handleGenerateDeck(event: GenerateDeckEvent): Promise<GenerateDec
 
     // 8. Generate PDF
     const pdfBuffer = await page.pdf({ width: "1920px", height: "1080px" });
-    await uploadObject(s3Bucket, deckKey(keyParams, "pdf"), Buffer.from(pdfBuffer), "application/pdf");
+    await uploadObject(
+      s3Bucket,
+      deckKey(keyParams, "pdf"),
+      Buffer.from(pdfBuffer),
+      "application/pdf",
+    );
 
     // 9. Capture PNG per section (slide page)
     const sectionHandles = await page.$$("section");
@@ -124,7 +153,12 @@ async function handleGenerateDeck(event: GenerateDeckEvent): Promise<GenerateDec
 
     // 10. Generate PPTX (images pasted as pages, text not editable)
     const pptxBuffer = await generatePptx(pagePngs);
-    await uploadObject(s3Bucket, deckKey(keyParams, "pptx"), pptxBuffer, "application/vnd.openxmlformats-officedocument.presentationml.presentation");
+    await uploadObject(
+      s3Bucket,
+      deckKey(keyParams, "pptx"),
+      pptxBuffer,
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    );
 
     await browser.close();
     browser = null;
@@ -132,7 +166,64 @@ async function handleGenerateDeck(event: GenerateDeckEvent): Promise<GenerateDec
     return { success: true, pageCount };
   } catch (error: unknown) {
     if (browser) {
-      try { await browser.close(); } catch { /* ignore */ }
+      try {
+        await browser.close();
+      } catch {
+        /* ignore */
+      }
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, pageCount: 0, error: message };
+  }
+}
+
+// --- action: "inspectSource" ---
+
+async function handleInspectSource(event: InspectSourceEvent): Promise<InspectSourceResult> {
+  let browser: Awaited<ReturnType<typeof launchBrowser>> | null = null;
+  try {
+    const pdfBytes = await downloadObject(event.s3Bucket, event.sourceKey);
+    const pdfBase64 = pdfBytes.toString("base64");
+    const assetsDir = join(__dirname, "assets");
+    const libSource = await readFile(join(assetsDir, "pdf.min.mjs"), "utf-8");
+    const workerSource = await readFile(join(assetsDir, "pdf.worker.min.mjs"), "utf-8");
+
+    browser = await launchBrowser();
+    const page = await browser.newPage();
+    await page.setContent("<html><body></body></html>", {
+      waitUntil: "domcontentloaded",
+    });
+
+    const pageCount = await page.evaluate(
+      async (libSrc: string, workerSrc: string, dataBase64: string) => {
+        const libUrl = URL.createObjectURL(new Blob([libSrc], { type: "text/javascript" }));
+        const workerUrl = URL.createObjectURL(new Blob([workerSrc], { type: "text/javascript" }));
+        try {
+          const pdfjs = await import(libUrl);
+          pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+          const bytes = Uint8Array.from(atob(dataBase64), (char) => char.charCodeAt(0));
+          const doc = await pdfjs.getDocument({ data: bytes }).promise;
+          return doc.numPages;
+        } finally {
+          URL.revokeObjectURL(libUrl);
+          URL.revokeObjectURL(workerUrl);
+        }
+      },
+      libSource,
+      workerSource,
+      pdfBase64,
+    );
+
+    await browser.close();
+    browser = null;
+    return { success: true, pageCount };
+  } catch (error: unknown) {
+    if (browser) {
+      try {
+        await browser.close();
+      } catch {
+        // ブラウザ終了時の二次エラーは元の失敗を上書きしない。
+      }
     }
     const message = error instanceof Error ? error.message : String(error);
     return { success: false, pageCount: 0, error: message };
@@ -153,6 +244,7 @@ async function handlePages(event: PagesEvent): Promise<PagesResult> {
   try {
     // Update stage to running
     manifest.stages.pages = "running";
+    updatePagesProgress(manifest, 0, manifest.pages.length, "PDFページを画像に変換しています。");
     await writeManifest(s3Bucket, mKey, manifest);
 
     // Download source PDF
@@ -172,40 +264,82 @@ async function handlePages(event: PagesEvent): Promise<PagesResult> {
     // Set minimal HTML page
     await page.setContent("<html><body></body></html>", { waitUntil: "domcontentloaded" });
 
-    // Rasterize PDF pages using pdf.js inside browser context
+    // pdf.jsでPDF各ページを、出力プロファイルの固定キャンバスへラスタライズする。
     const pngDataUrls: string[] = await page.evaluate(
-      async (libSrc: string, workerSrc: string, dataBase64: string) => {
+      async (
+        libSrc: string,
+        workerSrc: string,
+        dataBase64: string,
+        targetWidth: number,
+        targetHeight: number,
+        verticalLayout: "top" | "center" | "crop",
+        padColor: "white" | "navy" | "auto",
+      ) => {
         const libUrl = URL.createObjectURL(new Blob([libSrc], { type: "text/javascript" }));
         const workerUrl = URL.createObjectURL(new Blob([workerSrc], { type: "text/javascript" }));
-        const pdfjs = await import(libUrl);
-        pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
-        const bytes = Uint8Array.from(atob(dataBase64), (c) => c.charCodeAt(0));
-        const doc = await pdfjs.getDocument({ data: bytes }).promise;
+        try {
+          const pdfjs = await import(libUrl);
+          pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+          const bytes = Uint8Array.from(atob(dataBase64), (char) => char.charCodeAt(0));
+          const doc = await pdfjs.getDocument({ data: bytes }).promise;
+          const results: string[] = [];
 
-        const results: string[] = [];
-        for (let i = 1; i <= doc.numPages; i++) {
-          const pdfPage = await doc.getPage(i);
-          const viewportAt1 = pdfPage.getViewport({ scale: 1 });
-          const scale = 1920 / viewportAt1.width;
-          const viewport = pdfPage.getViewport({ scale });
+          for (let i = 1; i <= doc.numPages; i++) {
+            const pdfPage = await doc.getPage(i);
+            const viewportAt1 = pdfPage.getViewport({ scale: 1 });
+            const useCrop = verticalLayout === "crop";
+            const scale = useCrop
+              ? Math.max(targetWidth / viewportAt1.width, targetHeight / viewportAt1.height)
+              : Math.min(targetWidth / viewportAt1.width, targetHeight / viewportAt1.height);
+            const viewport = pdfPage.getViewport({ scale });
 
-          const canvas = document.createElement("canvas");
-          canvas.width = viewport.width;
-          canvas.height = viewport.height;
-          const ctx = canvas.getContext("2d")!;
+            const sourceCanvas = document.createElement("canvas");
+            sourceCanvas.width = Math.ceil(viewport.width);
+            sourceCanvas.height = Math.ceil(viewport.height);
+            const sourceContext = sourceCanvas.getContext("2d")!;
+            await pdfPage.render({
+              canvasContext: sourceContext,
+              viewport,
+            }).promise;
 
-          await pdfPage.render({ canvasContext: ctx, viewport }).promise;
-          results.push(canvas.toDataURL("image/png"));
+            const targetCanvas = document.createElement("canvas");
+            targetCanvas.width = targetWidth;
+            targetCanvas.height = targetHeight;
+            const targetContext = targetCanvas.getContext("2d")!;
+
+            let backgroundColor = "#ffffff";
+            if (padColor === "navy") {
+              backgroundColor = "#0b1f3a";
+            } else if (padColor === "auto") {
+              const pixel = sourceContext.getImageData(0, 0, 1, 1).data;
+              if (pixel[3] > 0) {
+                backgroundColor = `rgb(${pixel[0]}, ${pixel[1]}, ${pixel[2]})`;
+              }
+            }
+            targetContext.fillStyle = backgroundColor;
+            targetContext.fillRect(0, 0, targetWidth, targetHeight);
+
+            const x = (targetWidth - sourceCanvas.width) / 2;
+            const y =
+              verticalLayout === "top" && !useCrop ? 0 : (targetHeight - sourceCanvas.height) / 2;
+            targetContext.drawImage(sourceCanvas, x, y);
+            results.push(targetCanvas.toDataURL("image/png"));
+          }
+
+          return results;
+        } finally {
+          URL.revokeObjectURL(libUrl);
+          URL.revokeObjectURL(workerUrl);
         }
-
-        URL.revokeObjectURL(libUrl);
-        URL.revokeObjectURL(workerUrl);
-        return results;
       },
       libSource,
       workerSource,
-      pdfBase64
+      pdfBase64,
+      manifest.output.width,
+      manifest.output.height,
+      manifest.output.verticalLayout ?? "center",
+      manifest.output.padColor ?? "auto",
     );
 
     await browser.close();
@@ -218,10 +352,18 @@ async function handlePages(event: PagesEvent): Promise<PagesResult> {
       const base64Data = dataUrl.replace(/^data:image\/png;base64,/, "");
       const pngBuffer = Buffer.from(base64Data, "base64");
       await uploadObject(s3Bucket, pageImageKey(keyParams, i + 1), pngBuffer, "image/png");
+      updatePagesProgress(
+        manifest,
+        i + 1,
+        pageCount,
+        `ページ ${i + 1}/${pageCount} の画像を保存しました。`,
+      );
+      await writeManifest(s3Bucket, mKey, manifest);
     }
 
     // Update manifest stage to done
     manifest.stages.pages = "done";
+    updatePagesProgress(manifest, pageCount, pageCount, "ページ画像の準備が完了しました。");
     await writeManifest(s3Bucket, mKey, manifest);
 
     return {
@@ -231,9 +373,19 @@ async function handlePages(event: PagesEvent): Promise<PagesResult> {
     };
   } catch (error: unknown) {
     if (browser) {
-      try { await browser.close(); } catch { /* ignore */ }
+      try {
+        await browser.close();
+      } catch {
+        /* ignore */
+      }
     }
     manifest.stages.pages = "failed";
+    updatePagesProgress(
+      manifest,
+      manifest.progress?.currentPage ?? 0,
+      manifest.pages.length,
+      "ページ画像の準備に失敗しました。",
+    );
     await writeManifest(s3Bucket, mKey, manifest);
 
     const message = error instanceof Error ? error.message : String(error);
@@ -315,6 +467,21 @@ function resolveSourceKey(manifest: Manifest, keyParams: S3KeyParams, _s3Prefix:
 
 // --- S3 helpers ---
 
+function updatePagesProgress(
+  manifest: Manifest,
+  currentPage: number,
+  totalPages: number,
+  message: string,
+): void {
+  manifest.progress = {
+    stage: "pages",
+    currentPage,
+    totalPages: Math.max(1, totalPages),
+    message,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 async function readManifest(bucket: string, key: string): Promise<Manifest> {
   const response = await s3Client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
   const body = await response.Body!.transformToString();
@@ -322,12 +489,14 @@ async function readManifest(bucket: string, key: string): Promise<Manifest> {
 }
 
 async function writeManifest(bucket: string, key: string, manifest: Manifest): Promise<void> {
-  await s3Client.send(new PutObjectCommand({
-    Bucket: bucket,
-    Key: key,
-    Body: JSON.stringify(manifest, null, 2),
-    ContentType: "application/json",
-  }));
+  await s3Client.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: JSON.stringify(manifest, null, 2),
+      ContentType: "application/json",
+    }),
+  );
 }
 
 async function downloadObject(bucket: string, key: string): Promise<Buffer> {
@@ -336,11 +505,18 @@ async function downloadObject(bucket: string, key: string): Promise<Buffer> {
   return Buffer.from(bytes);
 }
 
-async function uploadObject(bucket: string, key: string, body: Buffer, contentType: string): Promise<void> {
-  await s3Client.send(new PutObjectCommand({
-    Bucket: bucket,
-    Key: key,
-    Body: body,
-    ContentType: contentType,
-  }));
+async function uploadObject(
+  bucket: string,
+  key: string,
+  body: Buffer,
+  contentType: string,
+): Promise<void> {
+  await s3Client.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+    }),
+  );
 }

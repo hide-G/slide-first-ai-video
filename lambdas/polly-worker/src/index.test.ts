@@ -24,8 +24,12 @@ vi.mock("@aws-sdk/client-s3", () => {
 
 import type { Manifest } from "@slide-first/shared-types";
 
-const { __mockSend: mockS3Send } = await import("@aws-sdk/client-s3") as unknown as { __mockSend: ReturnType<typeof vi.fn> };
-const { __mockSend: mockPollySend } = await import("@aws-sdk/client-polly") as unknown as { __mockSend: ReturnType<typeof vi.fn> };
+const { __mockSend: mockS3Send } = (await import("@aws-sdk/client-s3")) as unknown as {
+  __mockSend: ReturnType<typeof vi.fn>;
+};
+const { __mockSend: mockPollySend } = (await import("@aws-sdk/client-polly")) as unknown as {
+  __mockSend: ReturnType<typeof vi.fn>;
+};
 
 const sampleManifest: Manifest = {
   schemaVersion: 1,
@@ -47,12 +51,24 @@ const sampleManifest: Manifest = {
     verticalLayout: null,
     padColor: null,
   },
-  lexicon: [
-    { written: "AWS", reading: "エーダブリューエス", method: "sub" },
-  ],
+  lexicon: [{ written: "AWS", reading: "エーダブリューエス", method: "sub" }],
   pages: [
-    { pageNumber: 1, imageKey: "pages/page-001.png", script: { mode: "plain", text: "AWSについて" }, audioKey: "audio/page-001.wav", audioDurationSec: 0, frameAlignedDurationMs: 0 },
-    { pageNumber: 2, imageKey: "pages/page-002.png", script: { mode: "plain", text: "まとめ" }, audioKey: "audio/page-002.wav", audioDurationSec: 0, frameAlignedDurationMs: 0 },
+    {
+      pageNumber: 1,
+      imageKey: "pages/page-001.png",
+      script: { mode: "plain", text: "AWSについて" },
+      audioKey: "audio/page-001.wav",
+      audioDurationSec: 0,
+      frameAlignedDurationMs: 0,
+    },
+    {
+      pageNumber: 2,
+      imageKey: "pages/page-002.png",
+      script: { mode: "plain", text: "まとめ" },
+      audioKey: "audio/page-002.wav",
+      audioDurationSec: 0,
+      frameAlignedDurationMs: 0,
+    },
   ],
   stages: { pages: "done", audio: "pending", captions: "pending", video: "pending" },
 };
@@ -82,7 +98,13 @@ describe("Stage 2: Audio handler", () => {
 
   it("calls Polly SynthesizeSpeech with pcm format", async () => {
     const { handler } = await import("./index.js");
-    const result = await handler({ s3Bucket: "test-bucket", s3Prefix: "users/user-1/projects/proj-1/", projectId: "proj-1", userId: "user-1", renderId: "render-1" });
+    const result = await handler({
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
+      renderId: "render-1",
+    });
 
     expect(result.success).toBe(true);
     expect(mockPollySend).toHaveBeenCalledTimes(2); // 2 pages
@@ -101,7 +123,13 @@ describe("Stage 2: Audio handler", () => {
 
   it("applies lexicon substitutions", async () => {
     const { handler } = await import("./index.js");
-    await handler({ s3Bucket: "test-bucket", s3Prefix: "users/user-1/projects/proj-1/", projectId: "proj-1", userId: "user-1", renderId: "render-1" });
+    await handler({
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
+      renderId: "render-1",
+    });
 
     const firstCall = mockPollySend.mock.calls[0][0];
     // AWS should be replaced with sub alias
@@ -109,48 +137,87 @@ describe("Stage 2: Audio handler", () => {
     expect(firstCall.input.Text).toContain("エーダブリューエス");
   });
 
-  it("calculates audioDurationSec from PCM byte length", async () => {
+  it("ページ単位の音声進捗と音声長をmanifestへ保存する", async () => {
     // 48000 bytes / (2 * 24000) = 1.0 second
     const { handler } = await import("./index.js");
-    await handler({ s3Bucket: "test-bucket", s3Prefix: "users/user-1/projects/proj-1/", projectId: "proj-1", userId: "user-1", renderId: "render-1" });
+    await handler({
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
+      renderId: "render-1",
+    });
 
-    // Check manifest written to S3 contains correct duration
     const putCalls = mockS3Send.mock.calls.filter(
       (call: unknown[]) => (call[0] as { type: string }).type === "put",
     );
     const manifestPuts = putCalls.filter(
-      (call: unknown[]) => (call[0] as { input: { ContentType?: string } }).input.ContentType === "application/json",
+      (call: unknown[]) =>
+        (call[0] as { input: { ContentType?: string } }).input.ContentType === "application/json",
     );
-    const lastManifest = JSON.parse((manifestPuts[manifestPuts.length - 1][0] as { input: { Body: string } }).input.Body);
-    // Each page should have audioDurationSec = 1.0
+    const manifests = manifestPuts.map((call: unknown[]) =>
+      JSON.parse((call[0] as { input: { Body: string } }).input.Body),
+    );
+    const lastManifest = manifests[manifests.length - 1];
+
+    expect(manifests).toHaveLength(4);
+    expect(manifests[0]).toMatchObject({
+      stages: { audio: "running" },
+      progress: { stage: "audio", currentPage: 0, totalPages: 2 },
+    });
+    expect(manifests.map((manifest) => manifest.progress.currentPage)).toEqual([0, 1, 2, 2]);
+    expect(lastManifest.stages.audio).toBe("done");
+    expect(lastManifest.progress).toMatchObject({
+      stage: "audio",
+      currentPage: 2,
+      totalPages: 2,
+      message: "ナレーション音声の生成が完了しました。",
+    });
+    // 各ページのaudioDurationSecは1.0秒になる。
     expect(lastManifest.pages[0].audioDurationSec).toBe(1.0);
     expect(lastManifest.pages[1].audioDurationSec).toBe(1.0);
   });
 
   it("computes frameAlignedDurationMs", async () => {
     const { handler } = await import("./index.js");
-    await handler({ s3Bucket: "test-bucket", s3Prefix: "users/user-1/projects/proj-1/", projectId: "proj-1", userId: "user-1", renderId: "render-1" });
+    await handler({
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
+      renderId: "render-1",
+    });
 
     const putCalls = mockS3Send.mock.calls.filter(
       (call: unknown[]) => (call[0] as { type: string }).type === "put",
     );
     const manifestPuts = putCalls.filter(
-      (call: unknown[]) => (call[0] as { input: { ContentType?: string } }).input.ContentType === "application/json",
+      (call: unknown[]) =>
+        (call[0] as { input: { ContentType?: string } }).input.ContentType === "application/json",
     );
-    const lastManifest = JSON.parse((manifestPuts[manifestPuts.length - 1][0] as { input: { Body: string } }).input.Body);
+    const lastManifest = JSON.parse(
+      (manifestPuts[manifestPuts.length - 1][0] as { input: { Body: string } }).input.Body,
+    );
     // audioDurationSec = 1.0 -> 1000ms, at 30fps frameMs=33.333, ceil(1000/33.333)=30 frames, 30*33.333=1000ms rounded=1000
     expect(lastManifest.pages[0].frameAlignedDurationMs).toBe(1000);
   });
 
   it("uploads WAV with correct content type", async () => {
     const { handler } = await import("./index.js");
-    await handler({ s3Bucket: "test-bucket", s3Prefix: "users/user-1/projects/proj-1/", projectId: "proj-1", userId: "user-1", renderId: "render-1" });
+    await handler({
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
+      renderId: "render-1",
+    });
 
     const putCalls = mockS3Send.mock.calls.filter(
       (call: unknown[]) => (call[0] as { type: string }).type === "put",
     );
     const wavPut = putCalls.find(
-      (call: unknown[]) => (call[0] as { input: { ContentType?: string } }).input.ContentType === "audio/wav",
+      (call: unknown[]) =>
+        (call[0] as { input: { ContentType?: string } }).input.ContentType === "audio/wav",
     );
     expect(wavPut).toBeDefined();
     // WAV file should start with RIFF header (44 bytes header + PCM data)
@@ -161,7 +228,13 @@ describe("Stage 2: Audio handler", () => {
 
   it("records total RequestCharacters", async () => {
     const { handler } = await import("./index.js");
-    const result = await handler({ s3Bucket: "test-bucket", s3Prefix: "users/user-1/projects/proj-1/", projectId: "proj-1", userId: "user-1", renderId: "render-1" });
+    const result = await handler({
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
+      renderId: "render-1",
+    });
 
     expect(result.totalCharacters).toBe(84); // 42 * 2 pages
   });
@@ -170,7 +243,13 @@ describe("Stage 2: Audio handler", () => {
     mockPollySend.mockRejectedValue(new Error("Polly throttled"));
 
     const { handler } = await import("./index.js");
-    const result = await handler({ s3Bucket: "test-bucket", s3Prefix: "users/user-1/projects/proj-1/", projectId: "proj-1", userId: "user-1", renderId: "render-1" });
+    const result = await handler({
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
+      renderId: "render-1",
+    });
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("Polly throttled");
@@ -182,6 +261,12 @@ describe("Stage 2: Audio handler", () => {
     const lastPut = putCalls[putCalls.length - 1][0] as { input: { Body: string } };
     const finalManifest = JSON.parse(lastPut.input.Body);
     expect(finalManifest.stages.audio).toBe("failed");
+    expect(finalManifest.progress).toMatchObject({
+      stage: "audio",
+      currentPage: 0,
+      totalPages: 2,
+      message: "ナレーション音声の生成に失敗しました。",
+    });
   });
 
   it("XML-escapes plain text before SSML wrapping", async () => {
@@ -190,7 +275,14 @@ describe("Stage 2: Audio handler", () => {
       ...sampleManifest,
       lexicon: [],
       pages: [
-        { pageNumber: 1, imageKey: "pages/page-001.png", script: { mode: "plain" as const, text: "A & B < C" }, audioKey: "audio/page-001.wav", audioDurationSec: 0, frameAlignedDurationMs: 0 },
+        {
+          pageNumber: 1,
+          imageKey: "pages/page-001.png",
+          script: { mode: "plain" as const, text: "A & B < C" },
+          audioKey: "audio/page-001.wav",
+          audioDurationSec: 0,
+          frameAlignedDurationMs: 0,
+        },
       ],
       source: { ...sampleManifest.source, pageCount: 1 },
     };
@@ -207,7 +299,13 @@ describe("Stage 2: Audio handler", () => {
     });
 
     const { handler } = await import("./index.js");
-    await handler({ s3Bucket: "test-bucket", s3Prefix: "users/user-1/projects/proj-1/", projectId: "proj-1", userId: "user-1", renderId: "render-1" });
+    await handler({
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
+      renderId: "render-1",
+    });
 
     const firstCall = mockPollySend.mock.calls[0][0];
     // Should contain escaped XML entities, not raw & or <

@@ -6,10 +6,25 @@
 import { PutCommand, GetCommand, UpdateCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { docClient, TABLE_NAME } from "./client.js";
 
+export interface LatestRenderSummary {
+  renderId: string;
+  status: string;
+  startedAt: string;
+  updatedAt: string;
+  currentStage?: string;
+  currentPage?: number;
+  totalPages?: number;
+  progressMessage?: string;
+  progressUpdatedAt?: string;
+  completedAt?: string;
+  error?: string;
+}
+
 export interface ProjectRecord {
   projectId: string;
   userId: string;
   title: string;
+  kind?: "slide" | "video";
   contentLanguage?: string;
   status: string;
   outline?: unknown;
@@ -18,6 +33,7 @@ export interface ProjectRecord {
   narration?: unknown;
   voice?: unknown;
   lexicon?: unknown;
+  latestRender?: LatestRenderSummary;
   createdAt: string;
   updatedAt: string;
 }
@@ -33,7 +49,7 @@ export async function createProject(project: ProjectRecord): Promise<void> {
         PK: `USER#${project.userId}`,
         SK: `PROJECT#${project.projectId}`,
         GSI1PK: `PROJECT#${project.projectId}`,
-        GSI1SK: `META`,
+        GSI1SK: "META",
         ...project,
       },
       ConditionExpression: "attribute_not_exists(PK) AND attribute_not_exists(SK)",
@@ -45,9 +61,7 @@ export async function createProject(project: ProjectRecord): Promise<void> {
  * Get a project by ID (query GSI1 by projectId).
  * Used when the caller does not have the userId context.
  */
-export async function getProject(
-  projectId: string,
-): Promise<ProjectRecord | null> {
+export async function getProject(projectId: string): Promise<ProjectRecord | null> {
   const result = await docClient.send(
     new QueryCommand({
       TableName: TABLE_NAME,

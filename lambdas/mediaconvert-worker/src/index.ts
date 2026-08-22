@@ -1,12 +1,8 @@
 /**
- * Stage 4: Video - MediaConvert job submission Lambda handler.
+ * 工程4: Video - MediaConvertジョブを送信するLambdaハンドラー。
  *
- * Reads manifest from S3, builds a MediaConvert job JSON matching
- * the verified template (design doc section 2.1), submits the job,
- * polls for completion, and updates manifest.stages.video.
- *
- * The output duration is read from GetJob response:
- *   Job.OutputGroupDetails[0].OutputDetails[0].DurationInMs
+ * manifest.outputを出力サイズとfpsの唯一の正本として使い、必要に応じて
+ * captions/captions.srtを同じMP4出力へ焼き込む。
  */
 
 import {
@@ -15,13 +11,9 @@ import {
   GetJobCommand,
   DescribeEndpointsCommand,
 } from "@aws-sdk/client-mediaconvert";
-import {
-  S3Client,
-  GetObjectCommand,
-  PutObjectCommand,
-} from "@aws-sdk/client-s3";
+import { S3Client, GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import type { Manifest } from "@slide-first/shared-types";
-import { pageImageKey, audioKey } from "@slide-first/shared-types";
+import { pageImageKey, audioKey, captionsSrtKey } from "@slide-first/shared-types";
 import { buildMediaConvertJob } from "./job-builder.js";
 
 const MEDIACONVERT_ROLE_ARN = process.env.MEDIACONVERT_ROLE_ARN ?? "";
@@ -30,11 +22,7 @@ const REGION = process.env.AWS_REGION ?? "ap-northeast-1";
 
 const s3Client = new S3Client({});
 
-/**
- * Resolves the account-specific MediaConvert endpoint.
- * Uses MEDIACONVERT_ENDPOINT env var if set, otherwise calls DescribeEndpoints.
- * The result is cached for the lifetime of the Lambda execution environment.
- */
+/** アカウント固有のMediaConvertエンドポイントをLambda環境内で再利用する。 */
 let cachedEndpoint: string | undefined;
 async function getMediaConvertEndpoint(): Promise<string> {
   if (cachedEndpoint) return cachedEndpoint;
@@ -45,43 +33,30 @@ async function getMediaConvertEndpoint(): Promise<string> {
     return cachedEndpoint;
   }
 
-  // Call DescribeEndpoints to get the account-specific endpoint
   const client = new MediaConvertClient({ region: REGION });
-  const response = await client.send(
-    new DescribeEndpointsCommand({ MaxResults: 1 }),
-  );
+  const response = await client.send(new DescribeEndpointsCommand({ MaxResults: 1 }));
   const endpoint = response.Endpoints?.[0]?.Url;
   if (!endpoint) {
-    throw new Error(
-      "Failed to resolve MediaConvert endpoint via DescribeEndpoints",
-    );
+    throw new Error("MediaConvertのDescribeEndpointsからエンドポイントを取得できませんでした。");
   }
   cachedEndpoint = endpoint;
   return cachedEndpoint;
 }
 
-/** @internal Reset the cached endpoint (for testing only) */
+/** @internal テスト用にエンドポイントキャッシュを初期化する。 */
 export function _resetEndpointCache(): void {
   cachedEndpoint = undefined;
 }
 
-/** Polling interval in milliseconds */
 const POLL_INTERVAL_MS = 10_000;
-/** Maximum polling attempts (10s * 85 = 850s, within Lambda 900s timeout) */
 const MAX_POLL_ATTEMPTS = 85;
 
 export interface VideoEvent {
-  /** S3 bucket name (from state machine payload) */
   s3Bucket: string;
-  /** S3 prefix e.g. "users/{userId}/projects/{projectId}/" */
   s3Prefix: string;
-  /** Project ID */
   projectId: string;
-  /** User ID */
   userId: string;
-  /** Render ID */
   renderId: string;
-  /** Stage name */
   stage?: string;
 }
 
@@ -91,34 +66,27 @@ export interface VideoResult {
   error?: string;
 }
 
-/**
- * Lambda handler for Stage 4: Video.
- */
+/** 工程4: VideoのLambdaハンドラー。 */
 export const handler = async (event: VideoEvent): Promise<VideoResult> => {
   const bucket = event.s3Bucket || BUCKET_NAME;
   const manifestKey = `${event.s3Prefix}manifest.json`;
-
-  // 1. Read manifest
   const manifest = await readManifest(bucket, manifestKey);
 
   try {
-    // 2. Resolve MediaConvert endpoint (cached after first call)
     const endpoint = await getMediaConvertEndpoint();
     const mediaConvertClient = new MediaConvertClient({
       endpoint,
       region: REGION,
     });
 
-    // 3. Update stage to running
     manifest.stages.video = "running";
+    updateVideoProgress(manifest, 0, manifest.pages.length, "動画エンコードを開始しています。");
     await writeManifest(bucket, manifestKey, manifest);
 
-    // 4. Build MediaConvert job
     const keyParams = {
       userId: manifest.userId,
       projectId: manifest.projectId,
     };
-
     const pages = manifest.pages.map((page) => ({
       pageNumber: page.pageNumber,
       frameAlignedDurationMs: page.frameAlignedDurationMs,
@@ -127,63 +95,70 @@ export const handler = async (event: VideoEvent): Promise<VideoResult> => {
     }));
 
     const outputDestination = `s3://${bucket}/users/${manifest.userId}/projects/${manifest.projectId}/output/${event.renderId}/`;
+    const captionsSrtS3Uri =
+      manifest.output.captions === "burn"
+        ? `s3://${bucket}/${captionsSrtKey(keyParams)}`
+        : undefined;
 
     const jobSettings = buildMediaConvertJob({
       roleArn: MEDIACONVERT_ROLE_ARN,
       pages,
       outputDestination,
+      output: manifest.output,
+      captionsSrtS3Uri,
+      captionLanguageCode: manifest.contentLanguage,
     });
 
-    // 5. Submit job
     const createResponse = await mediaConvertClient.send(
       new CreateJobCommand(jobSettings as unknown as Record<string, unknown>),
     );
 
     const jobId = createResponse.Job?.Id;
     if (!jobId) {
-      throw new Error("MediaConvert CreateJob did not return a job ID");
+      throw new Error("MediaConvertのCreateJobがジョブIDを返しませんでした。");
     }
 
-    // 6. Poll for completion
+    updateVideoProgress(
+      manifest,
+      manifest.pages.length,
+      manifest.pages.length,
+      "MediaConvertで動画をエンコードしています。",
+    );
+    await writeManifest(bucket, manifestKey, manifest);
+
     let outputDurationMs = 0;
     let jobCompleted = false;
     for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
       await sleep(POLL_INTERVAL_MS);
-
-      const getResponse = await mediaConvertClient.send(
-        new GetJobCommand({ Id: jobId }),
-      );
-
+      const getResponse = await mediaConvertClient.send(new GetJobCommand({ Id: jobId }));
       const status = getResponse.Job?.Status;
 
       if (status === "COMPLETE") {
         outputDurationMs =
-          getResponse.Job?.OutputGroupDetails?.[0]?.OutputDetails?.[0]
-            ?.DurationInMs ?? 0;
+          getResponse.Job?.OutputGroupDetails?.[0]?.OutputDetails?.[0]?.DurationInMs ?? 0;
         jobCompleted = true;
         break;
       }
 
       if (status === "ERROR" || status === "CANCELED") {
-        const errorMessage =
-          getResponse.Job?.ErrorMessage ?? `Job ${status}`;
-        throw new Error(`MediaConvert job failed: ${errorMessage}`);
+        const errorMessage = getResponse.Job?.ErrorMessage ?? `Job ${status}`;
+        throw new Error(`MediaConvertジョブに失敗しました: ${errorMessage}`);
       }
-
-      // SUBMITTED or PROGRESSING - continue polling
     }
 
-    // Fail if polling exhausted without reaching terminal status
     if (!jobCompleted) {
       throw new Error(
-        `MediaConvert job ${jobId} did not reach terminal status after ${MAX_POLL_ATTEMPTS} polling attempts`,
+        `MediaConvertジョブ ${jobId} は${MAX_POLL_ATTEMPTS}回の確認後も完了しませんでした。`,
       );
     }
 
-    // 7. Update stage to done and add cost entry
     manifest.stages.video = "done";
-
-    // Add MediaConvert cost entry to manifest
+    updateVideoProgress(
+      manifest,
+      manifest.pages.length,
+      manifest.pages.length,
+      "動画生成が完了しました。",
+    );
     const outputDurationSec = outputDurationMs / 1000;
     if (!manifest.cost) {
       manifest.cost = {
@@ -199,16 +174,21 @@ export const handler = async (event: VideoEvent): Promise<VideoResult> => {
       service: "mediaconvert",
       usage: {
         outputDurationSec,
-        outputResolution: "1920x1080",
+        outputResolution: `${manifest.output.width}x${manifest.output.height}`,
       },
       estimatedCost: 0.0,
     });
 
     await writeManifest(bucket, manifestKey, manifest);
-
     return { success: true, outputDurationMs };
   } catch (error: unknown) {
     manifest.stages.video = "failed";
+    updateVideoProgress(
+      manifest,
+      manifest.progress?.currentPage ?? 0,
+      manifest.pages.length,
+      "動画生成に失敗しました。",
+    );
     await writeManifest(bucket, manifestKey, manifest);
 
     const message = error instanceof Error ? error.message : String(error);
@@ -216,23 +196,32 @@ export const handler = async (event: VideoEvent): Promise<VideoResult> => {
   }
 };
 
+function updateVideoProgress(
+  manifest: Manifest,
+  currentPage: number,
+  totalPages: number,
+  message: string,
+): void {
+  manifest.progress = {
+    stage: "video",
+    currentPage,
+    totalPages: Math.max(1, totalPages),
+    message,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function readManifest(bucket: string, key: string): Promise<Manifest> {
-  const response = await s3Client.send(
-    new GetObjectCommand({ Bucket: bucket, Key: key }),
-  );
+  const response = await s3Client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
   const body = await response.Body!.transformToString();
   return JSON.parse(body) as Manifest;
 }
 
-async function writeManifest(
-  bucket: string,
-  key: string,
-  manifest: Manifest,
-): Promise<void> {
+async function writeManifest(bucket: string, key: string, manifest: Manifest): Promise<void> {
   await s3Client.send(
     new PutObjectCommand({
       Bucket: bucket,

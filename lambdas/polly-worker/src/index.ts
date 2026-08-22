@@ -20,10 +20,20 @@ import {
   type Engine,
   type LanguageCode,
 } from "@aws-sdk/client-polly";
-import { S3Client, GetObjectCommand, PutObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
+import {
+  S3Client,
+  GetObjectCommand,
+  PutObjectCommand,
+  HeadObjectCommand,
+} from "@aws-sdk/client-s3";
 import type { Manifest, LexiconEntry } from "@slide-first/shared-types";
 import { audioKey } from "@slide-first/shared-types";
-import { computeScriptHash, calculatePcmDurationSec, createWavHeader, alignToFrameFromSec } from "@slide-first/core";
+import {
+  computeScriptHash,
+  calculatePcmDurationSec,
+  createWavHeader,
+  alignToFrameFromSec,
+} from "@slide-first/core";
 
 const pollyClient = new PollyClient({});
 const s3Client = new S3Client({});
@@ -63,12 +73,56 @@ export const handler = async (event: AudioEvent): Promise<AudioResult> => {
   try {
     // 2. Update stage to running
     manifest.stages.audio = "running";
+    updateAudioProgress(
+      manifest,
+      0,
+      manifest.pages.length,
+      "ページごとのナレーション音声を生成しています。",
+    );
     await writeManifest(bucket, manifestKey, manifest);
 
     const keyParams = { userId: manifest.userId, projectId: manifest.projectId };
+    const isSilentVideo = manifest.output.narrationMode === "none";
+    const configuredSilentPageDurationSec = manifest.output.silentPageDurationSec;
+    const silentPageDurationSec =
+      typeof configuredSilentPageDurationSec === "number" &&
+      Number.isInteger(configuredSilentPageDurationSec) &&
+      configuredSilentPageDurationSec >= 1 &&
+      configuredSilentPageDurationSec <= 30
+        ? configuredSilentPageDurationSec
+        : 5;
 
-    // 3. Process each page
-    for (const page of manifest.pages) {
+    // 3. 各ページの音声を生成する。無音動画ではPollyを呼ばず、同じWAV契約を満たす無音PCMを使う。
+    for (const [pageIndex, page] of manifest.pages.entries()) {
+      const s3Key = audioKey(keyParams, page.pageNumber);
+      const sampleRate = parseInt(manifest.voice.sampleRate, 10);
+
+      if (isSilentVideo) {
+        const pcmBuffer = Buffer.alloc(sampleRate * silentPageDurationSec * 2);
+        const audioDurationSec = calculatePcmDurationSec(pcmBuffer.length, sampleRate, 16, 1);
+        const wavHeader = createWavHeader(pcmBuffer.length, sampleRate, 16, 1);
+
+        await s3Client.send(
+          new PutObjectCommand({
+            Bucket: bucket,
+            Key: s3Key,
+            Body: Buffer.concat([wavHeader, pcmBuffer]),
+            ContentType: "audio/wav",
+          }),
+        );
+
+        page.audioDurationSec = audioDurationSec;
+        page.frameAlignedDurationMs = alignToFrameFromSec(audioDurationSec, manifest.output.fps);
+        updateAudioProgress(
+          manifest,
+          pageIndex + 1,
+          manifest.pages.length,
+          `ページ ${pageIndex + 1}/${manifest.pages.length} の無音トラックを準備しました。`,
+        );
+        await writeManifest(bucket, manifestKey, manifest);
+        continue;
+      }
+
       // For plain mode: XML-escape the text first, then apply lexicon
       // For ssml mode: text is already valid SSML, apply lexicon directly
       let processedText: string;
@@ -80,9 +134,8 @@ export const handler = async (event: AudioEvent): Promise<AudioResult> => {
       }
       const ssml = buildSpeakTag(processedText, page.script.mode);
 
-      // Script hash check for idempotency
+      // 音声オブジェクトに原稿ハッシュを記録する。
       const currentHash = computeScriptHash(page.script.text);
-      const s3Key = audioKey(keyParams, page.pageNumber);
 
       // Check if audio already exists with same hash
       const existingAudio = await objectExists(bucket, s3Key);
@@ -113,7 +166,6 @@ export const handler = async (event: AudioEvent): Promise<AudioResult> => {
 
       // Calculate audioDurationSec from PCM byte length
       // Polly PCM is 16-bit signed mono at the configured sample rate
-      const sampleRate = parseInt(manifest.voice.sampleRate, 10);
       const audioDurationSec = calculatePcmDurationSec(pcmBuffer.length, sampleRate, 16, 1);
 
       // Prepend WAV header
@@ -127,6 +179,7 @@ export const handler = async (event: AudioEvent): Promise<AudioResult> => {
           Key: s3Key,
           Body: wavBuffer,
           ContentType: "audio/wav",
+          Metadata: { scriptHash: currentHash },
         }),
       );
 
@@ -137,15 +190,34 @@ export const handler = async (event: AudioEvent): Promise<AudioResult> => {
       // Update manifest page entry
       page.audioDurationSec = audioDurationSec;
       page.frameAlignedDurationMs = frameAlignedDurationMs;
+      updateAudioProgress(
+        manifest,
+        pageIndex + 1,
+        manifest.pages.length,
+        `ページ ${pageIndex + 1}/${manifest.pages.length} のナレーション音声を生成しました。`,
+      );
+      await writeManifest(bucket, manifestKey, manifest);
     }
 
     // 4. Update stage to done
     manifest.stages.audio = "done";
+    updateAudioProgress(
+      manifest,
+      manifest.pages.length,
+      manifest.pages.length,
+      "ナレーション音声の生成が完了しました。",
+    );
     await writeManifest(bucket, manifestKey, manifest);
 
     return { success: true, totalCharacters };
   } catch (error: unknown) {
     manifest.stages.audio = "failed";
+    updateAudioProgress(
+      manifest,
+      manifest.progress?.currentPage ?? 0,
+      manifest.pages.length,
+      "ナレーション音声の生成に失敗しました。",
+    );
     await writeManifest(bucket, manifestKey, manifest);
 
     const message = error instanceof Error ? error.message : String(error);
@@ -217,10 +289,23 @@ async function objectExists(bucket: string, key: string): Promise<boolean> {
   }
 }
 
+function updateAudioProgress(
+  manifest: Manifest,
+  currentPage: number,
+  totalPages: number,
+  message: string,
+): void {
+  manifest.progress = {
+    stage: "audio",
+    currentPage,
+    totalPages: Math.max(1, totalPages),
+    message,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 async function readManifest(bucket: string, key: string): Promise<Manifest> {
-  const response = await s3Client.send(
-    new GetObjectCommand({ Bucket: bucket, Key: key }),
-  );
+  const response = await s3Client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
   const body = await response.Body!.transformToString();
   return JSON.parse(body) as Manifest;
 }

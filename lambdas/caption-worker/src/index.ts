@@ -52,7 +52,22 @@ export const handler = async (event: CaptionsEvent): Promise<CaptionsResult> => 
   try {
     // 2. Update stage to running
     manifest.stages.captions = "running";
+    updateCaptionProgress(manifest, 0, manifest.pages.length, "字幕を生成しています。");
     await writeManifest(bucket, manifestKey, manifest);
+
+    // 無音動画と字幕なし設定ではSRTを作らない。MediaConvertは無音WAVだけを使う。
+    if (manifest.output.narrationMode === "none" || manifest.output.captions === "none") {
+      const total = totalDurationSec(manifest.pages);
+      manifest.stages.captions = "done";
+      updateCaptionProgress(
+        manifest,
+        manifest.pages.length,
+        manifest.pages.length,
+        "字幕なしの設定のため、SRTは生成しませんでした。",
+      );
+      await writeManifest(bucket, manifestKey, manifest);
+      return { success: true, subtitleCount: 0, totalDuration: total };
+    }
 
     // 3. Validate all audioDurationSec are measured
     for (const page of manifest.pages) {
@@ -67,7 +82,9 @@ export const handler = async (event: CaptionsEvent): Promise<CaptionsResult> => 
     const srtContent = generateSrt(manifest.pages);
 
     // 5. Validate subtitle count
-    const subtitleCount = srtContent.split(/\n\n/).filter((block) => block.trim().length > 0).length;
+    const subtitleCount = srtContent
+      .split(/\n\n/)
+      .filter((block) => block.trim().length > 0).length;
     const nonEmptyPages = manifest.pages.filter((p) => p.script.text.trim().length > 0).length;
     if (subtitleCount !== nonEmptyPages) {
       throw new Error(
@@ -92,11 +109,23 @@ export const handler = async (event: CaptionsEvent): Promise<CaptionsResult> => 
 
     // 8. Update stage to done
     manifest.stages.captions = "done";
+    updateCaptionProgress(
+      manifest,
+      manifest.pages.length,
+      manifest.pages.length,
+      `${subtitleCount}件の字幕を生成しました。`,
+    );
     await writeManifest(bucket, manifestKey, manifest);
 
     return { success: true, subtitleCount, totalDuration: total };
   } catch (error: unknown) {
     manifest.stages.captions = "failed";
+    updateCaptionProgress(
+      manifest,
+      manifest.progress?.currentPage ?? 0,
+      manifest.pages.length,
+      "字幕の生成に失敗しました。",
+    );
     await writeManifest(bucket, manifestKey, manifest);
 
     const message = error instanceof Error ? error.message : String(error);
@@ -104,10 +133,23 @@ export const handler = async (event: CaptionsEvent): Promise<CaptionsResult> => 
   }
 };
 
+function updateCaptionProgress(
+  manifest: Manifest,
+  currentPage: number,
+  totalPages: number,
+  message: string,
+): void {
+  manifest.progress = {
+    stage: "captions",
+    currentPage,
+    totalPages: Math.max(1, totalPages),
+    message,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 async function readManifest(bucket: string, key: string): Promise<Manifest> {
-  const response = await s3Client.send(
-    new GetObjectCommand({ Bucket: bucket, Key: key }),
-  );
+  const response = await s3Client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
   const body = await response.Body!.transformToString();
   return JSON.parse(body) as Manifest;
 }

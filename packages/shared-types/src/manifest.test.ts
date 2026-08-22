@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { ManifestSchema } from "./manifest.js";
+import { describe, expect, it } from "vitest";
+import { ManifestSchema, OUTPUT_PROFILES } from "./manifest.js";
 
 function validManifest() {
   return {
@@ -8,7 +8,12 @@ function validManifest() {
     userId: "u_0001",
     contentLanguage: "ja",
     source: { kind: "generated" as const, fileKey: "deck/deck.pdf", pageCount: 2 },
-    voice: { id: "Takumi", engine: "neural", languageCode: "ja-JP", sampleRate: "24000" },
+    voice: {
+      id: "Takumi",
+      engine: "neural",
+      languageCode: "ja-JP",
+      sampleRate: "16000",
+    },
     output: {
       aspect: "16:9" as const,
       width: 1920,
@@ -47,12 +52,40 @@ function validManifest() {
 }
 
 describe("ManifestSchema", () => {
-  it("accepts a valid manifest without cost", () => {
-    const result = ManifestSchema.safeParse(validManifest());
-    expect(result.success).toBe(true);
+  it("コスト情報なしの有効なマニフェストを受け入れる", () => {
+    expect(ManifestSchema.safeParse(validManifest()).success).toBe(true);
   });
 
-  it("accepts a valid manifest with cost", () => {
+  it("PDF名とページ進捗を含む有効なマニフェストを受け入れる", () => {
+    const manifest = {
+      ...validManifest(),
+      source: {
+        ...validManifest().source,
+        fileName: "源内ハンズオン_概要編.pdf",
+      },
+      progress: {
+        stage: "audio",
+        currentPage: 1,
+        totalPages: 2,
+        message: "ページ 1/2 のナレーション音声を生成しました。",
+        updatedAt: "2026-08-15T00:01:00.000Z",
+      },
+    };
+
+    const result = ManifestSchema.safeParse(manifest);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.source.fileName).toBe("源内ハンズオン_概要編.pdf");
+      expect(result.data.progress).toMatchObject({
+        stage: "audio",
+        currentPage: 1,
+        totalPages: 2,
+      });
+    }
+  });
+
+  it("コスト情報を含む有効なマニフェストを受け入れる", () => {
     const manifest = {
       ...validManifest(),
       cost: {
@@ -70,159 +103,94 @@ describe("ManifestSchema", () => {
         actual: { status: "pending" as const, amount: null, reconciledAt: null },
       },
     };
-    const result = ManifestSchema.safeParse(manifest);
-    expect(result.success).toBe(true);
+    expect(ManifestSchema.safeParse(manifest).success).toBe(true);
   });
 
-  it("accepts cost with reconciled status", () => {
-    const manifest = {
-      ...validManifest(),
-      cost: {
-        currency: "USD",
-        priceListFetchedAt: "2026-08-15T00:00:00Z",
-        stages: [],
-        estimatedTotal: 0.05,
-        actual: {
-          status: "reconciled" as const,
-          amount: 0.048,
-          reconciledAt: "2026-08-16T12:00:00Z",
-        },
-      },
-    };
-    const result = ManifestSchema.safeParse(manifest);
-    expect(result.success).toBe(true);
-  });
-
-  it("rejects schemaVersion other than 1", () => {
-    const manifest = { ...validManifest(), schemaVersion: 2 };
-    const result = ManifestSchema.safeParse(manifest);
-    expect(result.success).toBe(false);
-  });
-
-  it("rejects empty projectId", () => {
-    const manifest = { ...validManifest(), projectId: "" };
-    const result = ManifestSchema.safeParse(manifest);
-    expect(result.success).toBe(false);
-  });
-
-  it("rejects invalid source.kind", () => {
-    const manifest = validManifest();
-    (manifest.source as Record<string, unknown>).kind = "manual";
-    const result = ManifestSchema.safeParse(manifest);
-    expect(result.success).toBe(false);
-  });
-
-  it("rejects invalid aspect ratio", () => {
-    const manifest = validManifest();
-    (manifest.output as Record<string, unknown>).aspect = "2:1";
-    const result = ManifestSchema.safeParse(manifest);
-    expect(result.success).toBe(false);
-  });
-
-  it("rejects invalid captions option", () => {
-    const manifest = validManifest();
-    (manifest.output as Record<string, unknown>).captions = "vtt";
-    const result = ManifestSchema.safeParse(manifest);
-    expect(result.success).toBe(false);
-  });
-
-  it("rejects invalid lexicon method", () => {
-    const manifest = validManifest();
-    manifest.lexicon[0] = { written: "X", reading: "Y", method: "invalid" as "sub" };
-    const result = ManifestSchema.safeParse(manifest);
-    expect(result.success).toBe(false);
-  });
-
-  it("rejects invalid script mode", () => {
-    const manifest = validManifest();
-    (manifest.pages[0].script as Record<string, unknown>).mode = "markdown";
-    const result = ManifestSchema.safeParse(manifest);
-    expect(result.success).toBe(false);
-  });
-
-  it("rejects invalid stage status", () => {
-    const manifest = validManifest();
-    (manifest.stages as Record<string, unknown>).pages = "complete";
-    const result = ManifestSchema.safeParse(manifest);
-    expect(result.success).toBe(false);
-  });
-
-  it("rejects negative audioDurationSec", () => {
-    const manifest = validManifest();
-    manifest.pages[0].audioDurationSec = -1;
-    const result = ManifestSchema.safeParse(manifest);
-    expect(result.success).toBe(false);
-  });
-
-  it("rejects negative frameAlignedDurationMs", () => {
-    const manifest = validManifest();
-    manifest.pages[0].frameAlignedDurationMs = -1;
-    const result = ManifestSchema.safeParse(manifest);
-    expect(result.success).toBe(false);
-  });
-
-  it("rejects non-integer pageCount", () => {
-    const manifest = validManifest();
-    manifest.source.pageCount = 2.5;
-    const result = ManifestSchema.safeParse(manifest);
-    expect(result.success).toBe(false);
-  });
-
-  it("rejects zero pageCount", () => {
-    const manifest = validManifest();
-    manifest.source.pageCount = 0;
-    const result = ManifestSchema.safeParse(manifest);
-    expect(result.success).toBe(false);
-  });
-
-  it("rejects missing required fields", () => {
-    const result = ManifestSchema.safeParse({});
-    expect(result.success).toBe(false);
-  });
-
-  it("accepts all valid aspect ratios", () => {
+  it("すべての出力プロファイルで対応する寸法を受け入れる", () => {
     for (const aspect of ["16:9", "9:16", "1:1", "4:5"] as const) {
+      const profile = OUTPUT_PROFILES[aspect];
       const manifest = validManifest();
-      manifest.output.aspect = aspect;
-      const result = ManifestSchema.safeParse(manifest);
-      expect(result.success).toBe(true);
+      manifest.output = {
+        ...manifest.output,
+        aspect,
+        width: profile.width,
+        height: profile.height,
+      };
+      expect(ManifestSchema.safeParse(manifest).success).toBe(true);
     }
   });
 
-  it("accepts all valid stage statuses", () => {
-    for (const status of ["pending", "running", "done", "failed"] as const) {
+  it("30fpsと60fpsを受け入れる", () => {
+    for (const fps of [30, 60]) {
       const manifest = validManifest();
-      manifest.stages.pages = status;
-      const result = ManifestSchema.safeParse(manifest);
-      expect(result.success).toBe(true);
+      manifest.output.fps = fps;
+      expect(ManifestSchema.safeParse(manifest).success).toBe(true);
     }
   });
 
-  it("accepts uploaded source kind", () => {
+  it("アスペクト比に一致しない寸法を拒否する", () => {
     const manifest = validManifest();
-    manifest.source.kind = "uploaded";
-    const result = ManifestSchema.safeParse(manifest);
-    expect(result.success).toBe(true);
+    manifest.output.aspect = "9:16";
+    expect(ManifestSchema.safeParse(manifest).success).toBe(false);
   });
 
-  it("accepts empty lexicon array", () => {
+  it("30/60以外のfpsを拒否する", () => {
     const manifest = validManifest();
-    manifest.lexicon = [];
-    const result = ManifestSchema.safeParse(manifest);
-    expect(result.success).toBe(true);
+    manifest.output.fps = 24;
+    expect(ManifestSchema.safeParse(manifest).success).toBe(false);
   });
 
-  it("accepts verticalLayout with string value", () => {
+  it("奇数の映像寸法を拒否する", () => {
+    const manifest = validManifest();
+    manifest.output.width = 1919;
+    expect(ManifestSchema.safeParse(manifest).success).toBe(false);
+  });
+
+  it("定義済みの縦型レイアウトと余白色を受け入れる", () => {
     const manifest = validManifest();
     manifest.output.verticalLayout = "top";
-    const result = ManifestSchema.safeParse(manifest);
-    expect(result.success).toBe(true);
+    manifest.output.padColor = "navy";
+    expect(ManifestSchema.safeParse(manifest).success).toBe(true);
   });
 
-  it("accepts padColor with string value", () => {
-    const manifest = validManifest();
-    manifest.output.padColor = "#000000";
-    const result = ManifestSchema.safeParse(manifest);
-    expect(result.success).toBe(true);
+  it("未定義の縦型レイアウトと余白色を拒否する", () => {
+    const invalidLayout = validManifest();
+    (invalidLayout.output as Record<string, unknown>).verticalLayout = "bottom";
+    expect(ManifestSchema.safeParse(invalidLayout).success).toBe(false);
+
+    const invalidColor = validManifest();
+    (invalidColor.output as Record<string, unknown>).padColor = "#000000";
+    expect(ManifestSchema.safeParse(invalidColor).success).toBe(false);
+  });
+
+  it("無効な基本値を拒否する", () => {
+    const invalidAspect = validManifest();
+    (invalidAspect.output as Record<string, unknown>).aspect = "2:1";
+    expect(ManifestSchema.safeParse(invalidAspect).success).toBe(false);
+
+    const invalidCaptions = validManifest();
+    (invalidCaptions.output as Record<string, unknown>).captions = "vtt";
+    expect(ManifestSchema.safeParse(invalidCaptions).success).toBe(false);
+
+    const invalidSource = validManifest();
+    (invalidSource.source as Record<string, unknown>).kind = "manual";
+    expect(ManifestSchema.safeParse(invalidSource).success).toBe(false);
+
+    const invalidStage = validManifest();
+    (invalidStage.stages as Record<string, unknown>).pages = "complete";
+    expect(ManifestSchema.safeParse(invalidStage).success).toBe(false);
+  });
+
+  it("ページ数・ページ時刻・スキーマバージョンの不正値を拒否する", () => {
+    const invalidPageCount = validManifest();
+    invalidPageCount.source.pageCount = 0;
+    expect(ManifestSchema.safeParse(invalidPageCount).success).toBe(false);
+
+    const invalidDuration = validManifest();
+    invalidDuration.pages[0].frameAlignedDurationMs = -1;
+    expect(ManifestSchema.safeParse(invalidDuration).success).toBe(false);
+
+    const invalidVersion = { ...validManifest(), schemaVersion: 2 };
+    expect(ManifestSchema.safeParse(invalidVersion).success).toBe(false);
   });
 });

@@ -30,6 +30,15 @@ export class StorageConstruct extends Construct {
       bucketName: `${productSlug}-projects-${environment}-${cdk.Aws.ACCOUNT_ID}-${cdk.Aws.REGION}`,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,
+      // 署名付きURLでのブラウザ直接PUTに必要なCORS設定。アクセス権は署名付きURLで制限する。
+      cors: [
+        {
+          allowedHeaders: ["Content-Type"],
+          allowedMethods: [s3.HttpMethods.PUT],
+          allowedOrigins: ["*"],
+          maxAge: 3000,
+        },
+      ],
       removalPolicy: cdk.RemovalPolicy.RETAIN,
       lifecycleRules: [
         {

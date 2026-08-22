@@ -32,11 +32,33 @@ function makeManifest(overrides: Record<string, unknown> = {}) {
     contentLanguage: "ja-JP",
     source: { kind: "uploaded", fileKey: "input/source.pdf", pageCount: 2 },
     voice: { id: "Mizuki", engine: "neural", languageCode: "ja-JP", sampleRate: "16000" },
-    output: { aspect: "16:9", width: 1920, height: 1080, fps: 30, captions: "burn", verticalLayout: null, padColor: null },
+    output: {
+      aspect: "16:9",
+      width: 1920,
+      height: 1080,
+      fps: 30,
+      captions: "burn",
+      verticalLayout: null,
+      padColor: null,
+    },
     lexicon: [],
     pages: [
-      { pageNumber: 1, imageKey: "pages/page-001.png", script: { mode: "plain", text: "Hello" }, audioKey: "audio/page-001.wav", audioDurationSec: 2.5, frameAlignedDurationMs: 2534 },
-      { pageNumber: 2, imageKey: "pages/page-002.png", script: { mode: "plain", text: "World" }, audioKey: "audio/page-002.wav", audioDurationSec: 3.0, frameAlignedDurationMs: 3034 },
+      {
+        pageNumber: 1,
+        imageKey: "pages/page-001.png",
+        script: { mode: "plain", text: "Hello" },
+        audioKey: "audio/page-001.wav",
+        audioDurationSec: 2.5,
+        frameAlignedDurationMs: 2534,
+      },
+      {
+        pageNumber: 2,
+        imageKey: "pages/page-002.png",
+        script: { mode: "plain", text: "World" },
+        audioKey: "audio/page-002.wav",
+        audioDurationSec: 3.0,
+        frameAlignedDurationMs: 3034,
+      },
     ],
     stages: { pages: "done", audio: "done", captions: "done", video: "pending" },
     cost: {
@@ -106,9 +128,7 @@ describe("mediaconvert-worker handler", () => {
     mockMcSend.mockResolvedValueOnce({
       Job: {
         Status: "COMPLETE",
-        OutputGroupDetails: [
-          { OutputDetails: [{ DurationInMs: 5568 }] },
-        ],
+        OutputGroupDetails: [{ OutputDetails: [{ DurationInMs: 5568 }] }],
       },
     });
 
@@ -123,12 +143,36 @@ describe("mediaconvert-worker handler", () => {
     expect(result.success).toBe(true);
     expect(result.outputDurationMs).toBe(5568);
 
-    // Verify the final PutObject call wrote a manifest with cost entry
-    const putCalls = mockS3Send.mock.calls;
-    // The last S3 call should be the final manifest write
-    const lastPutCall = putCalls[putCalls.length - 1][0];
-    const writtenManifest = JSON.parse(lastPutCall.input.Body);
+    // 各進捗段階と最終manifestのコストを検証する。
+    const manifestPuts = mockS3Send.mock.calls.filter(
+      (call: unknown[]) =>
+        typeof (call[0] as { input?: { Body?: unknown } }).input?.Body === "string",
+    );
+    const manifests = manifestPuts.map((call: unknown[]) =>
+      JSON.parse((call[0] as { input: { Body: string } }).input.Body),
+    );
+    const writtenManifest = manifests[manifests.length - 1];
 
+    expect(manifests).toHaveLength(3);
+    expect(manifests[0]).toMatchObject({
+      stages: { video: "running" },
+      progress: { stage: "video", currentPage: 0, totalPages: 2 },
+    });
+    expect(manifests[1].progress).toMatchObject({
+      stage: "video",
+      currentPage: 2,
+      totalPages: 2,
+      message: "MediaConvertで動画をエンコードしています。",
+    });
+    expect(writtenManifest).toMatchObject({
+      stages: { video: "done" },
+      progress: {
+        stage: "video",
+        currentPage: 2,
+        totalPages: 2,
+        message: "動画生成が完了しました。",
+      },
+    });
     expect(writtenManifest.cost.stages).toHaveLength(2);
     expect(writtenManifest.cost.stages[1]).toEqual({
       stage: "video",
@@ -160,9 +204,7 @@ describe("mediaconvert-worker handler", () => {
     mockMcSend.mockResolvedValueOnce({
       Job: {
         Status: "COMPLETE",
-        OutputGroupDetails: [
-          { OutputDetails: [{ DurationInMs: 10000 }] },
-        ],
+        OutputGroupDetails: [{ OutputDetails: [{ DurationInMs: 10000 }] }],
       },
     });
 
@@ -205,9 +247,7 @@ describe("mediaconvert-worker handler", () => {
     mockMcSend.mockResolvedValueOnce({
       Job: {
         Status: "COMPLETE",
-        OutputGroupDetails: [
-          { OutputDetails: [{ DurationInMs: 3000 }] },
-        ],
+        OutputGroupDetails: [{ OutputDetails: [{ DurationInMs: 3000 }] }],
       },
     });
 
@@ -263,7 +303,7 @@ describe("mediaconvert-worker handler", () => {
     const result = await resultPromise;
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain("did not reach terminal status");
+    expect(result.error).toContain("MediaConvertジョブ");
     expect(result.error).toContain("job-stuck");
 
     // Verify that the manifest was written with "failed" stage
@@ -271,6 +311,12 @@ describe("mediaconvert-worker handler", () => {
     const lastPutCall = putCalls[putCalls.length - 1][0];
     const writtenManifest = JSON.parse(lastPutCall.input.Body);
     expect(writtenManifest.stages.video).toBe("failed");
+    expect(writtenManifest.progress).toMatchObject({
+      stage: "video",
+      currentPage: 2,
+      totalPages: 2,
+      message: "動画生成に失敗しました。",
+    });
   });
 
   it("resolves endpoint via DescribeEndpoints when env var is not set", async () => {
@@ -301,9 +347,7 @@ describe("mediaconvert-worker handler", () => {
     mockMcSend.mockResolvedValueOnce({
       Job: {
         Status: "COMPLETE",
-        OutputGroupDetails: [
-          { OutputDetails: [{ DurationInMs: 4000 }] },
-        ],
+        OutputGroupDetails: [{ OutputDetails: [{ DurationInMs: 4000 }] }],
       },
     });
 

@@ -1,12 +1,12 @@
-/**
- * Request validation middleware using Zod schemas.
- */
+/** リクエストボディをZodで検証するミドルウェア。 */
 
 import { z } from "zod";
+import { OutputSchema } from "@slide-first/shared-types";
 
 export const CreateProjectSchema = z.object({
   title: z.string().min(1).max(200),
   contentLanguage: z.string().min(1).max(10).optional(),
+  kind: z.enum(["slide", "video"]).optional(),
 });
 
 export const GenerateOutlineSchema = z.object({
@@ -43,23 +43,16 @@ export const SourceUploadUrlSchema = z.object({
 export const RegisterSourceSchema = z.object({
   kind: z.enum(["generated", "uploaded"]),
   fileKey: z.string().min(1),
-  pageCount: z.number().int().positive(),
+  /** 旧クライアントとの互換性のため任意。新規クライアントは常に送る。 */
+  fileName: z.string().min(1).max(255).optional(),
 });
 
-export const SaveOutputSchema = z.object({
-  aspect: z.enum(["16:9", "9:16", "1:1", "4:5"]),
-  width: z.number().int().positive(),
-  height: z.number().int().positive(),
-  fps: z.number().int().positive(),
-  captions: z.enum(["burn", "srt", "none"]),
-  verticalLayout: z.string().nullable().optional(),
-  padColor: z.string().nullable().optional(),
-});
+// APIとmanifestで同じ出力プロファイル制約を使う。
+export const SaveOutputSchema = OutputSchema;
 
 export const GenerateNarrationSchema = z.object({
-  voiceId: z.string().min(1).optional(),
-  engine: z.string().min(1).optional(),
-  languageCode: z.string().min(1).optional(),
+  pageNumber: z.number().int().positive(),
+  pageText: z.string().trim().min(1).max(12000),
 });
 
 export const SaveNarrationSchema = z.object({
@@ -104,10 +97,7 @@ export type GenerateNarrationInput = z.infer<typeof GenerateNarrationSchema>;
 export type SaveNarrationInput = z.infer<typeof SaveNarrationSchema>;
 export type StartRenderInput = z.infer<typeof StartRenderSchema>;
 
-/**
- * Validate a request body against a zod schema.
- * Returns the parsed data or throws an error with validation details.
- */
+/** 検証済みのリクエストボディを返す。 */
 export function validateBody<T>(schema: z.ZodType<T>, body: string | null): T {
   if (!body) {
     throw new ValidationError("Request body is required");
@@ -123,7 +113,7 @@ export function validateBody<T>(schema: z.ZodType<T>, body: string | null): T {
   const result = schema.safeParse(parsed);
   if (!result.success) {
     const messages = result.error.errors.map(
-      (e) => `${e.path.join(".")}: ${e.message}`,
+      (error) => `${error.path.join(".")}: ${error.message}`,
     );
     throw new ValidationError(`Validation failed: ${messages.join(", ")}`);
   }

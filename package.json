@@ -5,7 +5,7 @@
   "description": "Slide-first AI video generation application",
   "scripts": {
     "build": "pnpm -r run build",
-    "test": "pnpm -r run test",
+    "test": "pnpm --filter \"!@slide-first/infra\" -r run test && pnpm --filter @slide-first/infra run test",
     "lint": "pnpm -r run lint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

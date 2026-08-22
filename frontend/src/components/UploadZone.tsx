@@ -6,7 +6,7 @@ export interface UploadZoneProps {
   accept?: string;
 }
 
-export function UploadZone({ onFileSelect, accept = ".pdf,.pptx" }: UploadZoneProps) {
+export function UploadZone({ onFileSelect, accept = ".pdf" }: UploadZoneProps) {
   const { t } = useLanguage();
   const inputRef = useRef<HTMLInputElement>(null);
 

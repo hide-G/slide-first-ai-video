@@ -3,21 +3,31 @@
  *
  * パイプラインの各工程は manifest.json だけを正本として読む。
  * APIはDynamoDBに保存しているため、レンダリング開始前にここで変換してS3へ書き出す。
- * この橋渡しが無いと、工程1が manifest.json を見つけられず失敗する。
  */
 
-import { ManifestSchema, pageImageKey, audioKey } from "@slide-first/shared-types";
-import type { Manifest, LexiconEntry, AspectRatio, CaptionsOption } from "@slide-first/shared-types";
+import {
+  ManifestSchema,
+  pageImageKey,
+  audioKey,
+  getOutputProfile,
+} from "@slide-first/shared-types";
+import type {
+  Manifest,
+  LexiconEntry,
+  AspectRatio,
+  CaptionsOption,
+  VerticalLayout,
+  PadColor,
+} from "@slide-first/shared-types";
 import type { ProjectRecord } from "../db/projects.js";
 import { ApiError } from "../middleware/index.js";
 
-/**
- * Amazon Polly の PCM 出力で使えるサンプルレート。
- * mp3 は 8000/16000/22050/24000/44100/48000 だが、pcm は 8000 と 16000 のみ。
- * 以前 24000 を渡して "Invalid SampleRate parameter" で失敗した。
- */
+/** Amazon PollyのPCM出力で使えるサンプルレート。 */
 const PCM_SAMPLE_RATES = ["8000", "16000"] as const;
 const DEFAULT_SAMPLE_RATE = "16000";
+const DEFAULT_SILENT_PAGE_DURATION_SEC = 5;
+const MIN_SILENT_PAGE_DURATION_SEC = 1;
+const MAX_SILENT_PAGE_DURATION_SEC = 30;
 
 const DEFAULT_VOICE = {
   id: "Takumi",
@@ -25,13 +35,6 @@ const DEFAULT_VOICE = {
   languageCode: "ja-JP",
   sampleRate: DEFAULT_SAMPLE_RATE,
 } as const;
-
-const ASPECT_SIZES: Record<AspectRatio, { width: number; height: number }> = {
-  "16:9": { width: 1920, height: 1080 },
-  "9:16": { width: 1080, height: 1920 },
-  "1:1": { width: 1080, height: 1080 },
-  "4:5": { width: 1080, height: 1350 },
-};
 
 interface NarrationScript {
   pageNumber?: number;
@@ -43,10 +46,53 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 }
 
-/** PCMで使えない値が入っていたら既定値へ寄せる */
+/** PCMで使えない値が入っていたら既定値へ寄せる。 */
 function resolveSampleRate(value: unknown): string {
   const asString = typeof value === "string" ? value : String(value ?? "");
-  return (PCM_SAMPLE_RATES as readonly string[]).includes(asString) ? asString : DEFAULT_SAMPLE_RATE;
+  return (PCM_SAMPLE_RATES as readonly string[]).includes(asString)
+    ? asString
+    : DEFAULT_SAMPLE_RATE;
+}
+
+function resolveAspect(value: unknown): AspectRatio {
+  return (["16:9", "9:16", "1:1", "4:5"] as const).includes(value as AspectRatio)
+    ? (value as AspectRatio)
+    : "16:9";
+}
+
+function resolveCaptions(value: unknown): CaptionsOption {
+  return (["burn", "srt", "none"] as const).includes(value as CaptionsOption)
+    ? (value as CaptionsOption)
+    : "burn";
+}
+
+function resolveNarrationMode(value: unknown): "spoken" | "none" {
+  return value === "none" ? "none" : "spoken";
+}
+
+/** 保存済み設定が古い場合も、有効な無音表示時間へ正規化する。 */
+function resolveSilentPageDurationSec(value: unknown): number {
+  const duration = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(duration)) {
+    return DEFAULT_SILENT_PAGE_DURATION_SEC;
+  }
+
+  return Math.min(
+    MAX_SILENT_PAGE_DURATION_SEC,
+    Math.max(MIN_SILENT_PAGE_DURATION_SEC, Math.round(duration)),
+  );
+}
+
+function resolveVerticalLayout(value: unknown): VerticalLayout | null {
+  return (["top", "center", "crop"] as const).includes(value as VerticalLayout)
+    ? (value as VerticalLayout)
+    : null;
+}
+
+function resolvePadColor(value: unknown): PadColor | null {
+  return (["white", "navy", "auto"] as const).includes(value as PadColor)
+    ? (value as PadColor)
+    : null;
 }
 
 export function buildManifestFromProject(project: ProjectRecord): Manifest {
@@ -56,6 +102,7 @@ export function buildManifestFromProject(project: ProjectRecord): Manifest {
   const source = asRecord(project.source);
   const sourceKind = source.kind === "generated" ? "generated" : "uploaded";
   const fileKey = typeof source.fileKey === "string" ? source.fileKey : "";
+  const fileName = typeof source.fileName === "string" ? source.fileName : undefined;
   const pageCount = Number(source.pageCount ?? 0);
 
   if (!fileKey || !Number.isInteger(pageCount) || pageCount < 1) {
@@ -67,7 +114,11 @@ export function buildManifestFromProject(project: ProjectRecord): Manifest {
   }
 
   const scripts = Array.isArray(project.narration) ? (project.narration as NarrationScript[]) : [];
-  if (scripts.length !== pageCount) {
+  const outputInput = asRecord(project.output);
+  const narrationMode = resolveNarrationMode(outputInput.narrationMode);
+  const silentPageDurationSec = resolveSilentPageDurationSec(outputInput.silentPageDurationSec);
+
+  if (narrationMode === "spoken" && scripts.length !== pageCount) {
     throw new ApiError(
       400,
       `Narration must be saved for all ${pageCount} pages before rendering (got ${scripts.length})`,
@@ -86,26 +137,18 @@ export function buildManifestFromProject(project: ProjectRecord): Manifest {
     sampleRate: resolveSampleRate(voiceInput.sampleRate),
   };
 
-  const outputInput = asRecord(project.output);
-  const aspect = (
-    ["16:9", "9:16", "1:1", "4:5"].includes(String(outputInput.aspect))
-      ? outputInput.aspect
-      : "16:9"
-  ) as AspectRatio;
-  const size = ASPECT_SIZES[aspect];
-  const captions = (
-    ["burn", "srt", "none"].includes(String(outputInput.captions)) ? outputInput.captions : "burn"
-  ) as CaptionsOption;
-
+  const aspect = resolveAspect(outputInput.aspect);
+  const profile = getOutputProfile(aspect);
   const output = {
     aspect,
-    width: size.width,
-    height: size.height,
+    width: profile.width,
+    height: profile.height,
     fps: Number(outputInput.fps) === 60 ? 60 : 30,
-    captions,
-    verticalLayout:
-      typeof outputInput.verticalLayout === "string" ? outputInput.verticalLayout : null,
-    padColor: typeof outputInput.padColor === "string" ? outputInput.padColor : null,
+    captions: narrationMode === "none" ? ("none" as const) : resolveCaptions(outputInput.captions),
+    narrationMode,
+    silentPageDurationSec,
+    verticalLayout: resolveVerticalLayout(outputInput.verticalLayout),
+    padColor: resolvePadColor(outputInput.padColor),
   };
 
   const lexicon = (Array.isArray(project.lexicon) ? project.lexicon : []).filter(
@@ -119,7 +162,6 @@ export function buildManifestFromProject(project: ProjectRecord): Manifest {
     },
   );
 
-  // 音声の長さは工程2が実測して書き込む。ここでは0で置く
   const pages = Array.from({ length: pageCount }, (_, index) => {
     const pageNumber = index + 1;
     const script = scripts[index] ?? {};
@@ -136,13 +178,15 @@ export function buildManifestFromProject(project: ProjectRecord): Manifest {
     };
   });
 
-  const emptyScript = pages.find((p) => p.script.text.trim() === "");
-  if (emptyScript) {
-    throw new ApiError(
-      400,
-      `Page ${emptyScript.pageNumber} has an empty narration script`,
-      "NARRATION_REQUIRED",
-    );
+  if (narrationMode === "spoken") {
+    const emptyScript = pages.find((page) => page.script.text.trim() === "");
+    if (emptyScript) {
+      throw new ApiError(
+        400,
+        `Page ${emptyScript.pageNumber} has an empty narration script`,
+        "NARRATION_REQUIRED",
+      );
+    }
   }
 
   const manifest = {
@@ -150,7 +194,12 @@ export function buildManifestFromProject(project: ProjectRecord): Manifest {
     projectId,
     userId,
     contentLanguage: project.contentLanguage ?? "ja-JP",
-    source: { kind: sourceKind as "generated" | "uploaded", fileKey, pageCount },
+    source: {
+      kind: sourceKind as "generated" | "uploaded",
+      fileKey,
+      pageCount,
+      ...(fileName ? { fileName } : {}),
+    },
     voice,
     output,
     lexicon,
@@ -161,8 +210,14 @@ export function buildManifestFromProject(project: ProjectRecord): Manifest {
       captions: "pending" as const,
       video: "pending" as const,
     },
+    progress: {
+      stage: "pages" as const,
+      currentPage: 0,
+      totalPages: pageCount,
+      message: "PDFページを画像に変換する準備をしています。",
+      updatedAt: new Date().toISOString(),
+    },
   };
 
-  // 契約に合わない状態でパイプラインへ渡さない
   return ManifestSchema.parse(manifest) as Manifest;
 }

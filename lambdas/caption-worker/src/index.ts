@@ -2,7 +2,8 @@
  * Stage 3: Captions - SRT generation Lambda handler.
  *
  * Reads manifest with confirmed scripts and measured audioDurationSec,
- * generates SRT captions using cumulative timing, and uploads to S3.
+ * generates a project-wide SRT and page-local SRT files for burn-in captions,
+ * and uploads them to S3.
  *
  * Validation:
  * - subtitle count === page count (pages with non-empty text)
@@ -12,7 +13,7 @@
 
 import { S3Client, GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import type { Manifest } from "@slide-first/shared-types";
-import { captionsSrtKey } from "@slide-first/shared-types";
+import { captionPageSrtKey, captionsSrtKey } from "@slide-first/shared-types";
 import { generateSrt, totalDurationSec } from "@slide-first/core";
 
 const s3Client = new S3Client({});
@@ -78,7 +79,7 @@ export const handler = async (event: CaptionsEvent): Promise<CaptionsResult> => 
       }
     }
 
-    // 4. Generate SRT content
+    // 4. Generate project-wide SRT content
     const srtContent = generateSrt(manifest.pages);
 
     // 5. Validate subtitle count
@@ -92,16 +93,35 @@ export const handler = async (event: CaptionsEvent): Promise<CaptionsResult> => 
       );
     }
 
-    // 6. Upload SRT to S3
+    // 6. Upload project-wide SRT and page-local burn-in SRT files.
     const keyParams = { userId: manifest.userId, projectId: manifest.projectId };
-    const srtKey = captionsSrtKey(keyParams);
-    await s3Client.send(
-      new PutObjectCommand({
-        Bucket: bucket,
-        Key: srtKey,
-        Body: srtContent,
-        ContentType: "text/plain; charset=utf-8",
-      }),
+    const srtUploads = [
+      {
+        key: captionsSrtKey(keyParams),
+        body: srtContent,
+      },
+      ...(manifest.output.captions === "burn"
+        ? manifest.pages
+            .filter((page) => page.script.text.trim().length > 0)
+            .map((page) => ({
+              key: captionPageSrtKey(keyParams, page.pageNumber),
+              // 単一ページとして生成し、MediaConvert入力ごとに0秒起点のSRTを渡す。
+              body: generateSrt([page]),
+            }))
+        : []),
+    ];
+
+    await Promise.all(
+      srtUploads.map(({ key, body }) =>
+        s3Client.send(
+          new PutObjectCommand({
+            Bucket: bucket,
+            Key: key,
+            Body: body,
+            ContentType: "text/plain; charset=utf-8",
+          }),
+        ),
+      ),
     );
 
     // 7. Calculate total duration for result

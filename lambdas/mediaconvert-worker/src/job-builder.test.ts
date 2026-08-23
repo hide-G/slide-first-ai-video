@@ -20,6 +20,11 @@ const baseParams = {
   outputDestination: "s3://my-bucket/users/user1/projects/proj1/output/render-abc/",
 };
 
+const pageCaptionSrtUris = [
+  "s3://my-bucket/users/user1/projects/proj1/captions/pages/page-001.srt",
+  "s3://my-bucket/users/user1/projects/proj1/captions/pages/page-002.srt",
+];
+
 describe("buildMediaConvertJob", () => {
   it("指定した16:9・30fpsの映像プロファイルを全設定に反映する", () => {
     const job = buildMediaConvertJob({
@@ -78,25 +83,32 @@ describe("buildMediaConvertJob", () => {
     });
   });
 
-  it("burn指定時は先頭入力のSRTを同じMP4出力へ焼き込む", () => {
+  it("burn指定時は全入力のページ別SRTを同じMP4出力へ焼き込む", () => {
     const job = buildMediaConvertJob({
       ...baseParams,
       output: { width: 1080, height: 1920, fps: 60, captions: "burn" },
-      captionsSrtS3Uri: "s3://my-bucket/users/user1/projects/proj1/captions/captions.srt",
+      captionsSrtS3Uris: pageCaptionSrtUris,
       captionLanguageCode: "ja-JP",
     });
 
-    expect(job.Settings.Inputs[0].CaptionSelectors).toEqual({
-      "SRT Captions": {
-        SourceSettings: {
-          SourceType: "SRT",
-          FileSourceSettings: {
-            SourceFile: "s3://my-bucket/users/user1/projects/proj1/captions/captions.srt",
+    expect(job.Settings.Inputs.map((input) => input.CaptionSelectors)).toEqual([
+      {
+        "SRT Captions": {
+          SourceSettings: {
+            SourceType: "SRT",
+            FileSourceSettings: { SourceFile: pageCaptionSrtUris[0] },
           },
         },
       },
-    });
-    expect(job.Settings.Inputs[1].CaptionSelectors).toBeUndefined();
+      {
+        "SRT Captions": {
+          SourceSettings: {
+            SourceType: "SRT",
+            FileSourceSettings: { SourceFile: pageCaptionSrtUris[1] },
+          },
+        },
+      },
+    ]);
     expect(job.Settings.OutputGroups[0].Outputs[0].CaptionDescriptions).toEqual([
       expect.objectContaining({
         CaptionSelectorName: "SRT Captions",
@@ -109,6 +121,22 @@ describe("buildMediaConvertJob", () => {
         }),
       }),
     ]);
+  });
+
+  it("字幕なしページには全入力のセレクタ数を保つNull sourceを設定する", () => {
+    const job = buildMediaConvertJob({
+      ...baseParams,
+      output: { width: 1080, height: 1920, fps: 60, captions: "burn" },
+      captionsSrtS3Uris: [pageCaptionSrtUris[0], undefined],
+    });
+
+    expect(job.Settings.Inputs[1].CaptionSelectors).toEqual({
+      "SRT Captions": {
+        SourceSettings: {
+          SourceType: "NULL",
+        },
+      },
+    });
   });
 
   it("焼き込み字幕の固定プリセットをMediaConvert設定へ変換する", () => {
@@ -129,7 +157,7 @@ describe("buildMediaConvertJob", () => {
           captions: "burn",
           captionStyle,
         },
-        captionsSrtS3Uri: "s3://my-bucket/users/user1/projects/proj1/captions/captions.srt",
+        captionsSrtS3Uris: pageCaptionSrtUris,
       });
       const burnIn =
         job.Settings.OutputGroups[0].Outputs[0].CaptionDescriptions?.[0].DestinationSettings
@@ -151,7 +179,7 @@ describe("buildMediaConvertJob", () => {
         captionPlacement: "safe-area",
         captionSafeAreaYPosition: 1182,
       },
-      captionsSrtS3Uri: "s3://my-bucket/users/user1/projects/proj1/captions/captions.srt",
+      captionsSrtS3Uris: pageCaptionSrtUris,
     });
 
     const burnIn =
@@ -165,11 +193,12 @@ describe("buildMediaConvertJob", () => {
     });
   });
 
-  it("burn指定でSRT URIが無い場合はジョブを構築しない", () => {
+  it("burn指定でページ数と一致するSRT URIが無い場合はジョブを構築しない", () => {
     expect(() =>
       buildMediaConvertJob({
         ...baseParams,
         output: { width: 1920, height: 1080, fps: 30, captions: "burn" },
+        captionsSrtS3Uris: [pageCaptionSrtUris[0]],
       }),
     ).toThrow("SRT");
   });

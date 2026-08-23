@@ -4,7 +4,7 @@ vi.mock("@aws-sdk/client-mediaconvert", () => {
   const mockSend = vi.fn();
   return {
     MediaConvertClient: vi.fn(() => ({ send: mockSend })),
-    CreateJobCommand: vi.fn((input) => ({ input })),
+    CreateJobCommand: vi.fn((input) => ({ input, type: "CreateJob" })),
     GetJobCommand: vi.fn((input) => ({ input })),
     DescribeEndpointsCommand: vi.fn((input) => ({ input, type: "DescribeEndpoints" })),
     __mockSend: mockSend,
@@ -182,6 +182,105 @@ describe("mediaconvert-worker handler", () => {
         outputResolution: "1920x1080",
       },
       estimatedCost: 0.0,
+    });
+
+    const createJobInput = mockMcSend.mock.calls
+      .map(
+        (call: unknown[]) =>
+          call[0] as {
+            type?: string;
+            input?: { Role?: string; Settings?: { Inputs?: unknown[] } };
+          },
+      )
+      .find((command) => command.type === "CreateJob")?.input;
+    expect(createJobInput).toMatchObject({
+      Settings: {
+        Inputs: [
+          {
+            CaptionSelectors: {
+              "SRT Captions": {
+                SourceSettings: {
+                  SourceType: "SRT",
+                  FileSourceSettings: {
+                    SourceFile:
+                      "s3://my-bucket/users/user-001/projects/proj-001/captions/pages/page-001.srt",
+                  },
+                },
+              },
+            },
+          },
+          {
+            CaptionSelectors: {
+              "SRT Captions": {
+                SourceSettings: {
+                  SourceType: "SRT",
+                  FileSourceSettings: {
+                    SourceFile:
+                      "s3://my-bucket/users/user-001/projects/proj-001/captions/pages/page-002.srt",
+                  },
+                },
+              },
+            },
+          },
+        ],
+      },
+    });
+  });
+
+  it("空の原稿ページにも全入力分のNull source字幕セレクタを渡す", async () => {
+    const manifest = makeManifest();
+    manifest.pages[1].script.text = "   ";
+
+    mockS3Send.mockResolvedValueOnce({
+      Body: { transformToString: async () => JSON.stringify(manifest) },
+    });
+    mockMcSend.mockResolvedValueOnce({ Job: { Id: "job-empty-script" } });
+    mockMcSend.mockResolvedValueOnce({
+      Job: {
+        Status: "COMPLETE",
+        OutputGroupDetails: [{ OutputDetails: [{ DurationInMs: 5568 }] }],
+      },
+    });
+
+    const resultPromise = handler(baseEvent);
+    await vi.runAllTimersAsync();
+    const result = await resultPromise;
+
+    expect(result.success).toBe(true);
+    const createJobInput = mockMcSend.mock.calls
+      .map(
+        (call: unknown[]) =>
+          call[0] as {
+            type?: string;
+            input?: { Role?: string; Settings?: { Inputs?: unknown[] } };
+          },
+      )
+      .find((command) => command.type === "CreateJob")?.input;
+    expect(createJobInput).toMatchObject({
+      Settings: {
+        Inputs: [
+          {
+            CaptionSelectors: {
+              "SRT Captions": {
+                SourceSettings: {
+                  SourceType: "SRT",
+                  FileSourceSettings: {
+                    SourceFile:
+                      "s3://my-bucket/users/user-001/projects/proj-001/captions/pages/page-001.srt",
+                  },
+                },
+              },
+            },
+          },
+          {
+            CaptionSelectors: {
+              "SRT Captions": {
+                SourceSettings: { SourceType: "NULL" },
+              },
+            },
+          },
+        ],
+      },
     });
   });
 

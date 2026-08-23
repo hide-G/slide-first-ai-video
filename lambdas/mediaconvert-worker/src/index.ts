@@ -1,8 +1,8 @@
 /**
  * 工程4: Video - MediaConvertジョブを送信するLambdaハンドラー。
  *
- * manifest.outputを出力サイズとfpsの唯一の正本として使い、必要に応じて
- * captions/captions.srtを同じMP4出力へ焼き込む。
+ * manifest.outputを出力サイズとfpsの唯一の正本として使い、captions=burnでは
+ * 各ページの0秒起点SRTを対応するMediaConvert入力へ接続する。
  */
 
 import {
@@ -13,7 +13,7 @@ import {
 } from "@aws-sdk/client-mediaconvert";
 import { S3Client, GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import type { Manifest } from "@slide-first/shared-types";
-import { pageImageKey, audioKey, captionsSrtKey } from "@slide-first/shared-types";
+import { pageImageKey, audioKey, captionPageSrtKey } from "@slide-first/shared-types";
 import { buildMediaConvertJob } from "./job-builder.js";
 
 const MEDIACONVERT_ROLE_ARN = process.env.MEDIACONVERT_ROLE_ARN ?? "";
@@ -95,9 +95,13 @@ export const handler = async (event: VideoEvent): Promise<VideoResult> => {
     }));
 
     const outputDestination = `s3://${bucket}/users/${manifest.userId}/projects/${manifest.projectId}/output/${event.renderId}/`;
-    const captionsSrtS3Uri =
+    const captionsSrtS3Uris =
       manifest.output.captions === "burn"
-        ? `s3://${bucket}/${captionsSrtKey(keyParams)}`
+        ? manifest.pages.map((page) =>
+            page.script.text.trim().length > 0
+              ? `s3://${bucket}/${captionPageSrtKey(keyParams, page.pageNumber)}`
+              : undefined,
+          )
         : undefined;
 
     const jobSettings = buildMediaConvertJob({
@@ -105,7 +109,7 @@ export const handler = async (event: VideoEvent): Promise<VideoResult> => {
       pages,
       outputDestination,
       output: manifest.output,
-      captionsSrtS3Uri,
+      captionsSrtS3Uris,
       captionLanguageCode: manifest.contentLanguage,
     });
 

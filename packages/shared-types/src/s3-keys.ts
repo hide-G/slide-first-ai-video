@@ -21,19 +21,13 @@ function padPage(pageNumber: number): string {
 
 // --- Input ---
 
-export function inputSourceKey(
-  params: S3KeyParams,
-  ext: "pdf" | "pptx"
-): string {
+export function inputSourceKey(params: S3KeyParams, ext: "pdf" | "pptx"): string {
   return `${prefix(params)}/input/source.${ext}`;
 }
 
 // --- Deck ---
 
-export function deckKey(
-  params: S3KeyParams,
-  ext: "md" | "pdf" | "pptx"
-): string {
+export function deckKey(params: S3KeyParams, ext: "md" | "pdf" | "pptx"): string {
   return `${prefix(params)}/deck/deck.${ext}`;
 }
 
@@ -55,12 +49,14 @@ export function captionsSrtKey(params: S3KeyParams): string {
   return `${prefix(params)}/captions/captions.srt`;
 }
 
+/** ページ単位の焼き込み用SRT。各ページの字幕タイムラインは0秒から始まる。 */
+export function captionPageSrtKey(params: S3KeyParams, pageNumber: number): string {
+  return `${prefix(params)}/captions/pages/page-${padPage(pageNumber)}.srt`;
+}
+
 // --- Output ---
 
-export function outputVideoKey(
-  params: S3KeyParams,
-  renderId: string
-): string {
+export function outputVideoKey(params: S3KeyParams, renderId: string): string {
   return `${prefix(params)}/output/${renderId}/video.mp4`;
 }
 

@@ -1,3 +1,9 @@
+import type {
+  CaptionPlacement,
+  CaptionStylePreset,
+  VerticalLayout,
+} from "@slide-first/shared-types";
+
 /**
  * MediaConvertジョブ設定のビルダー。
  * 静止画とWAVをページ順に連結し、manifest.outputを唯一の出力プロファイルとして使う。
@@ -19,6 +25,11 @@ export interface OutputProfile {
   height: number;
   fps: number;
   captions: "burn" | "srt" | "none";
+  verticalLayout?: VerticalLayout | null;
+  captionStyle?: CaptionStylePreset | null;
+  captionPlacement?: CaptionPlacement | null;
+  /** ページ描画が実測した下部セーフエリア内の字幕Y座標。 */
+  captionSafeAreaYPosition?: number | null;
 }
 
 export interface BuildJobParams {
@@ -43,25 +54,28 @@ interface CaptionSelector {
   };
 }
 
+interface BurninDestinationSettings {
+  Alignment: "CENTERED";
+  BackgroundColor: "BLACK";
+  BackgroundOpacity: number;
+  FontColor: "WHITE" | "YELLOW";
+  FontOpacity: number;
+  FontScript: "AUTOMATIC";
+  OutlineColor: "BLACK";
+  OutlineSize: number;
+  ShadowColor: "BLACK";
+  ShadowOpacity: number;
+  ShadowXOffset: number;
+  ShadowYOffset: number;
+  YPosition?: number;
+}
+
 interface CaptionDescription {
   CaptionSelectorName: "SRT Captions";
   LanguageCode?: "JPN" | "ENG";
   DestinationSettings: {
     DestinationType: "BURN_IN";
-    BurninDestinationSettings: {
-      Alignment: "CENTERED";
-      BackgroundColor: "BLACK";
-      BackgroundOpacity: number;
-      FontColor: "WHITE";
-      FontOpacity: number;
-      FontScript: "AUTOMATIC";
-      OutlineColor: "BLACK";
-      OutlineSize: number;
-      ShadowColor: "BLACK";
-      ShadowOpacity: number;
-      ShadowXOffset: number;
-      ShadowYOffset: number;
-    };
+    BurninDestinationSettings: BurninDestinationSettings;
   };
 }
 
@@ -130,6 +144,52 @@ export interface MediaConvertJobSettings {
 
 const CAPTION_SELECTOR_NAME = "SRT Captions" as const;
 
+interface CaptionStyleConfig {
+  backgroundOpacity: number;
+  fontColor: "WHITE" | "YELLOW";
+  outlineSize: number;
+  shadowOpacity: number;
+  shadowXOffset: number;
+  shadowYOffset: number;
+}
+
+/** MediaConvertが受け付ける色・不透明度だけで構成した固定プリセット。 */
+const CAPTION_STYLE_CONFIG: Record<CaptionStylePreset, CaptionStyleConfig> = {
+  "white-outline": {
+    backgroundOpacity: 0,
+    fontColor: "WHITE",
+    outlineSize: 3,
+    shadowOpacity: 50,
+    shadowXOffset: 2,
+    shadowYOffset: 2,
+  },
+  "yellow-outline": {
+    backgroundOpacity: 0,
+    fontColor: "YELLOW",
+    outlineSize: 3,
+    shadowOpacity: 50,
+    shadowXOffset: 2,
+    shadowYOffset: 2,
+  },
+  "black-background": {
+    backgroundOpacity: 160,
+    fontColor: "WHITE",
+    outlineSize: 0,
+    shadowOpacity: 0,
+    shadowXOffset: 0,
+    shadowYOffset: 0,
+  },
+  chalkboard: {
+    // 濃緑はMediaConvertの字幕背景で指定できないため、ページPNGの下部余白を使う。
+    backgroundOpacity: 0,
+    fontColor: "WHITE",
+    outlineSize: 0,
+    shadowOpacity: 0,
+    shadowXOffset: 0,
+    shadowYOffset: 0,
+  },
+};
+
 /** MediaConvertが字幕の日本語フォントを選ぶための言語コードへ変換する。 */
 function toMediaConvertCaptionLanguageCode(
   languageCode: string | undefined,
@@ -139,8 +199,37 @@ function toMediaConvertCaptionLanguageCode(
   return undefined;
 }
 
-function buildBurnInCaptionDescription(languageCode: string | undefined): CaptionDescription {
+function resolveCaptionStyle(value: CaptionStylePreset | null | undefined): CaptionStylePreset {
+  return value ?? "white-outline";
+}
+
+/**
+ * ページ描画で実測したコンテンツ下端を基準に、下部セーフエリアの字幕位置を使う。
+ * 実測値がない旧マニフェストでは従来どおりMediaConvertの下端配置へフォールバックする。
+ */
+function resolveSafeAreaYPosition(output: OutputProfile): number | undefined {
+  if (
+    output.captionPlacement !== "safe-area" ||
+    output.verticalLayout !== "top" ||
+    output.height <= output.width
+  ) {
+    return undefined;
+  }
+
+  const yPosition = output.captionSafeAreaYPosition;
+  return typeof yPosition === "number" && yPosition >= 0 && yPosition < output.height
+    ? yPosition
+    : undefined;
+}
+
+function buildBurnInCaptionDescription(
+  languageCode: string | undefined,
+  output: OutputProfile,
+): CaptionDescription {
   const mediaConvertLanguageCode = toMediaConvertCaptionLanguageCode(languageCode);
+  const style = CAPTION_STYLE_CONFIG[resolveCaptionStyle(output.captionStyle)];
+  const yPosition = resolveSafeAreaYPosition(output);
+
   return {
     CaptionSelectorName: CAPTION_SELECTOR_NAME,
     ...(mediaConvertLanguageCode ? { LanguageCode: mediaConvertLanguageCode } : {}),
@@ -149,17 +238,18 @@ function buildBurnInCaptionDescription(languageCode: string | undefined): Captio
       BurninDestinationSettings: {
         Alignment: "CENTERED",
         BackgroundColor: "BLACK",
-        BackgroundOpacity: 0,
-        FontColor: "WHITE",
+        BackgroundOpacity: style.backgroundOpacity,
+        FontColor: style.fontColor,
         FontOpacity: 100,
         // 言語設定からサービス側が適切なフォントスクリプトを選択する。
         FontScript: "AUTOMATIC",
         OutlineColor: "BLACK",
-        OutlineSize: 3,
+        OutlineSize: style.outlineSize,
         ShadowColor: "BLACK",
-        ShadowOpacity: 50,
-        ShadowXOffset: 2,
-        ShadowYOffset: 2,
+        ShadowOpacity: style.shadowOpacity,
+        ShadowXOffset: style.shadowXOffset,
+        ShadowYOffset: style.shadowYOffset,
+        ...(yPosition === undefined ? {} : { YPosition: yPosition }),
       },
     },
   };
@@ -239,7 +329,7 @@ export function buildMediaConvertJob(params: BuildJobParams): MediaConvertJobSet
     ],
     ...(output.captions === "burn"
       ? {
-          CaptionDescriptions: [buildBurnInCaptionDescription(captionLanguageCode)],
+          CaptionDescriptions: [buildBurnInCaptionDescription(captionLanguageCode, output)],
         }
       : {}),
   };

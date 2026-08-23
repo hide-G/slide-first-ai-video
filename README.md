@@ -1,8 +1,8 @@
 # Slide-First AI Video
 
-> スライドを正本に、ナレーションと字幕つきの動画を生成するAWSアプリケーション。生成AIでスライドを作る機能と、手持ちの資料を動画化する機能を、それぞれ独立して使えます。
+> スライドを正本に、ナレーションと字幕つきの動画を生成するAWSアプリケーションです。生成AIでスライドを作る機能と、手持ちのPDFを動画化する機能は、それぞれ独立して使えます。
 >
-> Turn slides into narrated, captioned video on AWS. Generating a deck with AI and turning an existing deck into video are two independent features.
+> An AWS application that turns slides into narrated, captioned videos. AI slide creation and PDF-to-video conversion are independent features.
 
 [日本語](#japanese) | [English](#english)
 
@@ -14,64 +14,64 @@
 
 ### 何ができるか
 
-2つの機能があり、互いに独立しています。片方だけを使えます。
-
-| 機能 | 内容 |
-| --- | --- |
-| ② スライド作成 | 文章と参考URLを渡すと、生成AIがスライドの骨子を作ります。内容を確認・加筆修正してからMarpでスライドを生成し、Markdown・PDF・PowerPointで書き出します |
-| ③ 動画作成 | PDFをアップロードし、ナレーションと字幕を付けて動画にします。②を経由せず単独で使えます |
+| 機能           | 内容                                                                                                                                               |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ② スライド作成 | 文章と参考URLから生成AIがスライドの骨子を作ります。利用者が確認・加筆修正してからMarpでスライドを生成し、Markdown、PDF、PowerPointを書き出します。 |
+| ③ 動画作成     | PDFをアップロードし、ナレーションと字幕つきの動画にします。②を経由せず単独で使えます。PowerPointのアップロードは受け付けません。                   |
 
 主な特徴です。
 
-- **骨子をレビューしてから生成** — 生成AIの出力をそのまま採用せず、ユーザーが確定した文章だけをスライドにします
-- **画面の言語と資料の言語を分離** — 画面を英語表示にしたまま日本語のスライドを作れます
-- **配信先に合わせた出力サイズ** — 16:9 / 9:16 / 1:1 / 4:5
-- **音声と映像を厳密に同期** — 音声の長さを実測し、フレーム境界に丸めてから動画にします
-- **読み方をSSMLで指定** — 英単語や固有名詞の読み、振り仮名、間。移動できるチートシートつき
-- **工程ごとの費用表示** — 使用量から推定額を出し、実績額とは区別して表示します
-- **外部の実行ファイルを持ち込まない** — FFmpegやLibreOfficeを使わず、AWSのサービスとnpmパッケージだけで構成しています
+- **骨子をレビューしてから生成**: 生成AIの出力をそのまま採用せず、利用者が確定した文章だけをスライドにします。
+- **画面の言語と資料の言語を分離**: 画面を英語表示にしたまま、日本語のスライドを作れます。
+- **配信先に合わせた出力サイズ**: `16:9`、`9:16`、`1:1`、`4:5` を選べます。
+- **縦長の字幕safe-area**: `9:16` または `4:5` の上寄せレイアウトでは、スライド下部の余白を字幕用に確保できます。位置はページ画像の実際の描画下端からサーバー側で算出します。
+- **固定された焼き込み字幕スタイル**: `white-outline`、`yellow-outline`、`black-background`、`chalkboard` を選べます。`chalkboard` は縦長・上寄せ・safe-areaの組み合わせでだけ利用できます。
+- **失敗工程からの再実行**: 互換な中間成果物がある場合は、失敗した`audio`、`captions`、`video`工程だけを再実行します。再利用できない場合は画面で`pages`からの再実行を明示します。
+- **音声と映像を厳密に同期**: Polly PCMのバイト数から音声長を求め、フレーム境界に丸めてから動画にします。
+- **読み方をSSMLで指定**: 英単語や固有名詞の読み、振り仮名、間を指定できます。
+- **外部の実行ファイルを持ち込まない**: FFmpeg、ffprobe、LibreOffice、Dockerを使わず、AWSサービスとnpmパッケージだけで構成しています。
 
 ### アーキテクチャ
 
 ![Slide-First AI Video のアーキテクチャ図](./docs/assets/architecture.png)
 
-高解像度版とベクター形式は [docs/assets/architecture.svg](./docs/assets/architecture.svg) にあります。
+高解像度版とベクター形式は [docs/assets/architecture.svg](./docs/assets/architecture.svg) にあります。画像は概念図です。実装上の正確な呼び出し関係は [docs/architecture.md](./docs/architecture.md) のシーケンス図を参照してください。
 
-| 工程 | 実装 | 出力 | 使う技術 |
-| --- | --- | --- | --- |
-| 1 pages | `marp-render` | `pages/page-NNN.png` | Chromium + pdf.js、またはMarpの画像出力 |
-| 2 audio | `polly-worker` | `audio/page-NNN.wav` | Amazon Polly（PCM出力） |
-| 3 captions | `caption-worker` | `captions/captions.srt` | 純粋なJavaScript |
-| 4 video | Step Functions → MediaConvert | `output/{renderId}/video.mp4` | AWS Elemental MediaConvert |
+| 工程       | 実装                  | 出力                                   | 使う技術                                 |
+| ---------- | --------------------- | -------------------------------------- | ---------------------------------------- |
+| 1 pages    | `marp-render`         | `pages/page-NNN.png`                   | Chromium内のpdf.js、またはMarpの画像出力 |
+| 2 audio    | `polly-worker`        | `audio/page-NNN.wav`                   | Amazon PollyのPCM出力とWAVヘッダ         |
+| 3 captions | `caption-worker`      | `captions/captions.srt`                | 純粋なJavaScript                         |
+| 4 video    | `mediaconvert-worker` | `output/{renderId}/page-001-video.mp4` | AWS Elemental MediaConvert               |
 
-各工程は単独で再実行できます。原稿を変えていなければ、音声を作り直さずに別サイズの動画を書き出せます。
+Step Functionsは4工程のLambdaを順番に呼びます。第4工程の`mediaconvert-worker`がMediaConvertジョブを作成し、`GetJob`をポーリングして終端状態を確認してからStep Functionsへ結果を返します。MediaConvertは最初のページ画像名と`-video`のName Modifierから出力名を決めるため、完成動画は通常`page-001-video.mp4`です。これはページ1だけの動画ではなく、全ページを連結した1本の動画です。
 
-シーケンス図やMediaConvertのジョブ構造、S3のレイアウトは [docs/architecture.md](./docs/architecture.md) にあります。
+字幕を焼き込む場合は、SRTを最初のMediaConvert入力のCaption Selectorへ渡し、MP4出力の`BURN_IN` Caption Descriptionでレンダリングします。safe-areaのY座標はクライアント入力ではなく、工程1がPNGを描画した後に`manifest.output.captionSafeAreaYPosition`へ記録します。
+
+実機の縦長・字幕safe-area検証結果は [設計指示書\_動画生成パイプライン.md](./設計指示書_動画生成パイプライン.md) に記録しています。
 
 ### 設計上の判断
 
-このアプリは**外部の実行ファイルを一切使いません。** 開発機がMacBook上のBoot Campで動くWindows 10で、Dockerを導入できないためです。コンテナイメージを作れない環境でも保守できる構成にしています。
-
-| 一般的な選択 | この構成での代替 |
-| --- | --- |
-| FFmpegで動画を合成 | AWS Elemental MediaConvert |
-| ffprobeで音声の長さを測る | PollyのPCM出力のバイト数から厳密に算出 |
-| pdftoppmでPDFを画像化 | Chromium内のpdf.js |
+| 一般的な選択                 | この構成での代替                            |
+| ---------------------------- | ------------------------------------------- |
+| FFmpegで動画を合成           | AWS Elemental MediaConvert                  |
+| ffprobeで音声の長さを測る    | Polly PCM出力のバイト数から厳密に算出       |
+| pdftoppmでPDFを画像化        | Chromium内のpdf.js                          |
 | LibreOfficeでPPTXをPDFに変換 | 非対応。PowerPointからPDFで書き出してもらう |
-
-MediaConvertとChromiumは、実際のAWS環境でジョブと検証用Lambdaを動かして成立を確認しています。実測値は [設計指示書_動画生成パイプライン.md](./設計指示書_動画生成パイプライン.md) に記載しています。
 
 ### 制限事項
 
-- **PowerPointのアップロードは非対応です。** PowerPointで「PDFとして保存」してからアップロードしてください。変換にLibreOfficeが必要で、この構成では動かせません
-- **書き出したPowerPointはテキストを編集できません。** Marpの仕様上、各ページが画像として貼り付けられます。表示や書き込みは可能です
-- 1つの動画で扱えるページ数は150までです（MediaConvertの入力数上限）
+- **PowerPointのアップロードは非対応です。** PowerPointでPDFとして保存してからアップロードしてください。
+- 書き出したPowerPointはテキスト編集用ではありません。Marpの仕様上、各ページは画像として貼り付けられます。
+- 1つの動画で扱えるページ数は150までです。MediaConvertジョブの入力数上限に合わせています。
+- `safe-area` は`9:16`または`4:5`かつ`verticalLayout: "top"`の焼き込み字幕にだけ指定できます。
+- 費用の`actual`値は請求データの照合後に確定するものです。推定額と混同しません。
 
 ### 必要なもの
 
-- Node.js 22（`.nvmrc` を参照）
+- Node.js 22（`.nvmrc`を参照）
 - pnpm 10以降
-- AWSアカウント（Bedrock、Polly、MediaConvertを利用します）
+- Bedrock、Polly、MediaConvertを利用できるAWSアカウント
 
 ### 使い方
 
@@ -82,7 +82,7 @@ pnpm test
 pnpm lint
 ```
 
-インフラは AWS CDK です。`infra/cdk.json` の `app` が `node dist/bin/app.js` を指しているため、CDKを実行する前にビルドが必要です。`Code.fromAsset` が相対パスなので `infra` ディレクトリから実行します。
+インフラはAWS CDKです。`infra/cdk.json`の`app`は`node dist/bin/app.js`を指すため、CDKの前にビルドが必要です。`Code.fromAsset`が相対パスを使うため、CDKは`infra`ディレクトリから実行します。
 
 ```bash
 pnpm build
@@ -91,45 +91,53 @@ npx --yes aws-cdk@2 synth
 npx --yes aws-cdk@2 diff
 ```
 
-デプロイは差分を確認してから行ってください。既存スタックを更新する操作です。
+Windows PowerShellでは、リポジトリルートから固定のsynth手順を実行する補助スクリプトも使えます。
+
+```powershell
+powershell.exe -NoProfile -File .\scripts\invoke-cdk-synth.ps1
+```
+
+デプロイは既存スタックを更新する操作です。必ず差分を確認し、必要な承認を得てから実行してください。
 
 ### 画面モックアップ
 
-実装の正本となる画面モックアップが `mockup/` にあります。ビルド不要で、`mockup/index.html` をブラウザで開くだけで画面遷移とUIを確認できます。通信も生成処理も行いません。
+実装の正本となる画面モックアップは`mockup/`にあります。ビルド不要で、`mockup/index.html`をブラウザで開くだけで画面遷移とUIを確認できます。通信や生成処理は行いません。
 
 ### プロジェクト構成
 
 ```text
 slide-first-ai-video/
-├─ frontend/            React + Vite のSPA
-├─ mockup/              画面モックアップ（UIの正本）
-├─ infra/               AWS CDK
+├─ frontend/                 React + ViteのSPA
+├─ mockup/                   画面モックアップ
+├─ infra/                    AWS CDK
 │  ├─ src/main-stack.ts
-│  └─ lib/              機能単位のコンストラクト
+│  └─ lib/                   機能単位のコンストラクト
 ├─ lambdas/
-│  ├─ api/              REST API
-│  ├─ slide-generator/  Bedrockで骨子とナレーションを生成
-│  ├─ marp-render/      工程1 ページ画像化とスライド生成
-│  ├─ polly-worker/     工程2 音声合成
-│  └─ caption-worker/   工程3 字幕生成
+│  ├─ api/                   REST API
+│  ├─ slide-generator/       Bedrockで骨子とナレーションを生成
+│  ├─ marp-render/           工程1: ページ画像化とスライド生成
+│  ├─ polly-worker/          工程2: 音声合成
+│  ├─ caption-worker/        工程3: 字幕生成
+│  └─ mediaconvert-worker/   工程4: MediaConvertジョブ作成と完了待機
 ├─ packages/
-│  ├─ shared-types/     型と実行時バリデーション、S3キー
-│  └─ core/             共通ロジック
-├─ config/              環境別の設定
-└─ docs/                契約、費用、移行、アーキテクチャ
+│  ├─ shared-types/          型、実行時バリデーション、S3キー
+│  └─ core/                  共通ロジック
+├─ config/                   環境別設定
+└─ docs/                     契約、費用、移行、アーキテクチャ
 ```
 
 ### ドキュメント
 
-| ファイル | 内容 |
-| --- | --- |
-| [docs/architecture.md](./docs/architecture.md) | アーキテクチャ図、シーケンス図、S3レイアウト |
-| [docs/contract.md](./docs/contract.md) | `manifest.json` のデータ契約と不変条件 |
-| [docs/cost.md](./docs/cost.md) | 費用の計測方法とコスト配分タグ |
-| [docs/migration.md](./docs/migration.md) | 旧構成からの移行記録 |
-| [設計指示書_動画生成パイプライン.md](./設計指示書_動画生成パイプライン.md) | 動画生成の実装指示と実機検証の実測値 |
-| [作業指示書_残作業.md](./作業指示書_残作業.md) | 作業の進め方、環境情報、完了条件 |
-| [実装指示プロンプト.md](./実装指示プロンプト.md) | アプリ全体の仕様 |
+| ファイル                                                                    | 内容                                                     |
+| --------------------------------------------------------------------------- | -------------------------------------------------------- |
+| [docs/architecture.md](./docs/architecture.md)                              | 実装に対応したアーキテクチャ、シーケンス図、S3レイアウト |
+| [docs/contract.md](./docs/contract.md)                                      | `manifest.json`、字幕safe-area、出力設定のデータ契約     |
+| [docs/cost.md](./docs/cost.md)                                              | 推定額と実績額の区別、MediaConvert使用量、コスト配分タグ |
+| [docs/migration.md](./docs/migration.md)                                    | 旧5工程から現行4工程への移行記録                         |
+| [docs/kiro-powershell-cdk-synth.md](./docs/kiro-powershell-cdk-synth.md)    | PowerShellでCDK synthを固定コマンド化する補助手順        |
+| [設計指示書\_動画生成パイプライン.md](./設計指示書_動画生成パイプライン.md) | 実装方針、実機検証の実測値、歴史的な調査記録             |
+| [作業指示書\_残作業.md](./作業指示書_残作業.md)                             | 現行の作業手順と、過去の移行作業ログの位置付け           |
+| [実装指示プロンプト.md](./実装指示プロンプト.md)                            | 現行4工程に合わせた実装指示                              |
 
 ---
 
@@ -139,119 +147,49 @@ slide-first-ai-video/
 
 ### What it does
 
-Two independent features. You can use either one on its own.
-
-| Feature | Description |
-| --- | --- |
-| Slide creation | Provide text and reference URLs, and AI drafts a slide outline. Review and edit it, then generate the deck with Marp and export Markdown, PDF and PowerPoint |
-| Video creation | Upload a PDF and export it as video with narration and captions. Works without going through slide creation |
+| Feature        | Description                                                                                                                              |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Slide creation | AI drafts a slide outline from text and reference URLs. The user reviews it before Marp generates Markdown, PDF, and PowerPoint exports. |
+| Video creation | Upload a PDF and create a narrated, captioned video without using slide creation. PowerPoint upload is intentionally unsupported.        |
 
 Highlights:
 
-- **Review the outline before generating** — AI output is never used as is. Only the text you confirm becomes a slide
-- **Interface language is separate from content language** — keep the UI in English and still produce Japanese slides
-- **Output sizes per destination** — 16:9, 9:16, 1:1, 4:5
-- **Audio and video stay in sync** — audio length is measured, then aligned to frame boundaries before rendering
-- **Pronunciation control with SSML** — readings, furigana and pauses, with a movable cheat sheet
-- **Cost shown per stage** — estimated from measured usage, kept distinct from actual charges
-- **No external executables** — no FFmpeg, no LibreOffice. Only AWS services and npm packages
+- Output profiles: `16:9`, `9:16`, `1:1`, and `4:5`.
+- The vertical top layout can reserve lower safe-area space for captions on `9:16` and `4:5` video.
+- Burn-in captions use fixed presets: `white-outline`, `yellow-outline`, `black-background`, and `chalkboard`. The chalkboard preset requires the vertical safe-area layout.
+- When compatible intermediate outputs exist, a failed `audio`, `captions`, or `video` stage can be retried without restarting pages. The UI explicitly offers a pages restart when reuse is unavailable.
+- Polly PCM byte length is used to compute audio duration before frame alignment.
+- No FFmpeg, ffprobe, LibreOffice, or Docker is used.
 
 ### Architecture
 
-![Architecture of Slide-First AI Video](./docs/assets/architecture.png)
+The conceptual diagram is shown above. The implementation flow is authoritative in [docs/architecture.md](./docs/architecture.md).
 
-Labels in the diagram are in Japanese. A vector version is available at [docs/assets/architecture.svg](./docs/assets/architecture.svg). The diagrams in [docs/architecture.md](./docs/architecture.md) use English service and stage names.
+| Stage      | Implementation        | Output                                 | Technology                              |
+| ---------- | --------------------- | -------------------------------------- | --------------------------------------- |
+| 1 pages    | `marp-render`         | `pages/page-NNN.png`                   | pdf.js in Chromium or Marp image export |
+| 2 audio    | `polly-worker`        | `audio/page-NNN.wav`                   | Amazon Polly PCM with a WAV header      |
+| 3 captions | `caption-worker`      | `captions/captions.srt`                | Pure JavaScript                         |
+| 4 video    | `mediaconvert-worker` | `output/{renderId}/page-001-video.mp4` | AWS Elemental MediaConvert              |
 
-| Stage | Implementation | Output | Technology |
-| --- | --- | --- | --- |
-| 1 pages | `marp-render` | `pages/page-NNN.png` | Chromium with pdf.js, or Marp image export |
-| 2 audio | `polly-worker` | `audio/page-NNN.wav` | Amazon Polly, PCM output |
-| 3 captions | `caption-worker` | `captions/captions.srt` | Pure JavaScript |
-| 4 video | Step Functions to MediaConvert | `output/{renderId}/video.mp4` | AWS Elemental MediaConvert |
+Step Functions invokes the four Lambda stages. `mediaconvert-worker` creates the MediaConvert job, polls `GetJob` to its terminal state, and returns the result to the state machine. MediaConvert derives the typical final filename, `page-001-video.mp4`, from the first input image and the `-video` Name Modifier. The file is the combined video, not only page 1.
 
-Each stage can be retried on its own. If the script has not changed, another output size can be exported without redoing the audio.
+For burn-in captions, the SRT is attached to the first MediaConvert input and rendered with a `BURN_IN` Caption Description. The page-rendering stage calculates the safe-area Y coordinate after it knows the actual content boundary; the browser cannot submit that runtime-only value.
 
-Sequence diagrams, the MediaConvert job structure and the S3 layout are in [docs/architecture.md](./docs/architecture.md).
+### Constraints and local development
 
-### Design decisions
-
-This application uses **no external executables**. The development machine runs Windows 10 under Boot Camp on a MacBook and cannot install Docker, so the design stays maintainable without building container images.
-
-| Common choice | Alternative used here |
-| --- | --- |
-| Compose video with FFmpeg | AWS Elemental MediaConvert |
-| Measure audio length with ffprobe | Computed exactly from the byte count of Polly PCM output |
-| Rasterize PDF with pdftoppm | pdf.js running inside Chromium |
-| Convert PPTX to PDF with LibreOffice | Not supported. Users export to PDF from PowerPoint |
-
-MediaConvert and Chromium were validated by running a real job and a probe Lambda in AWS. The measurements are recorded in [設計指示書_動画生成パイプライン.md](./設計指示書_動画生成パイプライン.md).
-
-### Limitations
-
-- **PowerPoint upload is not supported.** Save as PDF in PowerPoint first. The conversion needs LibreOffice, which this design cannot run
-- **Exported PowerPoint is not text editable.** Marp embeds each page as an image. Presenting and annotating still work
-- Up to 150 pages per video, which is the MediaConvert input limit
-
-### Prerequisites
-
-- Node.js 22 (see `.nvmrc`)
-- pnpm 10 or later
-- An AWS account with access to Bedrock, Polly and MediaConvert
-
-### Getting started
+- Upload PDF, not PowerPoint. Export PDF from PowerPoint first.
+- A video has at most 150 pages, matching the MediaConvert input limit.
+- `safe-area` is valid only for burn-in captions with `9:16` or `4:5` and `verticalLayout: "top"`.
+- Build before CDK synth because `infra/cdk.json` runs `node dist/bin/app.js`.
 
 ```bash
 pnpm install
 pnpm build
 pnpm test
 pnpm lint
-```
-
-Infrastructure is AWS CDK. The `app` entry in `infra/cdk.json` points to `node dist/bin/app.js`, so build before running CDK. `Code.fromAsset` uses relative paths, so run CDK from the `infra` directory.
-
-```bash
-pnpm build
 cd infra
 npx --yes aws-cdk@2 synth
-npx --yes aws-cdk@2 diff
 ```
 
-Review the diff before deploying. Deployment updates an existing stack.
-
-### UI mockup
-
-The UI mockup that serves as the source of truth lives in `mockup/`. No build step is needed. Open `mockup/index.html` in a browser to walk the screens. It performs no network calls and no generation.
-
-### Project structure
-
-```text
-slide-first-ai-video/
-├─ frontend/            React + Vite SPA
-├─ mockup/              UI mockup, the source of truth for screens
-├─ infra/               AWS CDK
-│  ├─ src/main-stack.ts
-│  └─ lib/              one construct per capability
-├─ lambdas/
-│  ├─ api/              REST API
-│  ├─ slide-generator/  outline and narration via Bedrock
-│  ├─ marp-render/      stage 1 rasterization and deck generation
-│  ├─ polly-worker/     stage 2 speech synthesis
-│  └─ caption-worker/   stage 3 captions
-├─ packages/
-│  ├─ shared-types/     types, runtime validation, S3 keys
-│  └─ core/             shared logic
-├─ config/              per environment configuration
-└─ docs/                contract, cost, migration, architecture
-```
-
-### Documentation
-
-| File | Contents |
-| --- | --- |
-| [docs/architecture.md](./docs/architecture.md) | Architecture and sequence diagrams, S3 layout |
-| [docs/contract.md](./docs/contract.md) | The `manifest.json` data contract and its invariants |
-| [docs/cost.md](./docs/cost.md) | How cost is measured, and cost allocation tags |
-| [docs/migration.md](./docs/migration.md) | Migration notes from the previous architecture |
-| [設計指示書_動画生成パイプライン.md](./設計指示書_動画生成パイプライン.md) | Implementation instructions for the video pipeline with verified measurements (Japanese) |
-| [作業指示書_残作業.md](./作業指示書_残作業.md) | How to run the work, environment facts, completion criteria (Japanese) |
-| [実装指示プロンプト.md](./実装指示プロンプト.md) | Full application specification (Japanese) |
+See the Japanese documents linked above for the precise contract, E2E measurements, operational guidance, and migration history.

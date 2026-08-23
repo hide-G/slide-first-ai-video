@@ -2,6 +2,12 @@
 
 export type AspectRatio = "16:9" | "9:16" | "1:1" | "4:5";
 export type CaptionsOption = "burn" | "srt" | "none";
+export type CaptionStylePreset =
+  | "white-outline"
+  | "yellow-outline"
+  | "black-background"
+  | "chalkboard";
+export type CaptionPlacement = "bottom" | "safe-area";
 export type NarrationMode = "spoken" | "none";
 export type RenderStatus = "RUNNING" | "COMPLETED" | "FAILED";
 export type RenderStageName = "pages" | "audio" | "captions" | "video";
@@ -61,6 +67,8 @@ export interface OutputSettings {
   verticalLayout?: string;
   verticalBg?: string;
   safeArea?: boolean;
+  captionStyle?: CaptionStylePreset;
+  captionPlacement?: CaptionPlacement;
   narrationMode?: NarrationMode;
   silentPageDurationSec?: number;
 }
@@ -155,6 +163,8 @@ export interface UpdateOutputRequest {
   captions: CaptionsOption;
   verticalLayout: "top" | "center" | "crop" | null;
   padColor: "white" | "navy" | "auto" | null;
+  captionStyle: CaptionStylePreset | null;
+  captionPlacement: CaptionPlacement | null;
   narrationMode: NarrationMode;
   silentPageDurationSec: number;
 }

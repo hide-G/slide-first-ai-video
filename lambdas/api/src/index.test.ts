@@ -114,6 +114,11 @@ describe("API Router", () => {
       .__mockSend;
     mockDynamoSend.mockResolvedValue({ Items: [] });
 
+    const s3Module = await import("@aws-sdk/client-s3");
+    const mockS3Send = (s3Module as unknown as { __mockSend: ReturnType<typeof vi.fn> }).__mockSend;
+    mockS3Send.mockReset();
+    mockS3Send.mockResolvedValue({});
+
     const sfnModule = await import("@aws-sdk/client-sfn");
     mockSfnSend = (sfnModule as unknown as { __mockSend: ReturnType<typeof vi.fn> }).__mockSend;
     mockSfnSend.mockResolvedValue({ executionArn: "arn:aws:states:us-east-1:123:execution:test" });
@@ -283,11 +288,48 @@ describe("API Router", () => {
     expect(body.message).toContain("PDF");
   });
 
-  it("routes PUT /projects/{id}/output (save output settings)", async () => {
+  it("routes PUT /projects/{id}/output (save caption style settings)", async () => {
     mockDynamoSend.mockResolvedValueOnce({
       Item: { projectId: "proj-001", userId: "user-123", status: "DRAFT" },
     });
     mockDynamoSend.mockResolvedValueOnce({});
+
+    const event = makeEvent("PUT", "/projects/proj-001/output", {
+      body: JSON.stringify({
+        aspect: "9:16",
+        width: 1080,
+        height: 1920,
+        fps: 30,
+        captions: "burn",
+        verticalLayout: "top",
+        padColor: "white",
+        captionStyle: "chalkboard",
+        captionPlacement: "safe-area",
+      }),
+    });
+    const result = await handler(event, mockContext);
+
+    expect(result.statusCode).toBe(200);
+    const body = JSON.parse(result.body);
+    expect(body.output).toMatchObject({
+      aspect: "9:16",
+      captionStyle: "chalkboard",
+      captionPlacement: "safe-area",
+    });
+
+    const updateCall = mockDynamoSend.mock.calls
+      .map((call) => call[0])
+      .find((command) => command?.type === "Update");
+    expect(updateCall.input.ExpressionAttributeValues[":output"]).toMatchObject({
+      captionStyle: "chalkboard",
+      captionPlacement: "safe-area",
+    });
+  });
+
+  it("rejects a safe-area caption outside vertical top layout", async () => {
+    mockDynamoSend.mockResolvedValueOnce({
+      Item: { projectId: "proj-001", userId: "user-123", status: "DRAFT" },
+    });
 
     const event = makeEvent("PUT", "/projects/proj-001/output", {
       body: JSON.stringify({
@@ -296,13 +338,70 @@ describe("API Router", () => {
         height: 1080,
         fps: 30,
         captions: "burn",
+        verticalLayout: null,
+        padColor: null,
+        captionStyle: "white-outline",
+        captionPlacement: "safe-area",
       }),
     });
     const result = await handler(event, mockContext);
 
-    expect(result.statusCode).toBe(200);
-    const body = JSON.parse(result.body);
-    expect(body.output.aspect).toBe("16:9");
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body).error).toBe("VALIDATION_ERROR");
+  });
+
+  it.each(["srt", "none"] as const)(
+    "rejects caption decoration for %s output",
+    async (captions) => {
+      mockDynamoSend.mockResolvedValueOnce({
+        Item: { projectId: "proj-001", userId: "user-123", status: "DRAFT" },
+      });
+
+      const event = makeEvent("PUT", "/projects/proj-001/output", {
+        body: JSON.stringify({
+          aspect: "9:16",
+          width: 1080,
+          height: 1920,
+          fps: 30,
+          captions,
+          verticalLayout: "top",
+          padColor: "white",
+          captionStyle: "chalkboard",
+          captionPlacement: "safe-area",
+        }),
+      });
+      const result = await handler(event, mockContext);
+
+      expect(result.statusCode).toBe(400);
+      expect(JSON.parse(result.body).error).toBe("VALIDATION_ERROR");
+      expect(mockDynamoSend.mock.calls.some((call) => call[0]?.type === "Update")).toBe(false);
+    },
+  );
+
+  it("rejects runtime-only captionSafeAreaYPosition in the save API", async () => {
+    mockDynamoSend.mockResolvedValueOnce({
+      Item: { projectId: "proj-001", userId: "user-123", status: "DRAFT" },
+    });
+
+    const event = makeEvent("PUT", "/projects/proj-001/output", {
+      body: JSON.stringify({
+        aspect: "9:16",
+        width: 1080,
+        height: 1920,
+        fps: 30,
+        captions: "burn",
+        verticalLayout: "top",
+        padColor: "white",
+        captionStyle: "chalkboard",
+        captionPlacement: "safe-area",
+        captionSafeAreaYPosition: 1182,
+      }),
+    });
+    const result = await handler(event, mockContext);
+
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body).error).toBe("VALIDATION_ERROR");
+    expect(mockDynamoSend.mock.calls.some((call) => call[0]?.type === "Update")).toBe(false);
   });
 
   it("saves narration without an explicit voice", async () => {
@@ -344,7 +443,15 @@ describe("API Router", () => {
         fileName: "源内ハンズオン_概要編.pdf",
         pageCount: 2,
       },
-      output: { aspect: "16:9", fps: 30, captions: "burn" },
+      output: {
+        aspect: "9:16",
+        fps: 30,
+        captions: "burn",
+        verticalLayout: "top",
+        padColor: "white",
+        captionStyle: "chalkboard",
+        captionPlacement: "safe-area",
+      },
       narration: [
         { pageNumber: 1, mode: "plain", text: "1ページ目の原稿です。" },
         { pageNumber: 2, mode: "plain", text: "2ページ目の原稿です。" },
@@ -377,6 +484,536 @@ describe("API Router", () => {
       currentPage: 0,
       totalPages: 2,
     });
+    expect(manifest.output).toMatchObject({
+      aspect: "9:16",
+      width: 1080,
+      height: 1920,
+      captionStyle: "chalkboard",
+      captionPlacement: "safe-area",
+    });
+  });
+
+  it("部分再実行では互換な既存manifestからsafe-areaと音声尺を引き継ぐ", async () => {
+    const readyProject = {
+      projectId: "proj-001",
+      userId: "user-123",
+      status: "COMPLETED",
+      contentLanguage: "ja-JP",
+      source: {
+        kind: "uploaded",
+        fileKey: "users/user-123/projects/proj-001/input/source.pdf",
+        pageCount: 1,
+      },
+      output: {
+        aspect: "9:16",
+        fps: 30,
+        captions: "burn",
+        narrationMode: "spoken",
+        silentPageDurationSec: 5,
+        verticalLayout: "top",
+        padColor: "navy",
+        captionStyle: "chalkboard",
+        captionPlacement: "safe-area",
+      },
+      narration: [{ pageNumber: 1, mode: "plain", text: "1ページ目の原稿です。" }],
+      voice: {
+        id: "Takumi",
+        engine: "neural",
+        languageCode: "ja-JP",
+        sampleRate: "16000",
+      },
+      lexicon: [],
+    };
+    const previousManifest = {
+      schemaVersion: 1,
+      projectId: "proj-001",
+      userId: "user-123",
+      contentLanguage: "ja-JP",
+      source: readyProject.source,
+      voice: readyProject.voice,
+      output: {
+        aspect: "9:16",
+        width: 1080,
+        height: 1920,
+        fps: 30,
+        captions: "burn",
+        narrationMode: "spoken",
+        silentPageDurationSec: 5,
+        verticalLayout: "top",
+        padColor: "navy",
+        captionStyle: "chalkboard",
+        captionPlacement: "safe-area",
+        captionSafeAreaYPosition: 1182,
+      },
+      lexicon: [],
+      pages: [
+        {
+          pageNumber: 1,
+          imageKey: "users/user-123/projects/proj-001/pages/page-001.png",
+          script: { mode: "plain", text: "1ページ目の原稿です。" },
+          audioKey: "users/user-123/projects/proj-001/audio/page-001.wav",
+          audioDurationSec: 4.2,
+          frameAlignedDurationMs: 4233,
+        },
+      ],
+      stages: { pages: "done", audio: "done", captions: "done", video: "done" },
+    };
+
+    mockDynamoSend.mockResolvedValueOnce({ Item: readyProject });
+    const s3Module = await import("@aws-sdk/client-s3");
+    const s3MockSend = (s3Module as unknown as { __mockSend: ReturnType<typeof vi.fn> }).__mockSend;
+    s3MockSend.mockResolvedValueOnce({
+      Body: { transformToString: async () => JSON.stringify(previousManifest) },
+    });
+
+    const event = makeEvent("POST", "/projects/proj-001/renders", {
+      body: JSON.stringify({ startFromStage: "video" }),
+    });
+    const result = await handler(event, mockContext);
+
+    expect(result.statusCode).toBe(201);
+    const manifestPut = s3MockSend.mock.calls
+      .map((call: unknown[]) => call[0] as { input?: { Body?: string } })
+      .find((command) => typeof command.input?.Body === "string");
+    const manifest = JSON.parse(manifestPut?.input?.Body ?? "{}");
+    expect(manifest.output.captionSafeAreaYPosition).toBe(1182);
+    expect(manifest.pages[0]).toMatchObject({
+      audioDurationSec: 4.2,
+      frameAlignedDurationMs: 4233,
+    });
+    expect(manifest.stages).toEqual({
+      pages: "done",
+      audio: "done",
+      captions: "done",
+      video: "pending",
+    });
+
+    const startExecution = mockSfnSend.mock.calls
+      .map((call) => call[0] as { input?: { input?: string; type?: string } })
+      .find((command) => command.type === "StartExecution");
+    expect(JSON.parse(startExecution?.input?.input ?? "{}")).toMatchObject({
+      startFromStage: "video",
+    });
+  });
+
+  it("不適格な部分再実行ではmanifestを上書きせずpagesからの開始を要求する", async () => {
+    const readyProject = {
+      projectId: "proj-001",
+      userId: "user-123",
+      status: "COMPLETED",
+      source: {
+        kind: "uploaded",
+        fileKey: "users/user-123/projects/proj-001/input/source.pdf",
+        pageCount: 1,
+      },
+      output: { aspect: "9:16", fps: 30, captions: "burn", verticalLayout: "top" },
+      narration: [{ pageNumber: 1, mode: "plain", text: "1ページ目の原稿です。" }],
+      lexicon: [],
+    };
+    mockDynamoSend.mockResolvedValueOnce({ Item: readyProject });
+    const s3Module = await import("@aws-sdk/client-s3");
+    const s3MockSend = (s3Module as unknown as { __mockSend: ReturnType<typeof vi.fn> }).__mockSend;
+    s3MockSend.mockRejectedValueOnce(
+      Object.assign(new Error("manifest not found"), {
+        name: "NoSuchKey",
+        $metadata: { httpStatusCode: 404 },
+      }),
+    );
+
+    const event = makeEvent("POST", "/projects/proj-001/renders", {
+      body: JSON.stringify({ startFromStage: "video" }),
+    });
+    const result = await handler(event, mockContext);
+
+    expect(result.statusCode).toBe(409);
+    expect(JSON.parse(result.body).error).toBe("PARTIAL_RENDER_REQUIRES_PAGES");
+    expect(s3MockSend.mock.calls).toHaveLength(1);
+    expect(mockSfnSend).not.toHaveBeenCalled();
+  });
+
+  function makePartialRenderProject() {
+    return {
+      projectId: "proj-001",
+      userId: "user-123",
+      status: "COMPLETED",
+      contentLanguage: "ja-JP",
+      source: {
+        kind: "uploaded",
+        fileKey: "users/user-123/projects/proj-001/input/source.pdf",
+        pageCount: 1,
+      },
+      output: { aspect: "9:16", fps: 30, captions: "burn", verticalLayout: "top" },
+      narration: [{ pageNumber: 1, mode: "plain", text: "1ページ目の原稿です。" }],
+      lexicon: [],
+    };
+  }
+
+  function makeCompletedPartialManifest(
+    project: ReturnType<typeof makePartialRenderProject>,
+    captions: "burn" | "srt" | "none" = "burn",
+  ) {
+    const keyPrefix = `users/${project.userId}/projects/${project.projectId}`;
+    return {
+      schemaVersion: 1,
+      projectId: project.projectId,
+      userId: project.userId,
+      contentLanguage: project.contentLanguage,
+      source: project.source,
+      voice: { id: "Takumi", engine: "neural", languageCode: "ja-JP", sampleRate: "16000" },
+      output: {
+        aspect: "9:16",
+        width: 1080,
+        height: 1920,
+        fps: 30,
+        captions,
+        narrationMode: "spoken",
+        silentPageDurationSec: 5,
+        verticalLayout: "top",
+        padColor: null,
+        captionStyle: captions === "burn" ? "white-outline" : null,
+        captionPlacement: captions === "burn" ? "bottom" : null,
+        captionSafeAreaYPosition: null,
+      },
+      lexicon: [],
+      pages: Array.from({ length: project.source.pageCount }, (_, index) => {
+        const pageNumber = index + 1;
+        return {
+          pageNumber,
+          imageKey: `${keyPrefix}/pages/page-${String(pageNumber).padStart(3, "0")}.png`,
+          script: { mode: "plain", text: project.narration[index]?.text ?? "" },
+          audioKey: `${keyPrefix}/audio/page-${String(pageNumber).padStart(3, "0")}.wav`,
+          audioDurationSec: 4.2,
+          frameAlignedDurationMs: 4233,
+        };
+      }),
+      stages: { pages: "done", audio: "done", captions: "done", video: "done" },
+    };
+  }
+
+  function mockPartialRenderS3(
+    s3MockSend: ReturnType<typeof vi.fn>,
+    previousManifest: ReturnType<typeof makeCompletedPartialManifest>,
+    failingArtifact?: { key: string; error: unknown },
+  ): void {
+    s3MockSend.mockImplementation(
+      (command: { type?: string; input?: { Key?: string; Body?: unknown } }) => {
+        if (command.type === "Head") {
+          if (command.input?.Key === failingArtifact?.key) {
+            return Promise.reject(failingArtifact.error);
+          }
+          return {};
+        }
+
+        if (command.input?.Body !== undefined) {
+          return {};
+        }
+
+        return { Body: { transformToString: async () => JSON.stringify(previousManifest) } };
+      },
+    );
+  }
+
+  function headObjectKeys(s3MockSend: ReturnType<typeof vi.fn>): string[] {
+    return s3MockSend.mock.calls
+      .map((call: unknown[]) => call[0] as { type?: string; input?: { Key?: string } })
+      .filter((command) => command.type === "Head")
+      .map((command) => command.input?.Key)
+      .filter((key): key is string => typeof key === "string");
+  }
+
+  function manifestWasWritten(s3MockSend: ReturnType<typeof vi.fn>): boolean {
+    return s3MockSend.mock.calls
+      .map((call: unknown[]) => call[0] as { input?: { Key?: string; Body?: unknown } })
+      .some(
+        (command) =>
+          command.input?.Key?.endsWith("manifest.json") && command.input.Body !== undefined,
+      );
+  }
+
+  it("audioからの部分再実行は全ページのPNGだけを確認する", async () => {
+    const readyProject = makePartialRenderProject();
+    const previousManifest = makeCompletedPartialManifest(readyProject);
+    mockDynamoSend.mockResolvedValueOnce({ Item: readyProject });
+
+    const s3Module = await import("@aws-sdk/client-s3");
+    const s3MockSend = (s3Module as unknown as { __mockSend: ReturnType<typeof vi.fn> }).__mockSend;
+    mockPartialRenderS3(s3MockSend, previousManifest);
+
+    const result = await handler(
+      makeEvent("POST", "/projects/proj-001/renders", {
+        body: JSON.stringify({ startFromStage: "audio" }),
+      }),
+      mockContext,
+    );
+
+    expect(result.statusCode).toBe(201);
+    expect(headObjectKeys(s3MockSend)).toEqual([
+      "users/user-123/projects/proj-001/pages/page-001.png",
+    ]);
+  });
+
+  it("captionsからの部分再実行はPNGとWAVを確認する", async () => {
+    const readyProject = makePartialRenderProject();
+    const previousManifest = makeCompletedPartialManifest(readyProject);
+    mockDynamoSend.mockResolvedValueOnce({ Item: readyProject });
+
+    const s3Module = await import("@aws-sdk/client-s3");
+    const s3MockSend = (s3Module as unknown as { __mockSend: ReturnType<typeof vi.fn> }).__mockSend;
+    mockPartialRenderS3(s3MockSend, previousManifest);
+
+    const result = await handler(
+      makeEvent("POST", "/projects/proj-001/renders", {
+        body: JSON.stringify({ startFromStage: "captions" }),
+      }),
+      mockContext,
+    );
+
+    expect(result.statusCode).toBe(201);
+    expect(headObjectKeys(s3MockSend)).toEqual([
+      "users/user-123/projects/proj-001/pages/page-001.png",
+      "users/user-123/projects/proj-001/audio/page-001.wav",
+    ]);
+  });
+
+  it("captionsがsrtのvideo部分再実行はSRTを前提にしない", async () => {
+    const readyProject = makePartialRenderProject();
+    readyProject.output.captions = "srt";
+    const previousManifest = makeCompletedPartialManifest(readyProject, "srt");
+    mockDynamoSend.mockResolvedValueOnce({ Item: readyProject });
+
+    const s3Module = await import("@aws-sdk/client-s3");
+    const s3MockSend = (s3Module as unknown as { __mockSend: ReturnType<typeof vi.fn> }).__mockSend;
+    mockPartialRenderS3(s3MockSend, previousManifest);
+
+    const result = await handler(
+      makeEvent("POST", "/projects/proj-001/renders", {
+        body: JSON.stringify({ startFromStage: "video" }),
+      }),
+      mockContext,
+    );
+
+    expect(result.statusCode).toBe(201);
+    expect(headObjectKeys(s3MockSend)).toEqual([
+      "users/user-123/projects/proj-001/pages/page-001.png",
+      "users/user-123/projects/proj-001/audio/page-001.wav",
+    ]);
+  });
+
+  it("再利用する焼き込み字幕SRTが欠損するとmanifestを上書きせずpagesからの開始を要求する", async () => {
+    const readyProject = makePartialRenderProject();
+    const previousManifest = makeCompletedPartialManifest(readyProject);
+    const srtKey = "users/user-123/projects/proj-001/captions/captions.srt";
+    mockDynamoSend.mockResolvedValueOnce({ Item: readyProject });
+
+    const s3Module = await import("@aws-sdk/client-s3");
+    const s3MockSend = (s3Module as unknown as { __mockSend: ReturnType<typeof vi.fn> }).__mockSend;
+    mockPartialRenderS3(s3MockSend, previousManifest, {
+      key: srtKey,
+      error: Object.assign(new Error("caption not found"), {
+        name: "NoSuchKey",
+        $metadata: { httpStatusCode: 404 },
+      }),
+    });
+
+    const result = await handler(
+      makeEvent("POST", "/projects/proj-001/renders", {
+        body: JSON.stringify({ startFromStage: "video" }),
+      }),
+      mockContext,
+    );
+
+    expect(result.statusCode).toBe(409);
+    expect(JSON.parse(result.body).error).toBe("PARTIAL_RENDER_REQUIRES_PAGES");
+    expect(headObjectKeys(s3MockSend)).toEqual([
+      "users/user-123/projects/proj-001/pages/page-001.png",
+      "users/user-123/projects/proj-001/audio/page-001.wav",
+      srtKey,
+    ]);
+    expect(manifestWasWritten(s3MockSend)).toBe(false);
+    expect(mockSfnSend).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      description: "アクセス拒否を500で返す",
+      s3Error: Object.assign(new Error("access denied"), {
+        name: "AccessDenied",
+        $metadata: { httpStatusCode: 403 },
+      }),
+      statusCode: 500,
+      errorCode: "PARTIAL_RENDER_ARTIFACT_ACCESS_DENIED",
+    },
+    {
+      description: "一時的な障害を503で返す",
+      s3Error: Object.assign(new Error("service unavailable"), {
+        name: "ServiceUnavailable",
+        $metadata: { httpStatusCode: 503 },
+      }),
+      statusCode: 503,
+      errorCode: "PARTIAL_RENDER_ARTIFACT_CHECK_UNAVAILABLE",
+    },
+    {
+      description: "存在しないバケットを502で返す",
+      s3Error: Object.assign(new Error("bucket not found"), {
+        name: "NoSuchBucket",
+        $metadata: { httpStatusCode: 404 },
+      }),
+      statusCode: 502,
+      errorCode: "PARTIAL_RENDER_ARTIFACT_CHECK_FAILED",
+    },
+    {
+      description: "その他の障害を502で返す",
+      s3Error: Object.assign(new Error("unexpected error"), {
+        name: "InternalError",
+        $metadata: { httpStatusCode: 400 },
+      }),
+      statusCode: 502,
+      errorCode: "PARTIAL_RENDER_ARTIFACT_CHECK_FAILED",
+    },
+  ])("再利用成果物の確認で$description", async ({ s3Error, statusCode, errorCode }) => {
+    const readyProject = makePartialRenderProject();
+    const previousManifest = makeCompletedPartialManifest(readyProject);
+    const imageKey = "users/user-123/projects/proj-001/pages/page-001.png";
+    mockDynamoSend.mockResolvedValueOnce({ Item: readyProject });
+
+    const s3Module = await import("@aws-sdk/client-s3");
+    const s3MockSend = (s3Module as unknown as { __mockSend: ReturnType<typeof vi.fn> }).__mockSend;
+    mockPartialRenderS3(s3MockSend, previousManifest, { key: imageKey, error: s3Error });
+
+    const result = await handler(
+      makeEvent("POST", "/projects/proj-001/renders", {
+        body: JSON.stringify({ startFromStage: "video" }),
+      }),
+      mockContext,
+    );
+
+    expect(result.statusCode).toBe(statusCode);
+    expect(JSON.parse(result.body).error).toBe(errorCode);
+    expect(manifestWasWritten(s3MockSend)).toBe(false);
+    expect(mockSfnSend).not.toHaveBeenCalled();
+  });
+
+  it("字幕設定がない旧manifestからvideoを部分再実行できる", async () => {
+    const readyProject = makePartialRenderProject();
+    const legacyManifest = {
+      schemaVersion: 1,
+      projectId: "proj-001",
+      userId: "user-123",
+      contentLanguage: "ja-JP",
+      source: readyProject.source,
+      voice: { id: "Takumi", engine: "neural", languageCode: "ja-JP", sampleRate: "16000" },
+      output: {
+        aspect: "9:16",
+        width: 1080,
+        height: 1920,
+        fps: 30,
+        captions: "burn",
+        narrationMode: "spoken",
+        silentPageDurationSec: 5,
+        verticalLayout: "top",
+        padColor: null,
+      },
+      lexicon: [],
+      pages: [
+        {
+          pageNumber: 1,
+          imageKey: "users/user-123/projects/proj-001/pages/page-001.png",
+          script: { mode: "plain", text: "1ページ目の原稿です。" },
+          audioKey: "users/user-123/projects/proj-001/audio/page-001.wav",
+          audioDurationSec: 4.2,
+          frameAlignedDurationMs: 4233,
+        },
+      ],
+      stages: { pages: "done", audio: "done", captions: "done", video: "done" },
+    };
+
+    mockDynamoSend.mockResolvedValueOnce({ Item: readyProject });
+    const s3Module = await import("@aws-sdk/client-s3");
+    const s3MockSend = (s3Module as unknown as { __mockSend: ReturnType<typeof vi.fn> }).__mockSend;
+    s3MockSend.mockResolvedValueOnce({
+      Body: { transformToString: async () => JSON.stringify(legacyManifest) },
+    });
+
+    const result = await handler(
+      makeEvent("POST", "/projects/proj-001/renders", {
+        body: JSON.stringify({ startFromStage: "video" }),
+      }),
+      mockContext,
+    );
+
+    expect(result.statusCode).toBe(201);
+    const manifestPut = s3MockSend.mock.calls
+      .map((call: unknown[]) => call[0] as { input?: { Body?: string } })
+      .find((command) => typeof command.input?.Body === "string");
+    expect(JSON.parse(manifestPut?.input?.Body ?? "{}")).toMatchObject({
+      output: { captionStyle: "white-outline", captionPlacement: "bottom" },
+      stages: { pages: "done", audio: "done", captions: "done", video: "pending" },
+    });
+  });
+
+  it.each([
+    {
+      description: "AccessDenied を500で返す",
+      s3Error: Object.assign(new Error("access denied"), {
+        name: "AccessDenied",
+        $metadata: { httpStatusCode: 403 },
+      }),
+      statusCode: 500,
+      errorCode: "MANIFEST_READ_ACCESS_DENIED",
+    },
+    {
+      description: "一時的なS3障害を503で返す",
+      s3Error: Object.assign(new Error("service unavailable"), {
+        name: "ServiceUnavailable",
+        $metadata: { httpStatusCode: 503 },
+      }),
+      statusCode: 503,
+      errorCode: "MANIFEST_READ_UNAVAILABLE",
+    },
+    {
+      description: "存在しないバケットを502で返す",
+      s3Error: Object.assign(new Error("bucket not found"), {
+        name: "NoSuchBucket",
+        $metadata: { httpStatusCode: 404 },
+      }),
+      statusCode: 502,
+      errorCode: "MANIFEST_READ_FAILED",
+    },
+  ])("部分再実行で$description", async ({ s3Error, statusCode, errorCode }) => {
+    mockDynamoSend.mockResolvedValueOnce({ Item: makePartialRenderProject() });
+    const s3Module = await import("@aws-sdk/client-s3");
+    const s3MockSend = (s3Module as unknown as { __mockSend: ReturnType<typeof vi.fn> }).__mockSend;
+    s3MockSend.mockRejectedValueOnce(s3Error);
+
+    const result = await handler(
+      makeEvent("POST", "/projects/proj-001/renders", {
+        body: JSON.stringify({ startFromStage: "video" }),
+      }),
+      mockContext,
+    );
+
+    expect(result.statusCode).toBe(statusCode);
+    expect(JSON.parse(result.body).error).toBe(errorCode);
+    expect(s3MockSend).toHaveBeenCalledTimes(1);
+    expect(mockSfnSend).not.toHaveBeenCalled();
+  });
+
+  it("壊れた既存manifestは409でpagesからの開始を要求する", async () => {
+    mockDynamoSend.mockResolvedValueOnce({ Item: makePartialRenderProject() });
+    const s3Module = await import("@aws-sdk/client-s3");
+    const s3MockSend = (s3Module as unknown as { __mockSend: ReturnType<typeof vi.fn> }).__mockSend;
+    s3MockSend.mockResolvedValueOnce({ Body: { transformToString: async () => "{" } });
+
+    const result = await handler(
+      makeEvent("POST", "/projects/proj-001/renders", {
+        body: JSON.stringify({ startFromStage: "video" }),
+      }),
+      mockContext,
+    );
+
+    expect(result.statusCode).toBe(409);
+    expect(JSON.parse(result.body).error).toBe("PARTIAL_RENDER_REQUIRES_PAGES");
+    expect(mockSfnSend).not.toHaveBeenCalled();
   });
 
   it("rejects starting a render when narration is missing", async () => {
@@ -436,6 +1073,47 @@ describe("API Router", () => {
       totalPages: 3,
       message: "ページ 1/3 のナレーション音声を生成しました。",
     });
+  });
+
+  it("失敗時はStep Functions履歴から失敗工程を保存して返す", async () => {
+    mockDynamoSend
+      .mockResolvedValueOnce({
+        Item: { projectId: "proj-001", userId: "user-123", status: "RENDERING" },
+      })
+      .mockResolvedValueOnce({
+        Item: {
+          renderId: "render-001",
+          projectId: "proj-001",
+          userId: "user-123",
+          status: "RUNNING",
+          executionArn: "arn:aws:states:us-east-1:123:execution:test",
+          currentStage: "pages",
+          currentPage: 0,
+          totalPages: 1,
+          progressMessage: "PDFページを画像に変換しています。",
+          progressUpdatedAt: "2026-08-15T00:00:00.000Z",
+          startedAt: "2026-08-15T00:00:00.000Z",
+          updatedAt: "2026-08-15T00:00:00.000Z",
+        },
+      });
+    mockSfnSend
+      .mockResolvedValueOnce({ status: "FAILED", stopDate: new Date("2026-08-15T00:01:00.000Z") })
+      .mockResolvedValueOnce({
+        events: [
+          {
+            type: "TaskStateEntered",
+            stateEnteredEventDetails: { name: "AudioStage" },
+          },
+        ],
+      });
+
+    const result = await handler(
+      makeEvent("GET", "/projects/proj-001/renders/render-001"),
+      mockContext,
+    );
+
+    expect(result.statusCode).toBe(200);
+    expect(JSON.parse(result.body)).toMatchObject({ status: "FAILED", currentStage: "audio" });
   });
 
   it("routes GET /projects/{id}/renders/{renderId}/artifacts", async () => {

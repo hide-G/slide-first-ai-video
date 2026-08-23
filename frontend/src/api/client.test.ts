@@ -291,7 +291,7 @@ describe("apiClient", () => {
     expect(response.source.fileName).toBe("deck.pdf");
   });
 
-  it("updateOutputで出力プロファイルをそのまま保存する", async () => {
+  it("updateOutputで字幕スタイルと出力プロファイルをそのまま保存する", async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({}),
@@ -305,6 +305,10 @@ describe("apiClient", () => {
       captions: "burn",
       verticalLayout: "top",
       padColor: "navy",
+      captionStyle: "chalkboard",
+      captionPlacement: "safe-area",
+      narrationMode: "spoken",
+      silentPageDurationSec: 5,
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -319,6 +323,10 @@ describe("apiClient", () => {
           captions: "burn",
           verticalLayout: "top",
           padColor: "navy",
+          captionStyle: "chalkboard",
+          captionPlacement: "safe-area",
+          narrationMode: "spoken",
+          silentPageDurationSec: 5,
         }),
       }),
     );
@@ -367,6 +375,28 @@ describe("apiClient", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.example.test/v1/projects/p1/renders",
       expect.objectContaining({ method: "POST", body: "{}" }),
+    );
+  });
+
+  it("startRenderで部分再実行の開始工程を送信する", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          renderId: "r2",
+          status: "RUNNING",
+          startedAt: "2026-08-15T00:00:00.000Z",
+        }),
+    });
+
+    await apiClient.startRender("p1", { startFromStage: "captions" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.example.test/v1/projects/p1/renders",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ startFromStage: "captions" }),
+      }),
     );
   });
 

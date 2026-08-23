@@ -10,6 +10,8 @@ export {
   NarrationMode,
   VerticalLayout,
   PadColor,
+  CaptionStylePreset,
+  CaptionPlacement,
   SUPPORTED_FPS,
   OUTPUT_PROFILES,
   getOutputProfile,
@@ -17,6 +19,7 @@ export {
   SourceSchema,
   VoiceSchema,
   OutputSchema,
+  SaveOutputSchema,
   LexiconEntrySchema,
   ScriptSchema,
   PageSchema,
@@ -32,6 +35,7 @@ export type {
   Source,
   Voice,
   Output,
+  SaveOutput,
   LexiconEntry,
   Script,
   Page,
@@ -43,6 +47,8 @@ export type {
   Manifest,
   VerticalLayout as VerticalLayoutValue,
   PadColor as PadColorValue,
+  CaptionStylePreset as CaptionStylePresetValue,
+  CaptionPlacement as CaptionPlacementValue,
   SupportedFps,
 } from "./manifest.js";
 

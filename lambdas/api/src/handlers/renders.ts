@@ -27,6 +27,7 @@ import {
   pageImageKey,
   audioKey,
   captionsSrtKey,
+  captionPageSrtKey,
 } from "@slide-first/shared-types";
 import type { Manifest, RenderProgress } from "@slide-first/shared-types";
 import {
@@ -186,10 +187,17 @@ function requiredPartialArtifactKeys(
     return [...imageKeys, ...audioKeys];
   }
 
+  const pageCaptionKeys =
+    manifest.output.captions === "burn"
+      ? manifest.pages
+          .filter((page) => page.script.text.trim().length > 0)
+          .map((page) => captionPageSrtKey(keyParams, page.pageNumber))
+      : [];
+
   return [
     ...imageKeys,
     ...audioKeys,
-    ...(manifest.output.captions === "burn" ? [captionsSrtKey(keyParams)] : []),
+    ...(manifest.output.captions === "burn" ? [captionsSrtKey(keyParams), ...pageCaptionKeys] : []),
   ];
 }
 
@@ -673,7 +681,11 @@ async function listDownloadableArtifacts(prefixes: string[]): Promise<ListedArti
 
 function isDownloadableArtifact(key: string): boolean {
   const normalizedKey = key.toLowerCase();
-  return DOWNLOADABLE_ARTIFACT_EXTENSIONS.some((extension) => normalizedKey.endsWith(extension));
+  // ページ別SRTはMediaConvert入力専用であり、ダウンロード成果物には含めない。
+  return (
+    !normalizedKey.includes("/captions/pages/") &&
+    DOWNLOADABLE_ARTIFACT_EXTENSIONS.some((extension) => normalizedKey.endsWith(extension))
+  );
 }
 
 async function readManifestProgress(render: RenderRecord): Promise<RenderProgress | undefined> {

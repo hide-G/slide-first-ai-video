@@ -64,6 +64,7 @@ export {
   pageImageKey,
   audioKey,
   captionsSrtKey,
+  captionPageSrtKey,
   outputVideoKey,
   manifestKey,
   projectPrefix,

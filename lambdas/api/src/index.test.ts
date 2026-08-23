@@ -799,7 +799,77 @@ describe("API Router", () => {
     ]);
   });
 
-  it("再利用する焼き込み字幕SRTが欠損するとmanifestを上書きせずpagesからの開始を要求する", async () => {
+  it("焼き込み字幕のvideo部分再実行は全体SRTとページ別SRTを確認する", async () => {
+    const readyProject = makePartialRenderProject();
+    readyProject.source.pageCount = 2;
+    readyProject.narration.push({ pageNumber: 2, mode: "plain", text: "2ページ目の原稿です。" });
+    const previousManifest = makeCompletedPartialManifest(readyProject);
+    mockDynamoSend.mockResolvedValueOnce({ Item: readyProject });
+
+    const s3Module = await import("@aws-sdk/client-s3");
+    const s3MockSend = (s3Module as unknown as { __mockSend: ReturnType<typeof vi.fn> }).__mockSend;
+    mockPartialRenderS3(s3MockSend, previousManifest);
+
+    const result = await handler(
+      makeEvent("POST", "/projects/proj-001/renders", {
+        body: JSON.stringify({ startFromStage: "video" }),
+      }),
+      mockContext,
+    );
+
+    expect(result.statusCode).toBe(201);
+    expect(headObjectKeys(s3MockSend)).toEqual([
+      "users/user-123/projects/proj-001/pages/page-001.png",
+      "users/user-123/projects/proj-001/pages/page-002.png",
+      "users/user-123/projects/proj-001/audio/page-001.wav",
+      "users/user-123/projects/proj-001/audio/page-002.wav",
+      "users/user-123/projects/proj-001/captions/captions.srt",
+      "users/user-123/projects/proj-001/captions/pages/page-001.srt",
+      "users/user-123/projects/proj-001/captions/pages/page-002.srt",
+    ]);
+  });
+
+  it("再利用するページ別焼き込み字幕SRTが欠損するとmanifestを上書きせずpagesからの開始を要求する", async () => {
+    const readyProject = makePartialRenderProject();
+    readyProject.source.pageCount = 2;
+    readyProject.narration.push({ pageNumber: 2, mode: "plain", text: "2ページ目の原稿です。" });
+    const previousManifest = makeCompletedPartialManifest(readyProject);
+    const pageSrtKey = "users/user-123/projects/proj-001/captions/pages/page-002.srt";
+    mockDynamoSend.mockResolvedValueOnce({ Item: readyProject });
+
+    const s3Module = await import("@aws-sdk/client-s3");
+    const s3MockSend = (s3Module as unknown as { __mockSend: ReturnType<typeof vi.fn> }).__mockSend;
+    mockPartialRenderS3(s3MockSend, previousManifest, {
+      key: pageSrtKey,
+      error: Object.assign(new Error("caption not found"), {
+        name: "NoSuchKey",
+        $metadata: { httpStatusCode: 404 },
+      }),
+    });
+
+    const result = await handler(
+      makeEvent("POST", "/projects/proj-001/renders", {
+        body: JSON.stringify({ startFromStage: "video" }),
+      }),
+      mockContext,
+    );
+
+    expect(result.statusCode).toBe(409);
+    expect(JSON.parse(result.body).error).toBe("PARTIAL_RENDER_REQUIRES_PAGES");
+    expect(headObjectKeys(s3MockSend)).toEqual([
+      "users/user-123/projects/proj-001/pages/page-001.png",
+      "users/user-123/projects/proj-001/pages/page-002.png",
+      "users/user-123/projects/proj-001/audio/page-001.wav",
+      "users/user-123/projects/proj-001/audio/page-002.wav",
+      "users/user-123/projects/proj-001/captions/captions.srt",
+      "users/user-123/projects/proj-001/captions/pages/page-001.srt",
+      pageSrtKey,
+    ]);
+    expect(manifestWasWritten(s3MockSend)).toBe(false);
+    expect(mockSfnSend).not.toHaveBeenCalled();
+  });
+
+  it("再利用する全体焼き込み字幕SRTが欠損するとmanifestを上書きせずpagesからの開始を要求する", async () => {
     const readyProject = makePartialRenderProject();
     const previousManifest = makeCompletedPartialManifest(readyProject);
     const srtKey = "users/user-123/projects/proj-001/captions/captions.srt";
@@ -828,6 +898,7 @@ describe("API Router", () => {
       "users/user-123/projects/proj-001/pages/page-001.png",
       "users/user-123/projects/proj-001/audio/page-001.wav",
       srtKey,
+      "users/user-123/projects/proj-001/captions/pages/page-001.srt",
     ]);
     expect(manifestWasWritten(s3MockSend)).toBe(false);
     expect(mockSfnSend).not.toHaveBeenCalled();
@@ -1154,7 +1225,20 @@ describe("API Router", () => {
           },
         ],
       })
-      .mockResolvedValueOnce({ Contents: [] })
+      .mockResolvedValueOnce({
+        Contents: [
+          {
+            Key: "users/user-123/projects/proj-001/captions/captions.srt",
+            Size: 120,
+            LastModified: new Date("2024-01-01"),
+          },
+          {
+            Key: "users/user-123/projects/proj-001/captions/pages/page-001.srt",
+            Size: 42,
+            LastModified: new Date("2024-01-01"),
+          },
+        ],
+      })
       .mockResolvedValueOnce({ Contents: [] });
 
     const event = makeEvent("GET", "/projects/proj-001/renders/render-001/artifacts");
@@ -1162,9 +1246,21 @@ describe("API Router", () => {
 
     expect(result.statusCode).toBe(200);
     const body = JSON.parse(result.body);
-    expect(body.artifacts).toHaveLength(1);
-    expect(body.artifacts[0].url).toBe("https://presigned.example.com");
-    expect(body.artifacts[0].downloadName).toBe("源内ハンズオン_概要編_20240101-090000.mp4");
+    expect(body.artifacts).toHaveLength(2);
+    expect(body.artifacts.map((artifact: { key: string }) => artifact.key)).toEqual([
+      "users/user-123/projects/proj-001/captions/captions.srt",
+      "users/user-123/projects/proj-001/output/render-001/video.mp4",
+    ]);
+    expect(
+      body.artifacts.some((artifact: { key: string }) => artifact.key.includes("/captions/pages/")),
+    ).toBe(false);
+    const videoArtifact = body.artifacts.find((artifact: { key: string }) =>
+      artifact.key.endsWith("/video.mp4"),
+    );
+    expect(videoArtifact).toMatchObject({
+      url: "https://presigned.example.com",
+      downloadName: "源内ハンズオン_概要編_20240101-090000.mp4",
+    });
   });
 
   it("returns 401 for unauthenticated requests", async () => {

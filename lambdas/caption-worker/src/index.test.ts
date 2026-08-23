@@ -97,7 +97,7 @@ describe("Stage 3: Captions handler", () => {
     expect(result.totalDuration).toBeCloseTo(10.5); // 3.5 + 4.2 + 2.8
   });
 
-  it("uploads SRT to correct S3 key", async () => {
+  it("焼き込み字幕では全体SRTと各ページの0秒起点SRTをアップロードする", async () => {
     const { handler } = await import("./index.js");
     await handler({
       s3Bucket: "test-bucket",
@@ -108,24 +108,48 @@ describe("Stage 3: Captions handler", () => {
       stage: "captions",
     });
 
-    const putCalls = mockSend.mock.calls.filter(
-      (call: unknown[]) => (call[0] as { type: string }).type === "put",
-    );
-    // Find the SRT upload (not manifest writes)
-    const srtPut = putCalls.find(
-      (call: unknown[]) =>
-        (call[0] as { input: { ContentType?: string } }).input.ContentType ===
-        "text/plain; charset=utf-8",
-    );
-    expect(srtPut).toBeDefined();
-    const srtInput = (srtPut![0] as { input: { Key: string; Body: string } }).input;
-    expect(srtInput.Key).toBe("users/user-1/projects/proj-1/captions/captions.srt");
-    // Verify SRT content structure
-    expect(srtInput.Body).toContain("-->");
-    expect(srtInput.Body).toContain("First page text");
+    const srtUploads = mockSend.mock.calls
+      .filter((call: unknown[]) => (call[0] as { type: string }).type === "put")
+      .map(
+        (call: unknown[]) =>
+          (
+            call[0] as {
+              input: { Key: string; Body: string; ContentType?: string };
+            }
+          ).input,
+      )
+      .filter((input) => input.ContentType === "text/plain; charset=utf-8");
+    const expectedKeys = [
+      "users/user-1/projects/proj-1/captions/captions.srt",
+      "users/user-1/projects/proj-1/captions/pages/page-001.srt",
+      "users/user-1/projects/proj-1/captions/pages/page-002.srt",
+      "users/user-1/projects/proj-1/captions/pages/page-003.srt",
+    ];
+    expect(srtUploads.map(({ Key }) => Key).sort()).toEqual(expectedKeys.sort());
+
+    const uploadsByKey = new Map(srtUploads.map(({ Key, Body }) => [Key, Body]));
+    expect(uploadsByKey.get(expectedKeys[0])).toContain("First page text");
+    expect(uploadsByKey.get(expectedKeys[0])).toContain("Third page text");
+    expect(uploadsByKey.get(expectedKeys[1])).toMatch(/^1\n00:00:00,000 -->/);
+    expect(uploadsByKey.get(expectedKeys[2])).toMatch(/^1\n00:00:00,000 -->/);
+    expect(uploadsByKey.get(expectedKeys[2])).toContain("Second page text");
+    expect(uploadsByKey.get(expectedKeys[2])).not.toContain("First page text");
   });
 
-  it("generates monotonically increasing timestamps", async () => {
+  it("captions=srtではページ別の焼き込み用SRTを作成しない", async () => {
+    const srtManifest: Manifest = {
+      ...sampleManifest,
+      output: { ...sampleManifest.output, captions: "srt" },
+    };
+    mockSend.mockImplementation((cmd: { type: string }) => {
+      if (cmd.type === "get") {
+        return Promise.resolve({
+          Body: { transformToString: () => Promise.resolve(JSON.stringify(srtManifest)) },
+        });
+      }
+      return Promise.resolve({});
+    });
+
     const { handler } = await import("./index.js");
     await handler({
       s3Bucket: "test-bucket",
@@ -136,20 +160,82 @@ describe("Stage 3: Captions handler", () => {
       stage: "captions",
     });
 
-    const putCalls = mockSend.mock.calls.filter(
-      (call: unknown[]) => (call[0] as { type: string }).type === "put",
-    );
-    const srtPut = putCalls.find(
-      (call: unknown[]) =>
-        (call[0] as { input: { ContentType?: string } }).input.ContentType ===
-        "text/plain; charset=utf-8",
-    );
-    const srtContent = (srtPut![0] as { input: { Body: string } }).input.Body;
+    const srtKeys = mockSend.mock.calls
+      .filter((call: unknown[]) => (call[0] as { type: string }).type === "put")
+      .map((call: unknown[]) => (call[0] as { input: { Key: string; ContentType?: string } }).input)
+      .filter((input) => input.ContentType === "text/plain; charset=utf-8")
+      .map(({ Key }) => Key);
+    expect(srtKeys).toEqual(["users/user-1/projects/proj-1/captions/captions.srt"]);
+  });
 
-    // Extract timestamps
-    const timestamps = srtContent.match(/\d{2}:\d{2}:\d{2},\d{3}/g);
+  it("空の原稿ページにはページ別SRTを作成しない", async () => {
+    const manifestWithEmptyPage: Manifest = {
+      ...sampleManifest,
+      pages: sampleManifest.pages.map((page) =>
+        page.pageNumber === 2 ? { ...page, script: { ...page.script, text: " " } } : page,
+      ),
+    };
+    mockSend.mockImplementation((cmd: { type: string }) => {
+      if (cmd.type === "get") {
+        return Promise.resolve({
+          Body: { transformToString: () => Promise.resolve(JSON.stringify(manifestWithEmptyPage)) },
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    const { handler } = await import("./index.js");
+    const result = await handler({
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
+      renderId: "render-1",
+      stage: "captions",
+    });
+
+    expect(result.subtitleCount).toBe(2);
+    const srtKeys = mockSend.mock.calls
+      .filter((call: unknown[]) => (call[0] as { type: string }).type === "put")
+      .map((call: unknown[]) => (call[0] as { input: { Key: string; ContentType?: string } }).input)
+      .filter((input) => input.ContentType === "text/plain; charset=utf-8")
+      .map(({ Key }) => Key)
+      .sort();
+    expect(srtKeys).toEqual([
+      "users/user-1/projects/proj-1/captions/captions.srt",
+      "users/user-1/projects/proj-1/captions/pages/page-001.srt",
+      "users/user-1/projects/proj-1/captions/pages/page-003.srt",
+    ]);
+  });
+
+  it("全体SRTのタイムスタンプを単調増加にする", async () => {
+    const { handler } = await import("./index.js");
+    await handler({
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
+      renderId: "render-1",
+      stage: "captions",
+    });
+
+    const srtInput = mockSend.mock.calls
+      .filter((call: unknown[]) => (call[0] as { type: string }).type === "put")
+      .map(
+        (call: unknown[]) =>
+          (
+            call[0] as {
+              input: { Key: string; Body: string; ContentType?: string };
+            }
+          ).input,
+      )
+      .find(
+        (input) =>
+          input.Key === "users/user-1/projects/proj-1/captions/captions.srt" &&
+          input.ContentType === "text/plain; charset=utf-8",
+      );
+    const timestamps = srtInput?.Body.match(/\d{2}:\d{2}:\d{2},\d{3}/g);
     expect(timestamps).not.toBeNull();
-    // Each pair should be monotonically increasing
     for (let i = 1; i < timestamps!.length; i++) {
       expect(timestamps![i] >= timestamps![i - 1]).toBe(true);
     }

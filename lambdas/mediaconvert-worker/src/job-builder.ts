@@ -41,17 +41,23 @@ export interface BuildJobParams {
   outputDestination: string;
   /** manifest.outputから渡す出力プロファイル */
   output: OutputProfile;
-  /** captions=burnのときに使用するSRTのS3 URI */
-  captionsSrtS3Uri?: string;
+  /** captions=burnのときに各ページ入力へ渡すSRTのS3 URI。字幕なしページはundefined。 */
+  captionsSrtS3Uris?: Array<string | undefined>;
   /** 字幕テキストの言語（BCP 47） */
   captionLanguageCode?: string;
 }
 
+type CaptionSourceSettings =
+  | {
+      SourceType: "SRT";
+      FileSourceSettings: { SourceFile: string };
+    }
+  | {
+      SourceType: "NULL";
+    };
+
 interface CaptionSelector {
-  SourceSettings: {
-    SourceType: "SRT";
-    FileSourceSettings: { SourceFile: string };
-  };
+  SourceSettings: CaptionSourceSettings;
 }
 
 interface BurninDestinationSettings {
@@ -255,16 +261,36 @@ function buildBurnInCaptionDescription(
   };
 }
 
+function buildCaptionSelector(captionSrtS3Uri: string | undefined): CaptionSelector {
+  if (!captionSrtS3Uri) {
+    return {
+      SourceSettings: {
+        SourceType: "NULL",
+      },
+    };
+  }
+
+  return {
+    SourceSettings: {
+      SourceType: "SRT",
+      FileSourceSettings: { SourceFile: captionSrtS3Uri },
+    },
+  };
+}
+
 /**
  * MediaConvertジョブJSONを構築する。
  * 各ページは静止画+外部WAVのInputとなり、MediaConvertが入力順に連結する。
  */
 export function buildMediaConvertJob(params: BuildJobParams): MediaConvertJobSettings {
-  const { roleArn, pages, outputDestination, output, captionsSrtS3Uri, captionLanguageCode } =
+  const { roleArn, pages, outputDestination, output, captionsSrtS3Uris, captionLanguageCode } =
     params;
 
-  if (output.captions === "burn" && !captionsSrtS3Uri) {
-    throw new Error("字幕を焼き込むにはSRTのS3 URIが必要です。");
+  if (
+    output.captions === "burn" &&
+    (!captionsSrtS3Uris || captionsSrtS3Uris.length !== pages.length)
+  ) {
+    throw new Error("字幕を焼き込むには各ページのSRTのS3 URIが必要です。");
   }
 
   const inputs = pages.map((page, index) => ({
@@ -275,15 +301,10 @@ export function buildMediaConvertJob(params: BuildJobParams): MediaConvertJobSet
         ExternalAudioFileInput: page.audioS3Uri,
       },
     },
-    ...(output.captions === "burn" && index === 0
+    ...(output.captions === "burn"
       ? {
           CaptionSelectors: {
-            [CAPTION_SELECTOR_NAME]: {
-              SourceSettings: {
-                SourceType: "SRT" as const,
-                FileSourceSettings: { SourceFile: captionsSrtS3Uri! },
-              },
-            },
+            [CAPTION_SELECTOR_NAME]: buildCaptionSelector(captionsSrtS3Uris![index]),
           },
         }
       : {}),

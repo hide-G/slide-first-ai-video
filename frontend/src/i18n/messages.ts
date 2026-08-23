@@ -25,10 +25,14 @@ const jaMessages = {
 
   // login
   "login.heading": "スライドを正本に、音声と字幕つき動画をつくる",
-  "login.lead": "生成AIでスライドの骨子を作る工程と、手持ちの資料を動画化する工程は独立しています。必要な側だけを使えます。",
-  "login.point1": "① スライド生成：文章と参考URLを渡し、骨子を確認・修正してからMarpスライドを作ります。",
-  "login.point2": "② 動画生成：PDFやPowerPointをそのままアップロードし、ナレーションと字幕を付けて書き出します。",
-  "login.point3": "③ 読み方の指定：英単語や固有名詞の読み、振り仮名、間の取り方をSSMLで調整できます。",
+  "login.lead":
+    "生成AIでスライドの骨子を作る工程と、手持ちの資料を動画化する工程は独立しています。必要な側だけを使えます。",
+  "login.point1":
+    "① スライド生成：文章と参考URLを渡し、骨子を確認・修正してからMarpスライドを作ります。",
+  "login.point2":
+    "② 動画生成：PDFをアップロードし、ナレーションと字幕を付けて書き出します。PowerPointはPDFとして書き出してからアップロードしてください。",
+  "login.point3":
+    "③ 読み方の指定：英単語や固有名詞の読み、振り仮名、間の取り方をSSMLで調整できます。",
   "login.formTitle": "ログイン",
   "login.formSub": "社内アカウントまたはメールアドレスでログインします。",
   "login.email": "メールアドレス",
@@ -41,17 +45,20 @@ const jaMessages = {
 
   // home
   "home.heading": "何をつくりますか",
-  "home.lead": "スライド生成と動画生成は独立した機能です。本アプリ以外で作ったPDFやPowerPointを、動画生成へ直接アップロードできます。",
+  "home.lead":
+    "スライド生成と動画生成は独立した機能です。本アプリ以外で作ったPDFを、動画生成へ直接アップロードできます。PowerPointはPDFとして書き出してからアップロードしてください。",
   "home.card1Kicker": "機能 ②",
   "home.card1Title": "生成AIでスライドを作る",
-  "home.card1Body": "文章や参考文献のURLを渡すと、生成AIがスライドの骨子を作ります。内容を確認・加筆修正してからMarpでスライドを生成します。",
+  "home.card1Body":
+    "文章や参考文献のURLを渡すと、生成AIがスライドの骨子を作ります。内容を確認・加筆修正してからMarpでスライドを生成します。",
   "home.card1Point1": "スライドの言語を日本語・英語から選択",
   "home.card1Point2": "骨子をレビューして文章を編集",
   "home.card1Point3": "Markdown・PDF・PowerPointで書き出し",
   "home.card1Cta": "スライド作成をはじめる",
   "home.card2Kicker": "機能 ③",
   "home.card2Title": "資料から動画を作る",
-  "home.card2Body": "PDFまたはPowerPointをアップロードし、ナレーションと字幕を付けて動画にします。スライド生成を経由せず、単独で使えます。",
+  "home.card2Body":
+    "PDFをアップロードし、ナレーションと字幕を付けて動画にします。スライド生成を経由せず、単独で使えます。PowerPointはPDFとして書き出してからアップロードしてください。",
   "home.card2Point1": "横型・縦型・正方形の出力サイズを選択",
   "home.card2Point2": "ページごとのナレーション案を自動作成",
   "home.card2Point3": "SSMLで読み方と振り仮名を指定",
@@ -72,13 +79,15 @@ const jaMessages = {
 
   // slide studio
   "slide.heading": "② 生成AIでスライドを作る",
-  "slide.lead": "骨子を確認・修正してからスライドを生成します。生成AIの出力をそのまま採用しません。",
+  "slide.lead":
+    "骨子を確認・修正してからスライドを生成します。生成AIの出力をそのまま採用しません。",
   "slide.stepA": "入力と条件",
   "slide.stepB": "骨子のレビューと編集",
   "slide.stepC": "スライド生成と書き出し",
   "slide.s1Title": "スライドの内容と条件を入力する",
   "slide.s1Sub": "入力後、まず骨子だけを生成します。この時点ではスライドは作られません。",
-  "slide.langNote": "言語の考え方：画面の表示言語（ヘッダーの日本語 / English）と、これから作るスライドの言語は別に指定します。画面を英語にしたまま日本語のスライドを作れます。",
+  "slide.langNote":
+    "言語の考え方：画面の表示言語（ヘッダーの日本語 / English）と、これから作るスライドの言語は別に指定します。画面を英語にしたまま日本語のスライドを作れます。",
   "slide.outputLang": "スライドの言語",
   "slide.langJa": "日本語",
   "slide.langJaHint": "本文・ナレーションを日本語で作成",
@@ -106,7 +115,8 @@ const jaMessages = {
   "slide.theme3": "高コントラスト",
   "slide.genOutline": "骨子を生成する",
   "slide.s2Title": "骨子をレビューして修正する",
-  "slide.s2Sub": "スライドを生成する前の工程です。ここで確定した文章がスライドとナレーションの元になります。",
+  "slide.s2Sub":
+    "スライドを生成する前の工程です。ここで確定した文章がスライドとナレーションの元になります。",
   "slide.outlineList": "スライド一覧",
   "slide.moveUp": "上へ",
   "slide.moveDown": "下へ",
@@ -123,24 +133,29 @@ const jaMessages = {
   "slide.s3Sub": "サムネイルは表示イメージです。",
   "slide.downloadTitle": "書き出し",
   "slide.downloadSub": "同じ内容から3つの形式を書き出します。",
-  "slide.pptxNote": "PowerPointは拡張子だけでなく、実際にPowerPointで開けるファイルとして書き出します。",
+  "slide.pptxNote":
+    "PowerPointは拡張子だけでなく、実際にPowerPointで開けるファイルとして書き出します。",
   "slide.backOutline": "骨子の編集に戻る",
   "slide.toVideo": "この資料で動画を作る",
 
   // video studio
   "video.heading": "③ 資料から動画を作る",
-  "video.lead": "PDFまたはPowerPointを起点に、ナレーションと字幕を付けて書き出します。スライド作成機能を使わず、単独で利用できます。",
+  "video.lead":
+    "PDFを起点に、ナレーションと字幕を付けて書き出します。スライド作成機能を使わず、単独で利用できます。PowerPointはPDFとして書き出してからアップロードしてください。",
   "video.stepA": "素材の読み込み",
   "video.stepB": "出力設定",
   "video.stepC": "ナレーションと読み方",
   "video.stepD": "生成と書き出し",
   "video.handoffTitle": "スライド作成から引き継ぎました",
-  "video.handoffNote": "スライド作成で確定した内容をそのまま読み込みました。差し替える場合は下からアップロードしてください。",
+  "video.handoffNote":
+    "スライド作成で確定した内容をそのまま読み込みました。差し替える場合は下からアップロードしてください。",
   "video.uploadTitle": "資料をアップロードする",
-  "video.uploadSub": "PDF、または PowerPoint（.pptx）に対応します。",
+  "video.uploadSub":
+    "PDFに対応します。PowerPointはPDFとして書き出してからアップロードしてください。",
   "video.dropTitle": "ここにファイルをドラッグ、またはクリックして選択",
   "video.dropHint": "1ファイル、最大50ページを想定",
-  "video.independentNote": "この画面は単独で使えます。他のツールで作ったスライドをここへアップロードして動画化できます。",
+  "video.independentNote":
+    "この画面は単独で使えます。他のツールで作ったスライドをここへアップロードして動画化できます。",
   "video.pagesTitle": "読み込んだページ",
   "video.pagesSub": "ページ数と、後で作るナレーションの数を一致させます。",
   "video.toSettings": "出力設定へ進む",
@@ -158,7 +173,8 @@ const jaMessages = {
   "video.size11Hint": "1080×1080 / タイムライン投稿",
   "video.size45": "縦長 4:5",
   "video.size45Hint": "1080×1350 / 縦長タイムライン",
-  "video.verticalNote": "縦型では16:9のスライドがそのままでは小さくなります。配置と拡大方法を指定してください。",
+  "video.verticalNote":
+    "縦型では16:9のスライドがそのままでは小さくなります。配置と拡大方法を指定してください。",
   "video.vLayout": "スライドの配置",
   "video.vLayout1": "上寄せ（下に字幕）",
   "video.vLayout2": "中央（上下に余白）",
@@ -177,6 +193,18 @@ const jaMessages = {
   "video.subSrtHint": "SRTを同時に書き出します",
   "video.subNone": "字幕なし",
   "video.subNoneHint": "音声のみで構成します",
+  "video.captionStyleHint":
+    "ページごとの読み上げ原稿を、そのシーンの間にMediaConvertで焼き込みます。",
+  "video.captionStyle": "字幕スタイル",
+  "video.captionStyleWhiteOutline": "白文字・黒縁",
+  "video.captionStyleYellowOutline": "黄文字・黒縁",
+  "video.captionStyleBlackBackground": "白文字・半透明黒背景",
+  "video.captionStyleChalkboard": "黒板風（濃緑背景・白文字）",
+  "video.captionPlacement": "字幕の配置",
+  "video.captionPlacementBottom": "映像下部",
+  "video.captionPlacementSafeArea": "下部セーフエリア（縦型・上寄せ）",
+  "video.captionSafeAreaHint":
+    "下側の余白へ配置し、XなどのプラットフォームUIと重なりにくくします。",
   "video.subSize": "文字サイズ",
   "video.subSizeS": "小",
   "video.subSizeM": "中",
@@ -192,10 +220,12 @@ const jaMessages = {
   "video.speechRate": "読み上げ速度",
   "video.rateDefault": "100%（既定）",
   "video.voiceTest": "この音声で短い文を試聴する",
-  "video.voiceTestHint": "音声とエンジンの組み合わせによって使えない指定があります。本番の生成前に短い文で確認できます。",
+  "video.voiceTestHint":
+    "音声とエンジンの組み合わせによって使えない指定があります。本番の生成前に短い文で確認できます。",
   "video.toNarration": "ナレーション案を作る",
   "video.narrTitle": "ナレーションを確認・編集する",
-  "video.narrSub": "生成AIがページごとに原稿案を作成しました。読み上げる文章は、ここで確定した内容が使われます。",
+  "video.narrSub":
+    "生成AIがページごとに原稿案を作成しました。読み上げる文章は、ここで確定した内容が使われます。",
   "video.pageListTitle": "ページ",
   "video.aiDraft": "生成AIの下書き",
   "video.inputMode": "原稿の記述方法",
@@ -213,7 +243,8 @@ const jaMessages = {
   "video.ssmlRate": "速度",
   "video.ssmlEmphasis": "強調",
   "video.estHint": "推定時間の目安です。実際の尺は音声を生成したあとに実測値で確定します。",
-  "video.ssmlNote": "振り仮名は読み替えタグで指定します。音声とエンジンの組み合わせによって使えないタグがあるため、試聴で確認してください。",
+  "video.ssmlNote":
+    "振り仮名は読み替えタグで指定します。音声とエンジンの組み合わせによって使えないタグがあるため、試聴で確認してください。",
   "video.previewAudio": "この原稿を試聴する",
   "video.regenScript": "AIに再提案させる",
   "video.dictTitle": "読み方の辞書（資料全体に適用）",
@@ -228,6 +259,13 @@ const jaMessages = {
   "video.generate": "動画を生成する",
   "video.jobTitle": "生成の進行状況",
   "video.jobSub": "工程ごとに進みます。途中で失敗した場合は、その工程だけを再実行します。",
+  "video.retryTitle": "生成を再実行する",
+  "video.retryFailedStage": "失敗した工程から再実行",
+  "video.retryFailedStageHint": "失敗した工程から、保存済みの成果物を再利用して再実行します。",
+  "video.retryFromPages": "最初から再実行",
+  "video.partialRenderRequiresPages":
+    "前回の途中成果物を再利用できないため、最初から再実行してください。",
+  "video.retryStarting": "再実行を開始しています...",
   "video.job1": "ページを画像に変換",
   "video.job2": "ナレーション音声を合成",
   "video.job3": "音声の長さを実測して字幕を作成",
@@ -251,7 +289,8 @@ const jaMessages = {
   "video.cheatsheetOpen": "SSMLチートシート",
   "video.cheatsheetTitle": "Amazon Polly SSML チートシート",
   "video.cheatsheetClose": "閉じる",
-  "video.cheatsheetMoveHelp": "見出しをドラッグすると移動できます。見出しを選んで矢印キーでも移動できます。右下をドラッグすると大きさを変えられます。",
+  "video.cheatsheetMoveHelp":
+    "見出しをドラッグすると移動できます。見出しを選んで矢印キーでも移動できます。右下をドラッグすると大きさを変えられます。",
   "video.cheatsheetThPurpose": "用途",
   "video.cheatsheetThTag": "タグと書き方",
   "video.cheatsheetThSupport": "対応",
@@ -260,9 +299,12 @@ const jaMessages = {
   "video.supportFull": "使える",
   "video.supportPartial": "一部のみ",
   "video.supportNone": "使えない",
-  "video.cheatsheetNote1": "ニューラル音声では、prosody の volume と rate は使えますが、pitch は使えません。標準音声ではすべて使えます。",
-  "video.cheatsheetNote2": "say-as の characters（1文字ずつ読む）は、ニューラル音声では該当の文だけ標準音声で合成されます。課金はニューラル音声として行われます。",
-  "video.cheatsheetNote3": "対応していないタグを使うとエラーになります。生成前に試聴で確認してください。",
+  "video.cheatsheetNote1":
+    "ニューラル音声では、prosody の volume と rate は使えますが、pitch は使えません。標準音声ではすべて使えます。",
+  "video.cheatsheetNote2":
+    "say-as の characters（1文字ずつ読む）は、ニューラル音声では該当の文だけ標準音声で合成されます。課金はニューラル音声として行われます。",
+  "video.cheatsheetNote3":
+    "対応していないタグを使うとエラーになります。生成前に試聴で確認してください。",
   "video.cheatsheetSource": "出典: Amazon Polly 公式ドキュメント「Supported SSML tags」",
 
   // cost
@@ -275,7 +317,8 @@ const jaMessages = {
   "cost.total": "推定合計",
   "cost.estimateBadge": "推定",
   "cost.actualPending": "実績値: 集計待ち（反映まで最大24時間）",
-  "cost.unitNote": "表示している単価は画面確認用のサンプルです。実装時はAWS Price List APIから取得した単価を使い、計算に使った単価の取得日を記録します。",
+  "cost.unitNote":
+    "表示している単価は画面確認用のサンプルです。実装時はAWS Price List APIから取得した単価を使い、計算に使った単価の取得日を記録します。",
   "cost.disclaimer": "無料利用枠は考慮していません。日本円は請求時のレートによって変わります。",
   "cost.deckEstimate": "このスライド生成にかかった推定コスト",
   "cost.recentCost": "推定コスト",
@@ -298,9 +341,12 @@ const enMessages: MessageCatalog = {
 
   // login
   "login.heading": "Turn slides into narrated, captioned video",
-  "login.lead": "Generating slide outlines and turning documents into video are independent. Use only the part you need.",
-  "login.point1": "1. Slide generation: pass text and reference URLs, review the outline, then build the deck.",
-  "login.point2": "2. Video generation: upload a PDF or PowerPoint and export it with narration and captions.",
+  "login.lead":
+    "Generating slide outlines and turning documents into video are independent. Use only the part you need.",
+  "login.point1":
+    "1. Slide generation: pass text and reference URLs, review the outline, then build the deck.",
+  "login.point2":
+    "2. Video generation: upload a PDF and export it with narration and captions. Export PowerPoint as PDF before uploading.",
   "login.point3": "3. Pronunciation control: adjust readings, furigana and pauses with SSML.",
   "login.formTitle": "Sign in",
   "login.formSub": "Use your organization account or email address.",
@@ -314,17 +360,20 @@ const enMessages: MessageCatalog = {
 
   // home
   "home.heading": "What would you like to make",
-  "home.lead": "Slide generation and video generation are separate. You can upload a PDF or PowerPoint made elsewhere straight into video generation.",
+  "home.lead":
+    "Slide generation and video generation are separate. You can upload a PDF made elsewhere straight into video generation. Export PowerPoint as PDF before uploading.",
   "home.card1Kicker": "Feature 2",
   "home.card1Title": "Generate slides with AI",
-  "home.card1Body": "Provide text and reference URLs, and AI drafts a slide outline. Review and edit it before the deck is generated.",
+  "home.card1Body":
+    "Provide text and reference URLs, and AI drafts a slide outline. Review and edit it before the deck is generated.",
   "home.card1Point1": "Choose Japanese or English for the slides",
   "home.card1Point2": "Review and edit the outline",
   "home.card1Point3": "Export Markdown, PDF and PowerPoint",
   "home.card1Cta": "Start creating slides",
   "home.card2Kicker": "Feature 3",
   "home.card2Title": "Turn a document into video",
-  "home.card2Body": "Upload a PDF or PowerPoint and export it as video with narration and captions. Works on its own, without slide generation.",
+  "home.card2Body":
+    "Upload a PDF and export it as video with narration and captions. Works on its own, without slide generation. Export PowerPoint as PDF before uploading.",
   "home.card2Point1": "Pick landscape, vertical or square output",
   "home.card2Point2": "Draft narration for each page automatically",
   "home.card2Point3": "Control readings and furigana with SSML",
@@ -345,13 +394,15 @@ const enMessages: MessageCatalog = {
 
   // slide studio
   "slide.heading": "2. Generate slides with AI",
-  "slide.lead": "Review and edit the outline before the deck is generated. AI output is never used as is.",
+  "slide.lead":
+    "Review and edit the outline before the deck is generated. AI output is never used as is.",
   "slide.stepA": "Input and options",
   "slide.stepB": "Review and edit outline",
   "slide.stepC": "Generate and export",
   "slide.s1Title": "Describe the content and options",
   "slide.s1Sub": "Only the outline is generated first. No slides are built at this point.",
-  "slide.langNote": "About language: the interface language (Japanese / English in the header) is set separately from the language of the slides. You can keep the interface in English and still produce Japanese slides.",
+  "slide.langNote":
+    "About language: the interface language (Japanese / English in the header) is set separately from the language of the slides. You can keep the interface in English and still produce Japanese slides.",
   "slide.outputLang": "Slide language",
   "slide.langJa": "Japanese",
   "slide.langJaHint": "Write body text and narration in Japanese",
@@ -359,11 +410,13 @@ const enMessages: MessageCatalog = {
   "slide.langEnHint": "Write body text and narration in English",
   "slide.topic": "Title or topic",
   "slide.sourceText": "Source text and requirements",
-  "slide.sourcePlaceholder": "Paste what you want to convey, assumptions, and any required cautions.",
+  "slide.sourcePlaceholder":
+    "Paste what you want to convey, assumptions, and any required cautions.",
   "slide.sourceHint": "Do not enter secrets or credentials.",
   "slide.refUrls": "Reference URLs",
   "slide.addUrl": "Add URL",
-  "slide.refHint": "References are summarized and paraphrased, with sources listed on the last page.",
+  "slide.refHint":
+    "References are summarized and paraphrased, with sources listed on the last page.",
   "slide.audience": "Audience",
   "slide.audience1": "First-time users",
   "slide.audience2": "Working developers",
@@ -379,7 +432,8 @@ const enMessages: MessageCatalog = {
   "slide.theme3": "High contrast",
   "slide.genOutline": "Generate outline",
   "slide.s2Title": "Review and edit the outline",
-  "slide.s2Sub": "This happens before slides are built. The text you confirm here drives both the deck and the narration.",
+  "slide.s2Sub":
+    "This happens before slides are built. The text you confirm here drives both the deck and the narration.",
   "slide.outlineList": "Slides",
   "slide.moveUp": "Move up",
   "slide.moveDown": "Move down",
@@ -396,13 +450,15 @@ const enMessages: MessageCatalog = {
   "slide.s3Sub": "Thumbnails are illustrative.",
   "slide.downloadTitle": "Export",
   "slide.downloadSub": "Three formats from the same content.",
-  "slide.pptxNote": "PowerPoint is exported as a file that really opens in PowerPoint, not just a renamed file.",
+  "slide.pptxNote":
+    "PowerPoint is exported as a file that really opens in PowerPoint, not just a renamed file.",
   "slide.backOutline": "Back to outline editing",
   "slide.toVideo": "Make a video from this deck",
 
   // video studio
   "video.heading": "3. Turn a document into video",
-  "video.lead": "Start from a PDF or PowerPoint and export it with narration and captions. This works on its own, without the slide generator.",
+  "video.lead":
+    "Start from a PDF and export it with narration and captions. This works on its own, without the slide generator. Export PowerPoint as PDF before uploading.",
   "video.stepA": "Load source",
   "video.stepB": "Output settings",
   "video.stepC": "Narration and readings",
@@ -410,10 +466,11 @@ const enMessages: MessageCatalog = {
   "video.handoffTitle": "Carried over from slide creation",
   "video.handoffNote": "The confirmed deck was loaded as is. Upload a file below to replace it.",
   "video.uploadTitle": "Upload a document",
-  "video.uploadSub": "PDF or PowerPoint (.pptx) is supported.",
+  "video.uploadSub": "PDF is supported. Export PowerPoint as PDF before uploading.",
   "video.dropTitle": "Drag a file here, or click to choose",
   "video.dropHint": "One file, up to about 50 pages",
-  "video.independentNote": "This screen works on its own. Upload slides made in another tool and turn them into video.",
+  "video.independentNote":
+    "This screen works on its own. Upload slides made in another tool and turn them into video.",
   "video.pagesTitle": "Loaded pages",
   "video.pagesSub": "The page count and the number of narration scripts are kept equal.",
   "video.toSettings": "Continue to output settings",
@@ -421,7 +478,8 @@ const enMessages: MessageCatalog = {
   "video.previewSlide": "Slide area",
   "video.previewCaption": "Captions appear here",
   "video.sizeTitle": "Frame size",
-  "video.sizeSub": "Choose per destination. You can export another size later from the same script.",
+  "video.sizeSub":
+    "Choose per destination. You can export another size later from the same script.",
   "video.sizeLegend": "Output frame size",
   "video.size169": "Landscape 16:9",
   "video.size169Hint": "1920x1080 / standard video and training",
@@ -431,7 +489,8 @@ const enMessages: MessageCatalog = {
   "video.size11Hint": "1080x1080 / timeline posts",
   "video.size45": "Tall 4:5",
   "video.size45Hint": "1080x1350 / tall timeline posts",
-  "video.verticalNote": "In vertical output, a 16:9 slide becomes small. Choose how it is placed and scaled.",
+  "video.verticalNote":
+    "In vertical output, a 16:9 slide becomes small. Choose how it is placed and scaled.",
   "video.vLayout": "Slide placement",
   "video.vLayout1": "Top (captions below)",
   "video.vLayout2": "Centered (padding above and below)",
@@ -450,6 +509,18 @@ const enMessages: MessageCatalog = {
   "video.subSrtHint": "An SRT file is written alongside",
   "video.subNone": "No captions",
   "video.subNoneHint": "Audio only",
+  "video.captionStyleHint":
+    "The narration script for each page is burned in during its corresponding scene by MediaConvert.",
+  "video.captionStyle": "Caption style",
+  "video.captionStyleWhiteOutline": "White text with black outline",
+  "video.captionStyleYellowOutline": "Yellow text with black outline",
+  "video.captionStyleBlackBackground": "White text on translucent black",
+  "video.captionStyleChalkboard": "Chalkboard (dark green with white text)",
+  "video.captionPlacement": "Caption placement",
+  "video.captionPlacementBottom": "Bottom of video",
+  "video.captionPlacementSafeArea": "Lower safe area (vertical, top-aligned)",
+  "video.captionSafeAreaHint":
+    "Places captions in the lower padding to reduce overlap with platform UI such as X.",
   "video.subSize": "Text size",
   "video.subSizeS": "Small",
   "video.subSizeM": "Medium",
@@ -465,7 +536,8 @@ const enMessages: MessageCatalog = {
   "video.speechRate": "Speaking rate",
   "video.rateDefault": "100% (default)",
   "video.voiceTest": "Preview a short line with this voice",
-  "video.voiceTestHint": "Some settings are not accepted by every voice and engine combination. Check with a short line before the full run.",
+  "video.voiceTestHint":
+    "Some settings are not accepted by every voice and engine combination. Check with a short line before the full run.",
   "video.toNarration": "Draft the narration",
   "video.narrTitle": "Review and edit the narration",
   "video.narrSub": "AI drafted a script per page. The text you confirm here is what gets spoken.",
@@ -486,7 +558,8 @@ const enMessages: MessageCatalog = {
   "video.ssmlRate": "Rate",
   "video.ssmlEmphasis": "Emphasis",
   "video.estHint": "This is an estimate. The final length is set from the measured audio.",
-  "video.ssmlNote": "Furigana is expressed with the reading tag. Some tags are rejected by certain voice and engine combinations, so preview before the full run.",
+  "video.ssmlNote":
+    "Furigana is expressed with the reading tag. Some tags are rejected by certain voice and engine combinations, so preview before the full run.",
   "video.previewAudio": "Preview this script",
   "video.regenScript": "Ask AI to redraft",
   "video.dictTitle": "Pronunciation dictionary (applies to the whole document)",
@@ -501,6 +574,13 @@ const enMessages: MessageCatalog = {
   "video.generate": "Generate the video",
   "video.jobTitle": "Generation progress",
   "video.jobSub": "Stages run in order. If one fails, only that stage is retried.",
+  "video.retryTitle": "Retry video generation",
+  "video.retryFailedStage": "Retry failed stage",
+  "video.retryFailedStageHint": "Retry from the failed stage using saved intermediate outputs.",
+  "video.retryFromPages": "Restart from the beginning",
+  "video.partialRenderRequiresPages":
+    "Saved intermediate outputs cannot be reused. Restart from the beginning.",
+  "video.retryStarting": "Starting retry...",
   "video.job1": "Convert pages to images",
   "video.job2": "Synthesize narration audio",
   "video.job3": "Measure audio length and build captions",
@@ -518,13 +598,15 @@ const enMessages: MessageCatalog = {
   "video.dlMp4": "Download MP4",
   "video.dlSrt": "Captions (SRT)",
   "video.dlAudio": "Audio files",
-  "video.reuseNote": "If the script is unchanged, another size can be exported without redoing the audio.",
+  "video.reuseNote":
+    "If the script is unchanged, another size can be exported without redoing the audio.",
   "video.makeVertical": "Also export vertical (1080x1920) from this script",
   "video.backNarration": "Back to narration editing",
   "video.cheatsheetOpen": "SSML cheat sheet",
   "video.cheatsheetTitle": "Amazon Polly SSML cheat sheet",
   "video.cheatsheetClose": "Close",
-  "video.cheatsheetMoveHelp": "Drag the header to move this panel. Focus the header and use arrow keys to move it. Drag the lower right corner to resize.",
+  "video.cheatsheetMoveHelp":
+    "Drag the header to move this panel. Focus the header and use arrow keys to move it. Drag the lower right corner to resize.",
   "video.cheatsheetThPurpose": "Purpose",
   "video.cheatsheetThTag": "Tag and syntax",
   "video.cheatsheetThSupport": "Support",
@@ -533,9 +615,12 @@ const enMessages: MessageCatalog = {
   "video.supportFull": "Supported",
   "video.supportPartial": "Partial",
   "video.supportNone": "Not supported",
-  "video.cheatsheetNote1": "Neural voices support the volume and rate attributes of prosody but not pitch. Standard voices support all of them.",
-  "video.cheatsheetNote2": "With neural voices, say-as characters causes the affected sentence to be synthesized with the related standard voice, and it is still billed as a neural voice.",
-  "video.cheatsheetNote3": "Using an unsupported tag returns an error. Preview before the full run.",
+  "video.cheatsheetNote1":
+    "Neural voices support the volume and rate attributes of prosody but not pitch. Standard voices support all of them.",
+  "video.cheatsheetNote2":
+    "With neural voices, say-as characters causes the affected sentence to be synthesized with the related standard voice, and it is still billed as a neural voice.",
+  "video.cheatsheetNote3":
+    "Using an unsupported tag returns an error. Preview before the full run.",
   "video.cheatsheetSource": "Source: Amazon Polly documentation, Supported SSML tags",
 
   // cost
@@ -548,8 +633,10 @@ const enMessages: MessageCatalog = {
   "cost.total": "Estimated total",
   "cost.estimateBadge": "Estimate",
   "cost.actualPending": "Actual: pending (up to 24 hours to appear)",
-  "cost.unitNote": "The unit prices shown are placeholders. The implementation reads unit prices from the AWS Price List API and records the date they were fetched.",
-  "cost.disclaimer": "Free tier is not applied. Local currency depends on the exchange rate at billing time.",
+  "cost.unitNote":
+    "The unit prices shown are placeholders. The implementation reads unit prices from the AWS Price List API and records the date they were fetched.",
+  "cost.disclaimer":
+    "Free tier is not applied. Local currency depends on the exchange rate at billing time.",
   "cost.deckEstimate": "Estimated cost of generating this deck",
   "cost.recentCost": "Est. cost",
 };

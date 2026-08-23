@@ -18,6 +18,8 @@ import type {
   CaptionsOption,
   VerticalLayout,
   PadColor,
+  CaptionStylePreset,
+  CaptionPlacement,
 } from "@slide-first/shared-types";
 import type { ProjectRecord } from "../db/projects.js";
 import { ApiError } from "../middleware/index.js";
@@ -95,7 +97,59 @@ function resolvePadColor(value: unknown): PadColor | null {
     : null;
 }
 
-export function buildManifestFromProject(project: ProjectRecord): Manifest {
+function supportsCaptionSafeArea(
+  aspect: AspectRatio,
+  verticalLayout: VerticalLayout | null,
+): boolean {
+  return (aspect === "9:16" || aspect === "4:5") && verticalLayout === "top";
+}
+
+/** 保存済み設定が不成立なら従来どおり映像下端へ正規化する。 */
+function resolveCaptionPlacement(
+  value: unknown,
+  aspect: AspectRatio,
+  verticalLayout: VerticalLayout | null,
+): CaptionPlacement {
+  return value === "safe-area" && supportsCaptionSafeArea(aspect, verticalLayout)
+    ? "safe-area"
+    : "bottom";
+}
+
+/** 黒板風は下部セーフエリアを実際に確保できる場合だけ有効にする。 */
+function resolveCaptionStyle(
+  value: unknown,
+  captionPlacement: CaptionPlacement,
+  aspect: AspectRatio,
+  verticalLayout: VerticalLayout | null,
+): CaptionStylePreset {
+  const style = (
+    ["white-outline", "yellow-outline", "black-background", "chalkboard"] as const
+  ).includes(value as CaptionStylePreset)
+    ? (value as CaptionStylePreset)
+    : "white-outline";
+
+  return style === "chalkboard" &&
+    (captionPlacement !== "safe-area" || !supportsCaptionSafeArea(aspect, verticalLayout))
+    ? "white-outline"
+    : style;
+}
+
+export type PartialRenderStartStage = "audio" | "captions" | "video";
+
+/** 既存のページ成果物を再利用して部分再実行するときだけ渡す実行時状態。 */
+export interface PartialRenderManifestInput {
+  startStage: PartialRenderStartStage;
+  previousManifest: Manifest;
+}
+
+/**
+ * DynamoDBの保存状態から新しい実行用manifestを組み立てる。
+ * 部分再実行では、互換性を確認済みの既存manifestから必要な実行時状態だけを引き継ぐ。
+ */
+export function buildManifestFromProject(
+  project: ProjectRecord,
+  partialRender?: PartialRenderManifestInput,
+): Manifest {
   const { userId, projectId } = project;
   const keyParams = { userId, projectId };
 
@@ -139,16 +193,30 @@ export function buildManifestFromProject(project: ProjectRecord): Manifest {
 
   const aspect = resolveAspect(outputInput.aspect);
   const profile = getOutputProfile(aspect);
+  const verticalLayout = resolveVerticalLayout(outputInput.verticalLayout);
+  const captions =
+    narrationMode === "none" ? ("none" as const) : resolveCaptions(outputInput.captions);
+  const usesBurnInCaptions = captions === "burn";
+  const captionPlacement = usesBurnInCaptions
+    ? resolveCaptionPlacement(outputInput.captionPlacement, aspect, verticalLayout)
+    : null;
   const output = {
     aspect,
     width: profile.width,
     height: profile.height,
     fps: Number(outputInput.fps) === 60 ? 60 : 30,
-    captions: narrationMode === "none" ? ("none" as const) : resolveCaptions(outputInput.captions),
+    captions,
     narrationMode,
     silentPageDurationSec,
-    verticalLayout: resolveVerticalLayout(outputInput.verticalLayout),
+    verticalLayout,
     padColor: resolvePadColor(outputInput.padColor),
+    captionStyle:
+      usesBurnInCaptions && captionPlacement !== null
+        ? resolveCaptionStyle(outputInput.captionStyle, captionPlacement, aspect, verticalLayout)
+        : null,
+    captionPlacement,
+    // 描画後にだけ決まる値のため、通常開始では必ずnullから始める。
+    captionSafeAreaYPosition: null,
   };
 
   const lexicon = (Array.isArray(project.lexicon) ? project.lexicon : []).filter(
@@ -189,7 +257,7 @@ export function buildManifestFromProject(project: ProjectRecord): Manifest {
     }
   }
 
-  const manifest = {
+  const freshManifest = ManifestSchema.parse({
     schemaVersion: 1 as const,
     projectId,
     userId,
@@ -217,7 +285,184 @@ export function buildManifestFromProject(project: ProjectRecord): Manifest {
       message: "PDFページを画像に変換する準備をしています。",
       updatedAt: new Date().toISOString(),
     },
-  };
+  }) as Manifest;
 
-  return ManifestSchema.parse(manifest) as Manifest;
+  return partialRender
+    ? mergePartialRenderRuntimeState(
+        freshManifest,
+        partialRender.previousManifest,
+        partialRender.startStage,
+      )
+    : freshManifest;
+}
+
+/**
+ * 字幕スタイル追加前のmanifestは、captionStyle と captionPlacement を持たない。
+ * 比較時だけ現在と同じ既定値へ寄せ、旧manifest自体や実行時状態は変更しない。
+ */
+function resolvePreviousCaptionPresentation(previous: Manifest): {
+  captionStyle: CaptionStylePreset | null;
+  captionPlacement: CaptionPlacement | null;
+} {
+  if (previous.output.captions !== "burn") {
+    return { captionStyle: null, captionPlacement: null };
+  }
+
+  const verticalLayout = previous.output.verticalLayout ?? null;
+  const captionPlacement = resolveCaptionPlacement(
+    previous.output.captionPlacement,
+    previous.output.aspect,
+    verticalLayout,
+  );
+
+  return {
+    captionStyle: resolveCaptionStyle(
+      previous.output.captionStyle,
+      captionPlacement,
+      previous.output.aspect,
+      verticalLayout,
+    ),
+    captionPlacement,
+  };
+}
+
+/**
+ * 安全に再利用できるのは、現在の出力設定で生成したページ画像だけである。
+ * safe-area座標はPNGの実際の下端に依存するため、描画に影響する設定が変われば再利用しない。
+ */
+function hasCompatiblePageRenderInputs(fresh: Manifest, previous: Manifest): boolean {
+  const previousCaptionPresentation = resolvePreviousCaptionPresentation(previous);
+
+  return (
+    fresh.source.kind === previous.source.kind &&
+    fresh.source.fileKey === previous.source.fileKey &&
+    fresh.source.pageCount === previous.source.pageCount &&
+    fresh.output.aspect === previous.output.aspect &&
+    fresh.output.width === previous.output.width &&
+    fresh.output.height === previous.output.height &&
+    fresh.output.fps === previous.output.fps &&
+    fresh.output.captions === previous.output.captions &&
+    fresh.output.narrationMode === previous.output.narrationMode &&
+    fresh.output.silentPageDurationSec === previous.output.silentPageDurationSec &&
+    fresh.output.verticalLayout === previous.output.verticalLayout &&
+    fresh.output.padColor === previous.output.padColor &&
+    fresh.output.captionStyle === previousCaptionPresentation.captionStyle &&
+    fresh.output.captionPlacement === previousCaptionPresentation.captionPlacement &&
+    fresh.pages.length === previous.pages.length &&
+    fresh.pages.every(
+      (page, index) =>
+        page.pageNumber === previous.pages[index]?.pageNumber &&
+        page.imageKey === previous.pages[index]?.imageKey &&
+        page.audioKey === previous.pages[index]?.audioKey,
+    )
+  );
+}
+
+/** 音声を再利用する場合は、音声に影響する原稿・音声・辞書も同一でなければならない。 */
+function hasCompatibleNarrationInputs(fresh: Manifest, previous: Manifest): boolean {
+  return (
+    hasCompatiblePageRenderInputs(fresh, previous) &&
+    fresh.contentLanguage === previous.contentLanguage &&
+    fresh.voice.id === previous.voice.id &&
+    fresh.voice.engine === previous.voice.engine &&
+    fresh.voice.languageCode === previous.voice.languageCode &&
+    fresh.voice.sampleRate === previous.voice.sampleRate &&
+    fresh.lexicon.length === previous.lexicon.length &&
+    fresh.lexicon.every(
+      (entry, index) =>
+        entry.written === previous.lexicon[index]?.written &&
+        entry.reading === previous.lexicon[index]?.reading &&
+        entry.method === previous.lexicon[index]?.method,
+    ) &&
+    fresh.pages.every(
+      (page, index) =>
+        page.script.mode === previous.pages[index]?.script.mode &&
+        page.script.text === previous.pages[index]?.script.text,
+    )
+  );
+}
+
+function hasMeasuredAudio(previous: Manifest): boolean {
+  return previous.pages.every(
+    (page) =>
+      page.audioDurationSec > 0 &&
+      page.frameAlignedDurationMs > 0 &&
+      page.frameAlignedDurationMs >= page.audioDurationSec * 1000,
+  );
+}
+
+function throwPartialRenderRequiresPages(): never {
+  throw new ApiError(
+    409,
+    "部分再実行に必要な既存のページ・音声・字幕状態を確認できません。pagesから再実行してください。",
+    "PARTIAL_RENDER_REQUIRES_PAGES",
+  );
+}
+
+/**
+ * 新しいDynamoDB設定を正本にしつつ、互換な既存manifestの実行時状態だけを引き継ぐ。
+ * 既存manifest全体を使い回さないため、過去の進捗・費用・失敗状態は新しいレンダーへ持ち込まない。
+ */
+function mergePartialRenderRuntimeState(
+  fresh: Manifest,
+  previous: Manifest,
+  startStage: PartialRenderStartStage,
+): Manifest {
+  if (previous.stages.pages !== "done" || !hasCompatiblePageRenderInputs(fresh, previous)) {
+    return throwPartialRenderRequiresPages();
+  }
+
+  if (
+    (startStage === "captions" || startStage === "video") &&
+    (previous.stages.audio !== "done" ||
+      !hasMeasuredAudio(previous) ||
+      !hasCompatibleNarrationInputs(fresh, previous))
+  ) {
+    return throwPartialRenderRequiresPages();
+  }
+
+  if (startStage === "video" && previous.stages.captions !== "done") {
+    return throwPartialRenderRequiresPages();
+  }
+
+  const pages =
+    startStage === "audio"
+      ? fresh.pages
+      : fresh.pages.map((page, index) => ({
+          ...page,
+          audioDurationSec: previous.pages[index].audioDurationSec,
+          frameAlignedDurationMs: previous.pages[index].frameAlignedDurationMs,
+        }));
+
+  const stages =
+    startStage === "audio"
+      ? {
+          pages: "done" as const,
+          audio: "pending" as const,
+          captions: "pending" as const,
+          video: "pending" as const,
+        }
+      : startStage === "captions"
+        ? {
+            pages: "done" as const,
+            audio: "done" as const,
+            captions: "pending" as const,
+            video: "pending" as const,
+          }
+        : {
+            pages: "done" as const,
+            audio: "done" as const,
+            captions: "done" as const,
+            video: "pending" as const,
+          };
+
+  return ManifestSchema.parse({
+    ...fresh,
+    output: {
+      ...fresh.output,
+      captionSafeAreaYPosition: previous.output.captionSafeAreaYPosition ?? null,
+    },
+    pages,
+    stages,
+  }) as Manifest;
 }

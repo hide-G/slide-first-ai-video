@@ -1,7 +1,7 @@
 /** リクエストボディをZodで検証するミドルウェア。 */
 
 import { z } from "zod";
-import { OutputSchema } from "@slide-first/shared-types";
+import { SaveOutputSchema as SharedSaveOutputSchema } from "@slide-first/shared-types";
 
 export const CreateProjectSchema = z.object({
   title: z.string().min(1).max(200),
@@ -47,8 +47,8 @@ export const RegisterSourceSchema = z.object({
   fileName: z.string().min(1).max(255).optional(),
 });
 
-// APIとmanifestで同じ出力プロファイル制約を使う。
-export const SaveOutputSchema = OutputSchema;
+// 保存APIは実行時専用の字幕Y座標を受け付けず、共有の出力プロファイル制約を使う。
+export const SaveOutputSchema = SharedSaveOutputSchema;
 
 export const GenerateNarrationSchema = z.object({
   pageNumber: z.number().int().positive(),

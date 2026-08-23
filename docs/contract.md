@@ -1,269 +1,238 @@
-# Data Contract
+# データ契約
 
-This document defines the data contract for the Slide-First AI Video pipeline.
-All pipeline stages communicate exclusively through this contract.
+この文書は、Slide-First AI Videoの現行4工程パイプラインにおける`manifest.json`の契約を定義します。工程間の状態はmanifestを正本とし、DynamoDBのプロジェクト記録はレンダリング開始時にAPIがmanifestへ変換します。
 
-## S3 Layout (Section 4.1)
+実装上の正本は`packages/shared-types/src/manifest.ts`、不変条件は`packages/shared-types/src/invariants.ts`です。文書とコードが異なる場合はコードを優先して修正対象として扱います。
+
+## 1. S3レイアウト
 
 ```text
 s3://<bucket>/users/{userId}/projects/{projectId}/
-  input/source.pdf | input/source.pptx
-  deck/deck.md, deck/deck.pdf, deck/deck.pptx
-  pages/page-001.png, page-002.png, ...
-  audio/page-001.wav, page-002.wav, ...
-  captions/captions.srt
-  output/{renderId}/video.mp4
-  manifest.json
+├─ input/source.pdf
+├─ deck/
+│  ├─ deck.md
+│  ├─ deck.pdf
+│  └─ deck.pptx
+├─ pages/page-001.png, page-002.png, ...
+├─ audio/page-001.wav, page-002.wav, ...
+├─ captions/captions.srt
+├─ output/{renderId}/page-001-video.mp4
+└─ manifest.json
 ```
 
-### Directories
+| パス                 | 用途                                                                                                                       |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `input/source.pdf`   | ③でアップロードしたPDF。PPTXのアップロードは受け付けません。                                                               |
+| `deck/`              | ②で生成したMarp原稿、PDF、PowerPoint。動画生成には`deck/deck.pdf`を使用します。                                            |
+| `pages/`             | 工程1で生成した、ページ番号を3桁ゼロ埋めしたPNGです。                                                                      |
+| `audio/`             | 工程2で生成したPolly PCM由来のWAVです。                                                                                    |
+| `captions/`          | 工程3で生成したSRTです。                                                                                                   |
+| `output/{renderId}/` | 工程4のMediaConvert出力です。出力名は最初の入力画像名と`-video`のName Modifierから決まり、通常は`page-001-video.mp4`です。 |
+| `manifest.json`      | パイプライン工程が読む唯一の状態正本です。                                                                                 |
 
-| Directory | Purpose |
-| --- | --- |
-| `input/` | Original uploaded source file (PDF or PPTX) |
-| `deck/` | Generated/converted deck files (Markdown, PDF, PPTX) |
-| `pages/` | PNG images extracted from the deck (one per page) |
-| `audio/` | WAV narration audio for each page (PCM with RIFF header) |
-| `captions/` | SRT subtitle file |
-| `output/{renderId}/` | Final video produced by MediaConvert |
+`source.fileName`は画面表示とダウンロード名のための任意項目です。S3キーやパスの組み立てに利用してはいけません。
 
-### Naming Conventions
+## 2. manifest.jsonの例
 
-- Page files use zero-padded 3-digit numbers: `page-001`, `page-002`, ...
-- The manifest is always at the project root as `manifest.json`
-- Each render produces a unique output directory keyed by `renderId`
-
-## Manifest Schema (Section 4.2)
-
-The `manifest.json` file is the single source of truth for project state.
+次は、9:16・上寄せ・下部safe-areaへ黒板風字幕を焼き込む実行時manifestの例です。
 
 ```json
 {
   "schemaVersion": 1,
-  "projectId": "p_0001",
-  "userId": "u_0001",
-  "contentLanguage": "ja",
+  "projectId": "01M0P3Z2X0WDVEW6YGQZ9N6MMP",
+  "userId": "cognito-sub",
+  "contentLanguage": "ja-JP",
   "source": {
-    "kind": "generated",
-    "fileKey": "deck/deck.pdf",
-    "pageCount": 5
+    "kind": "uploaded",
+    "fileKey": "users/cognito-sub/projects/01M0P3Z2X0WDVEW6YGQZ9N6MMP/input/source.pdf",
+    "fileName": "sample.pdf",
+    "pageCount": 1
   },
   "voice": {
     "id": "Takumi",
     "engine": "neural",
     "languageCode": "ja-JP",
-    "sampleRate": "24000"
+    "sampleRate": "16000"
   },
   "output": {
-    "aspect": "16:9",
-    "width": 1920,
-    "height": 1080,
+    "aspect": "9:16",
+    "width": 1080,
+    "height": 1920,
     "fps": 30,
     "captions": "burn",
-    "verticalLayout": null,
-    "padColor": null
+    "narrationMode": "spoken",
+    "silentPageDurationSec": 5,
+    "verticalLayout": "top",
+    "padColor": "navy",
+    "captionStyle": "chalkboard",
+    "captionPlacement": "safe-area",
+    "captionSafeAreaYPosition": 1496
   },
-  "lexicon": [
-    { "written": "Kiro Crew", "reading": "キロクルー", "method": "sub" }
-  ],
+  "lexicon": [],
   "pages": [
     {
       "pageNumber": 1,
-      "imageKey": "pages/page-001.png",
-      "script": { "mode": "plain", "text": "This slide covers..." },
-      "audioKey": "audio/page-001.wav",
-      "audioDurationSec": 25.2,
-      "frameAlignedDurationMs": 25200
+      "imageKey": "users/cognito-sub/projects/01M0P3Z2X0WDVEW6YGQZ9N6MMP/pages/page-001.png",
+      "script": { "mode": "plain", "text": "このページのナレーションです。" },
+      "audioKey": "users/cognito-sub/projects/01M0P3Z2X0WDVEW6YGQZ9N6MMP/audio/page-001.wav",
+      "audioDurationSec": 6.2375,
+      "frameAlignedDurationMs": 6267
     }
   ],
   "stages": {
     "pages": "done",
     "audio": "done",
     "captions": "done",
-    "video": "running"
+    "video": "done"
   },
-  "cost": {
-    "currency": "USD",
-    "priceListFetchedAt": "2026-08-15T00:00:00Z",
-    "stages": [
-      {
-        "stage": "audio",
-        "service": "polly",
-        "usage": { "billedCharacters": 921 },
-        "estimatedCost": 0.0147
-      },
-      {
-        "stage": "video",
-        "service": "mediaconvert",
-        "usage": { "durationSec": 120, "resolution": "1080p" },
-        "estimatedCost": 0.0180
-      }
-    ],
-    "estimatedTotal": 0.0328,
-    "actual": { "status": "pending", "amount": null, "reconciledAt": null }
+  "progress": {
+    "stage": "video",
+    "currentPage": 1,
+    "totalPages": 1,
+    "message": "動画の生成が完了しました。",
+    "updatedAt": "2026-08-15T00:00:00.000Z"
   }
 }
 ```
 
-### Field Reference
+この例の`captionSafeAreaYPosition`は実機E2Eで得た値です。画面が固定値を保存するものではありません。
 
-#### Top-level fields
+## 3. フィールド定義
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `schemaVersion` | `1` (literal) | Always 1 for this version |
-| `projectId` | string | Project identifier |
-| `userId` | string | Owner user identifier |
-| `contentLanguage` | string | Content language code (e.g., "ja") |
-| `source` | object | Source deck information |
-| `voice` | object | TTS voice configuration |
-| `output` | object | Video output settings |
-| `lexicon` | array | Pronunciation overrides |
-| `pages` | array | Per-page data |
-| `stages` | object | Pipeline stage statuses |
-| `cost` | object (optional) | Cost tracking data |
+### 3.1 トップレベル
 
-#### `source`
+| フィールド             | 型               | 説明                                               |
+| ---------------------- | ---------------- | -------------------------------------------------- |
+| `schemaVersion`        | `1`              | 現行スキーマの固定値です。                         |
+| `projectId` / `userId` | string           | プロジェクトと所有者の識別子です。                 |
+| `contentLanguage`      | string           | 資料・ナレーションの言語です。                     |
+| `source`               | object           | 入力PDFまたは生成デッキの情報です。                |
+| `voice`                | object           | Polly音声の設定です。                              |
+| `output`               | object           | 出力プロファイル、字幕、縦型レイアウトの設定です。 |
+| `lexicon`              | array            | 読み方置換の辞書です。                             |
+| `pages`                | array            | ページごとの画像、原稿、音声、正確な尺です。       |
+| `stages`               | object           | `pages`、`audio`、`captions`、`video`の状態です。  |
+| `progress`             | object, optional | ブラウザへ返す工程・ページ単位の進捗です。         |
+| `cost`                 | object, optional | 推定額と後日照合する実績額のための構造です。       |
 
-| Field | Values | Description |
-| --- | --- | --- |
-| `kind` | `"generated"` or `"uploaded"` | How the deck was obtained |
-| `fileKey` | string | S3 key of the source file (relative to project) |
-| `pageCount` | positive integer | Number of pages in the deck |
+### 3.2 sourceとvoice
 
-#### `voice`
+| フィールド         | 値・制約                                                                                                     |
+| ------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `source.kind`      | `"generated"` または `"uploaded"`                                                                            |
+| `source.fileKey`   | uploaded素材ではバケットルート相対の完全なS3キー。例: `users/{userId}/projects/{projectId}/input/source.pdf` |
+| `source.pageCount` | 1以上の整数                                                                                                  |
+| `source.fileName`  | 任意。表示用の元ファイル名であり、S3キーに使わない                                                           |
+| `voice.sampleRate` | WAV生成ではPCM用の`"16000"`を既定とします。既存入力の無効な値はAPIが`"16000"`へ正規化します。                |
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `id` | string | Voice identifier (e.g., "Takumi") |
-| `engine` | string | Engine type (e.g., "neural") |
-| `languageCode` | string | BCP-47 language code (e.g., "ja-JP") |
-| `sampleRate` | string | Sample rate in Hz (e.g., "24000") |
+Polly PCMで使用できるサンプルレートは`8000`または`16000`です。`24000`はMP3向けの値であり、PCM出力へ渡してはいけません。
 
-#### `output`
+### 3.3 output
 
-| Field | Values | Description |
-| --- | --- | --- |
-| `aspect` | `"16:9"`, `"9:16"`, `"1:1"`, `"4:5"` | Aspect ratio |
-| `width` | positive integer | Output width in pixels |
-| `height` | positive integer | Output height in pixels |
-| `fps` | positive integer | Frames per second |
-| `captions` | `"burn"`, `"srt"`, `"none"` | Caption handling |
-| `verticalLayout` | string or null | Vertical layout mode |
-| `padColor` | string or null | Padding color (hex) |
+| フィールド                 | 値・制約                                                                                  |
+| -------------------------- | ----------------------------------------------------------------------------------------- |
+| `aspect`                   | `"16:9"`、`"9:16"`、`"1:1"`、`"4:5"`                                                      |
+| `width` / `height`         | aspectに対応する固定プロファイル。順に1920×1080、1080×1920、1080×1080、1080×1350です。    |
+| `fps`                      | `30`または`60`                                                                            |
+| `captions`                 | `"burn"`、`"srt"`、`"none"`                                                               |
+| `narrationMode`            | `"spoken"`または`"none"`。`"none"`のとき字幕は必ず`"none"`です。                          |
+| `silentPageDurationSec`    | 無音ページの表示時間。1から30秒の整数です。                                               |
+| `verticalLayout`           | `"top"`、`"center"`、`"crop"`、または`null`                                               |
+| `padColor`                 | `"white"`、`"navy"`、`"auto"`、または`null`。任意のHEX値は受け付けません。                |
+| `captionStyle`             | `"white-outline"`、`"yellow-outline"`、`"black-background"`、`"chalkboard"`、または`null` |
+| `captionPlacement`         | `"bottom"`、`"safe-area"`、または`null`                                                   |
+| `captionSafeAreaYPosition` | ページ描画後に工程1が確定するY座標。画面の保存APIでは受け付けません。                     |
 
-#### `lexicon[]`
+`captionStyle`と`captionPlacement`は`captions: "burn"`の場合だけ指定できます。`safe-area`は`9:16`または`4:5`かつ`verticalLayout: "top"`だけで有効です。`chalkboard`はさらに`captionPlacement: "safe-area"`を必要とします。
 
-| Field | Values | Description |
-| --- | --- | --- |
-| `written` | string | The written form to match |
-| `reading` | string | The pronunciation to use |
-| `method` | `"sub"`, `"phoneme"`, `"spell"` | Substitution method |
+工程1はsafe-areaを使う縦長上寄せレイアウトで、ラスタライズしたPDFページ画像の矩形下端から字幕帯のY座標を計算します。古いmanifestやスペースが確保できない入力では、この値を`null`にしてMediaConvertの通常の下端配置へ戻します。
 
-#### `pages[]`
+### 3.4 pagesとstages
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `pageNumber` | positive integer | 1-indexed page number |
-| `imageKey` | string | S3 key of the page PNG |
-| `script.mode` | `"plain"` or `"ssml"` | Script format |
-| `script.text` | string | Narration text |
-| `audioKey` | string | S3 key of the audio WAV |
-| `audioDurationSec` | number | Duration calculated from PCM byte length |
-| `frameAlignedDurationMs` | number | Duration rounded up to frame boundary (ms) |
+| フィールド                       | 説明                                                                                       |
+| -------------------------------- | ------------------------------------------------------------------------------------------ |
+| `pages[].pageNumber`             | 1始まりの連番です。                                                                        |
+| `pages[].imageKey`               | `users/{userId}/projects/{projectId}/pages/page-NNN.png`というバケットルート相対キーです。 |
+| `pages[].script`                 | `mode`は`"plain"`または`"ssml"`、`text`は確定済みのナレーション原稿です。                  |
+| `pages[].audioKey`               | `users/{userId}/projects/{projectId}/audio/page-NNN.wav`というバケットルート相対キーです。 |
+| `pages[].audioDurationSec`       | WAVヘッダを除いたPCMデータ部のバイト数から算出した秒数です。                               |
+| `pages[].frameAlignedDurationMs` | 音声尺を出力fpsの次フレーム境界へ切り上げた表示時間です。                                  |
+| `stages.*`                       | `"pending"`、`"running"`、`"done"`、`"failed"`のいずれかです。                             |
 
-#### `stages`
+### 3.5 部分再実行 / partial render
 
-Each stage has one of these statuses: `"pending"`, `"running"`, `"done"`, `"failed"`
+`POST /projects/{id}/renders`は、任意の`startFromStage`として`"pages"`、`"audio"`、`"captions"`、`"video"`を受け付けます。省略時は`"pages"`です。`audio`、`captions`、`video`から始める場合、APIは既存`manifest.json`を読み、新しいDynamoDB設定を正本としたfresh manifestへ再利用可能な実行時状態だけを合成します。過去の`progress`、`cost`、失敗状態は引き継ぎません。さらに、開始工程で省略する前工程の成果物を確認してからfresh manifestを書き戻し、Step Functionsを開始します。
 
-| Stage | Description |
-| --- | --- |
-| `pages` | PDF to PNG extraction |
-| `audio` | TTS narration generation (Polly PCM to WAV) |
-| `captions` | SRT subtitle generation |
-| `video` | Final video assembly (MediaConvert) |
+- `audio`再実行は、全ページの`users/{userId}/projects/{projectId}/pages/page-NNN.png`を確認してから、ページ画像とsafe-area座標を引き継ぎ、音声尺・以降の工程を再実行します。
+- `captions`再実行は、全ページのPNGと`users/{userId}/projects/{projectId}/audio/page-NNN.wav`を確認してから、ページ画像、safe-area座標、実測音声尺を引き継ぎます。
+- `video`再実行は、全ページのPNGとWAVを確認します。`captions: "burn"`の場合だけ`users/{userId}/projects/{projectId}/captions/captions.srt`も確認してから、ページ画像、safe-area座標、実測音声尺、字幕完了状態を引き継ぎます。`captions: "srt"`または`"none"`ではSRTをMediaConvert入力にしないため、video再実行の前提にしません。
+- 再利用成果物が欠損する場合、APIはmanifestを上書きせずStep Functionsも起動せず、`pages`からの再実行を要求します。
+- 字幕設定追加前のmanifestで`captionStyle`と`captionPlacement`が未指定の場合、互換性比較時だけ`white-outline`と`bottom`として扱います。現在の保存設定が異なる場合はページから再実行します。
 
-#### `cost` (optional)
+| 条件                                                                               | HTTP | エラーコード                                | クライアントの回復操作                         |
+| ---------------------------------------------------------------------------------- | ---- | ------------------------------------------- | ---------------------------------------------- |
+| 既存manifestまたは再利用成果物の欠損、空本文、JSON不正、スキーマ不正、互換性不成立 | 409  | `PARTIAL_RENDER_REQUIRES_PAGES`             | `pages`から明示的に再実行する                  |
+| 既存manifestへのLambdaからのS3アクセス拒否                                         | 500  | `MANIFEST_READ_ACCESS_DENIED`               | 運用者がIAMまたはバケットポリシーを復旧する    |
+| 既存manifestのS3一時障害、タイムアウト、スロットリング、5xx                        | 503  | `MANIFEST_READ_UNAVAILABLE`                 | 同じ工程で時間をおいて再試行する               |
+| その他の既存manifest読取失敗（`NoSuchBucket`を含む）                               | 502  | `MANIFEST_READ_FAILED`                      | 利用者は時間をおいて再試行し、継続時は調査する |
+| 再利用成果物へのS3アクセス拒否                                                     | 500  | `PARTIAL_RENDER_ARTIFACT_ACCESS_DENIED`     | 運用者がIAMまたはバケットポリシーを復旧する    |
+| 再利用成果物確認中のS3一時障害、タイムアウト、スロットリング、5xx                  | 503  | `PARTIAL_RENDER_ARTIFACT_CHECK_UNAVAILABLE` | 同じ工程で時間をおいて再試行する               |
+| その他の再利用成果物確認失敗（`NoSuchBucket`を含む）                               | 502  | `PARTIAL_RENDER_ARTIFACT_CHECK_FAILED`      | 利用者は時間をおいて再試行し、継続時は調査する |
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `currency` | string | Always "USD" |
-| `priceListFetchedAt` | string (ISO 8601) | When price data was fetched |
-| `stages[]` | array | Per-stage cost entries |
-| `stages[].stage` | string | Stage name |
-| `stages[].service` | string | AWS service name |
-| `stages[].usage` | object | Service-specific usage metrics |
-| `stages[].estimatedCost` | number | Estimated cost in USD |
-| `estimatedTotal` | number | Sum of estimated costs |
-| `actual.status` | `"pending"` or `"reconciled"` | Whether actual cost is known |
-| `actual.amount` | number or null | Actual cost (null if pending) |
-| `actual.reconciledAt` | string or null | When reconciliation happened |
+失敗状態の取得では、manifestの`progress.stage`を優先し、取得できない場合だけStep Functions履歴の最後の工程を使います。Video Studioはこの工程からの再実行ボタンを表示し、409の場合だけ`pages`からの再実行ボタンへ切り替えます。
 
-## Invariants (Section 4.3)
+## 4. 不変条件と実行時検証
 
-These invariants must never be violated:
+`validateInvariants()`は少なくとも次を検証します。
 
-1. **Page count consistency**: `pages.length === source.pageCount`
-2. **Script completeness**: All `script.text` must be non-empty before the audio stage starts
-3. **Audio duration accuracy**: `audioDurationSec` must come from PCM byte-length calculation only (pcmBytes / (2 * sampleRate) for 16-bit mono)
-4. **Frame alignment**: `frameAlignedDurationMs >= audioDurationSec * 1000` for every page
-5. **Frame excess limit**: `frameAlignedDurationMs - audioDurationSec * 1000 <= 34ms` per page (one frame at 30fps)
-6. **Total duration**: Sum of `frameAlignedDurationMs` must be within 50ms of expected total
-7. **Subtitle timecodes**: Generated from cumulative `frameAlignedDurationMs` values (not audioDurationSec)
-8. **No display estimates in manifest**: Screen-displayed estimated durations are for UI only and must not be written to `manifest.json`
+1. `pages.length === source.pageCount`。
+2. 音声工程が`running`または`done`で、かつ`narrationMode !== "none"`なら、全ページの`script.text`が空ではないこと。
+3. 音声工程が`done`なら、全ページの`audioDurationSec`が正であること。
+4. 音声工程が`done`なら、`frameAlignedDurationMs >= audioDurationSec * 1000`であること。
+5. フレーム丸めによる超過が指定fpsの1フレーム以内であること。上限は30fpsで34ms、60fpsで17msです。
+6. `pageNumber`が1からの連番であること。
 
-### Runtime Enforcement
+フレーム丸めは次式で行います。
 
-Invariants 1-5 are validated by `validateInvariants()` from `@slide-first/shared-types`.
-Invariant 6 is enforced at the video assembly stage boundary.
-Invariant 7 is enforced by the SRT generator in `@slide-first/core`.
-Invariant 8 is a development guideline.
-
-### Tolerance Constants
-
-```typescript
-import { TOLERANCES } from "@slide-first/shared-types";
-
-TOLERANCES.TOTAL_DURATION_MS  // 50 milliseconds (total video duration drift)
-TOLERANCES.FRAME_EXCESS_MS   // 34 milliseconds (per-page frame alignment excess)
+```text
+frameMs    = 1000 / fps
+frames     = ceil(audioDurationSec × 1000 / frameMs)
+durationMs = round(frames × frameMs)
 ```
 
-## Implementation
+SRTの時刻は`audioDurationSec`ではなく、`frameAlignedDurationMs`の累積値から生成します。MediaConvertの各`VideoGenerator.Duration`にも同じ値を渡します。MediaConvert完了後の動画全体の許容差は`TOLERANCES.TOTAL_DURATION_MS`、すなわち50msです。
 
-The data contract is implemented in `packages/shared-types`:
+## 5. 字幕とMediaConvertの境界
 
-- `src/manifest.ts` - Zod schemas and TypeScript types
-- `src/invariants.ts` - Runtime invariant validation
-- `src/s3-keys.ts` - S3 key builder functions
-- `src/index.ts` - Public exports
+`captions: "burn"`では、`captions/captions.srt`をMediaConvertの最初の入力にSRT Caption Selectorとして設定し、出力の`BURN_IN` Caption Descriptionで焼き込みます。言語が日本語なら`LanguageCode: JPN`、`FontScript: AUTOMATIC`を使います。
 
-### Usage Example
+スタイルはMediaConvertが受け付ける色・不透明度・アウトライン・影だけで構成します。`chalkboard`の濃緑背景は字幕設定で指定するのではなく、工程1がsafe-areaのPNG余白を濃緑に描画して実現します。
 
-```typescript
-import {
-  ManifestSchema,
-  validateInvariants,
-  manifestKey,
-  pageImageKey,
-  type Manifest,
-} from "@slide-first/shared-types";
+`captions: "srt"`は字幕ファイルだけを成果物として返し、`captions: "none"`はSRT生成・焼き込みとも行いません。
 
-// Parse and validate a manifest from JSON
-const result = ManifestSchema.safeParse(jsonData);
-if (!result.success) {
-  console.error("Invalid manifest:", result.error);
+## 6. cost（任意）
+
+`cost`は推定額と実績額を混同しないための任意構造です。動画工程の使用量を記録する場合は、次の形を使います。
+
+```json
+{
+  "stage": "video",
+  "service": "mediaconvert",
+  "usage": {
+    "outputDurationSec": 6.3,
+    "outputResolution": "1080x1920"
+  },
+  "estimatedCost": 0.0
 }
-
-// Check invariants
-const violations = validateInvariants(manifest);
-if (violations.length > 0) {
-  throw new Error(`Invariant violations: ${violations.map(v => v.message).join(", ")}`);
-}
-
-// Build S3 keys
-const key = manifestKey({ userId: "u_0001", projectId: "p_0001" });
-// => "users/u_0001/projects/p_0001/manifest.json"
-
-const imgKey = pageImageKey({ userId: "u_0001", projectId: "p_0001" }, 3);
-// => "users/u_0001/projects/p_0001/pages/page-003.png"
 ```
+
+`estimatedCost`はPrice Listで確認した単価と実測使用量から導く推定値です。`actual.status: "pending"`は請求データとの照合前を表し、実請求額ではありません。現行のレンダリングE2Eは成果物とMediaConvert完了を検証しており、請求額の実績照合は検証対象外です。実装状況と運用方針は[docs/cost.md](./cost.md)を参照してください。
+
+## 7. 実装ファイル
+
+- `packages/shared-types/src/manifest.ts`: Zodスキーマ、型、出力プロファイル
+- `packages/shared-types/src/invariants.ts`: 不変条件と許容差
+- `packages/shared-types/src/s3-keys.ts`: S3キー生成
+- `lambdas/api/src/manifest/build-manifest.ts`: DynamoDB記録からのmanifest組み立てと既定値の正規化
+- `lambdas/marp-render/src/index.ts`: ページ画像化とsafe-area Y座標の確定
+- `lambdas/mediaconvert-worker/src/job-builder.ts`: MediaConvertジョブと焼き込み字幕の組み立て

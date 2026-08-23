@@ -36,6 +36,8 @@ export async function handleSaveOutput(
     silentPageDurationSec: body.silentPageDurationSec ?? 5,
     verticalLayout: body.verticalLayout ?? null,
     padColor: body.padColor ?? null,
+    captionStyle: body.captionStyle ?? null,
+    captionPlacement: body.captionPlacement ?? null,
   };
 
   await updateProject(userId, projectId, {

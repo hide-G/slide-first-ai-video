@@ -111,6 +111,60 @@ describe("buildMediaConvertJob", () => {
     ]);
   });
 
+  it("焼き込み字幕の固定プリセットをMediaConvert設定へ変換する", () => {
+    const styles = [
+      ["white-outline", { FontColor: "WHITE", BackgroundOpacity: 0, OutlineSize: 3 }],
+      ["yellow-outline", { FontColor: "YELLOW", BackgroundOpacity: 0, OutlineSize: 3 }],
+      ["black-background", { FontColor: "WHITE", BackgroundOpacity: 160, OutlineSize: 0 }],
+      ["chalkboard", { FontColor: "WHITE", BackgroundOpacity: 0, OutlineSize: 0 }],
+    ] as const;
+
+    for (const [captionStyle, expected] of styles) {
+      const job = buildMediaConvertJob({
+        ...baseParams,
+        output: {
+          width: 1080,
+          height: 1920,
+          fps: 30,
+          captions: "burn",
+          captionStyle,
+        },
+        captionsSrtS3Uri: "s3://my-bucket/users/user1/projects/proj1/captions/captions.srt",
+      });
+      const burnIn =
+        job.Settings.OutputGroups[0].Outputs[0].CaptionDescriptions?.[0].DestinationSettings
+          .BurninDestinationSettings;
+      expect(burnIn).toMatchObject(expected);
+    }
+  });
+
+  it("縦型上寄せの下部セーフエリアへ字幕を固定する", () => {
+    const job = buildMediaConvertJob({
+      ...baseParams,
+      output: {
+        width: 1080,
+        height: 1920,
+        fps: 30,
+        captions: "burn",
+        verticalLayout: "top",
+        captionStyle: "chalkboard",
+        captionPlacement: "safe-area",
+        captionSafeAreaYPosition: 1182,
+      },
+      captionsSrtS3Uri: "s3://my-bucket/users/user1/projects/proj1/captions/captions.srt",
+    });
+
+    const burnIn =
+      job.Settings.OutputGroups[0].Outputs[0].CaptionDescriptions?.[0].DestinationSettings
+        .BurninDestinationSettings;
+    expect(burnIn).toMatchObject({
+      FontColor: "WHITE",
+      BackgroundColor: "BLACK",
+      BackgroundOpacity: 0,
+      YPosition: 1182,
+    });
+  });
+
   it("burn指定でSRT URIが無い場合はジョブを構築しない", () => {
     expect(() =>
       buildMediaConvertJob({

@@ -1,149 +1,101 @@
-# Migration Guide
+# 現行4工程への移行記録
 
-This document maps every existing component to its role in the new architecture as defined in the implementation specification (実装指示プロンプト.md).
+この文書は、旧来のFFmpeg中心・5工程案から、現行のMediaConvert中心・4工程へ移行した結果を記録します。実装作業の現在の正本は`docs/contract.md`と`docs/architecture.md`です。この文書を、未実装の旧タスク一覧として使わないでください。
 
-## Legend
+## 1. 移行の結論
 
-| Action   | Meaning                                                       |
-| -------- | ------------------------------------------------------------- |
-| KEEP     | No structural change needed, minor config tweaks at most      |
-| ADAPT    | Same purpose, but internals must change to match new contract |
-| REBUILD  | Same domain, rewritten from scratch to fit new pipeline       |
-| REMOVE   | Not part of the new specification; delete                     |
+現行パイプラインは次の4工程です。
 
----
-
-## Infrastructure Constructs (`infra/lib/`)
-
-| Existing File                            | Action  | Notes                                                                              |
-| ---------------------------------------- | ------- | ---------------------------------------------------------------------------------- |
-| `storage-construct.ts`                   | KEEP    | S3 bucket + DynamoDB table remain                                                  |
-| `auth-construct.ts`                      | KEEP    | Cognito user pool unchanged                                                        |
-| `api-construct.ts`                       | REBUILD | New 11 REST routes per section 5                                                   |
-| `marp-lambda-construct.ts`              | KEEP    | Drives Stage 1 (page image generation via Marp)                                    |
-| `polly-worker-construct.ts`             | KEEP    | Drives Stage 2 (audio generation via Polly)                                        |
-| `composition-builder-construct.ts`      | REMOVE  | Replaced by clip + concat stages (Stages 4 and 5)                                 |
-| `slide-generator-construct.ts`          | KEEP    | Bedrock-based outline generation                                                   |
-| `render-state-machine-construct.ts`     | REBUILD | New 5-stage pipeline state machine (pages, audio, captions, clips, concat)         |
-| `content-state-machine-construct.ts`    | REBUILD | Simplified flow for content generation                                             |
-| `delivery-construct.ts`                 | KEEP    | CloudFront distribution unchanged                                                  |
-| `frontend-construct.ts`                 | KEEP    | SPA hosting unchanged                                                              |
-| `teaser-generator-construct.ts`         | REMOVE  | Not in spec                                                                        |
-| `teaser-composition-builder-construct.ts` | REMOVE | Not in spec                                                                        |
-| `teaser-state-machine-construct.ts`     | REMOVE  | Not in spec                                                                        |
-
----
-
-## Lambda Functions (`lambdas/`)
-
-| Existing Directory          | Action  | New Role                                                                 |
-| --------------------------- | ------- | ------------------------------------------------------------------------ |
-| `api/`                      | REBUILD | New path-based router with 11 endpoints (section 5)                      |
-| `marp-render/`             | ADAPT   | Stage 1: render slides to PNG pages; output key format changes           |
-| `polly-worker/`            | ADAPT   | Stage 2: change output from PCM to MP3, measure duration with ffprobe    |
-| `render-worker/`           | REBUILD | Becomes clip-worker for Stage 4 (per-page MP4 clip generation)           |
-| `slide-generator/`         | KEEP    | Outline + deck generation via Bedrock (no structural change)             |
-| `composition-builder/`     | REMOVE  | Replaced by concat stage (Stage 5)                                       |
-| `teaser-generator/`        | REMOVE  | Not in spec                                                              |
-| `teaser-composition-builder/` | REMOVE | Not in spec                                                              |
-
----
-
-## Packages (`packages/`)
-
-| Existing Package              | Action  | Notes                                                              |
-| ----------------------------- | ------- | ------------------------------------------------------------------ |
-| `shared-types`               | DONE    | Rebuilt in FEAT-001 with zod-based Manifest schema                 |
-| `core`                       | REBUILD | New s3-keys, duration, captions, script-hash (this feature)        |
-| `renderer-port`             | REBUILD | Simplified interface for clip + concat pipeline                    |
-| `renderer-ffmpeg`           | REBUILD | New clip-per-page and concat commands per section 6                |
-| `renderer-hyperframes`      | REMOVE  | Not in spec                                                        |
-| `evaluation`                | REMOVE  | Not in spec                                                        |
-| `renderer-contract-tests`   | REMOVE  | Not needed with new architecture                                   |
-
----
-
-## S3 Key Layout Migration
-
-### Old Layout
-
+```text
+pages → audio → captions → video
 ```
+
+- `pages`: `marp-render`がPDFをChromium内のpdf.jsでPNGへラスタライズします。
+- `audio`: `polly-worker`がPCMをWAVに保存し、データ部のバイト数から正確な音声尺を計算します。
+- `captions`: `caption-worker`がフレーム丸め後の累積時間からSRTを生成します。
+- `video`: `mediaconvert-worker`がMediaConvertジョブを作成し、完了まで`GetJob`をポーリングします。
+
+FFmpegによるページ別MP4 clip生成とconcatは、現行のデプロイ経路にありません。MediaConvertがPNGとWAVの入力をページ順に連結して1本のMP4を出力します。
+
+## 2. 旧方式からの対応表
+
+| 旧方式・概念                                        | 現行の対応                                                     | 状態     |
+| --------------------------------------------------- | -------------------------------------------------------------- | -------- |
+| PDF/PPTXを入力として受け付ける                      | PDFのみを受け付ける。PPTXは`PDF_REQUIRED`で拒否する。          | 現行方針 |
+| MP3とffprobeによる音声尺                            | Polly PCMをWAV化し、PCMデータ部のバイト数から算出する。        | 移行済み |
+| `clips/page-NNN.mp4`                                | 生成しない。MediaConvert入力としてPNGとWAVを直接連結する。     | 廃止     |
+| FFmpegによるconcat                                  | `mediaconvert-worker`によるMediaConvertジョブ。                | 移行済み |
+| 5工程の状態機械                                     | pages、audio、captions、videoの4工程。                         | 移行済み |
+| Step FunctionsからMediaConvertへの直接`RUN_JOB`統合 | `mediaconvert-worker`が`CreateJob`と`GetJob`ポーリングを担う。 | 現行実装 |
+| 任意の字幕座標                                      | `marp-render`が描画済みPNGからsafe-areaのY座標を算出する。     | 現行実装 |
+
+## 3. S3レイアウトの変更
+
+### 旧レイアウトの代表例
+
+```text
 {userId}/{projectId}/versions/v{NNNN}/
-  slides/deck.001.png
-  audio/slide-001.pcm
-  audio/slide-001-marks.json
-  captions/captions.json, full.ja.vtt, full.ja.srt
-  video/video-manifest.json
-  output/lt-full-16x9.mp4
+├─ slides/deck.001.png
+├─ audio/slide-001.pcm
+├─ captions/captions.json, full.ja.vtt, full.ja.srt
+├─ clips/page-001.mp4
+└─ output/lt-full-16x9.mp4
 ```
 
-### New Layout (section 4.1)
+### 現行レイアウト
 
-```
+```text
 users/{userId}/projects/{projectId}/
-  input/source.pdf | input/source.pptx
-  deck/deck.md, deck/deck.pdf, deck/deck.pptx
-  pages/page-001.png, page-002.png, ...
-  audio/page-001.mp3, page-002.mp3, ...
-  captions/captions.srt
-  clips/page-001.mp4, page-002.mp4, ...
-  output/{renderId}/video.mp4
-  manifest.json
+├─ input/source.pdf
+├─ deck/deck.md, deck/deck.pdf, deck/deck.pptx
+├─ pages/page-001.png, page-002.png, ...
+├─ audio/page-001.wav, page-002.wav, ...
+├─ captions/captions.srt
+├─ output/{renderId}/page-001-video.mp4
+└─ manifest.json
 ```
 
-Key differences:
-- Flat structure (no version nesting)
-- `users/` prefix added to root
-- Audio format changed from PCM to MP3
-- Speech marks files removed (not needed; duration from ffprobe)
-- Clips directory added for per-page video segments
-- Output organized by renderId
-- Single manifest.json at project root
+主な変更点は、`users/`接頭辞の導入、WAVへの統一、`clips/`の廃止、render ID単位の出力ディレクトリ、プロジェクト直下の単一manifestです。
 
----
+## 4. 尺と字幕の移行
 
-## Duration Model Migration
+旧方式ではMP3の実測秒数とページ別clipを扱っていました。現行方式では次の値が正本です。
 
-### Old Model
+```text
+PCM data bytes
+  → audioDurationSec
+  → frameAlignedDurationMs
+  → SRT timecodes and MediaConvert VideoGenerator.Duration
+```
 
-- `durationMs = measuredAudioMs + leadInMs + leadOutMs`
-- Millisecond-based throughout
-- Lead-in/lead-out padding per slide
+フレーム境界への丸めは、音声より短い映像や、ページごとの切り上げが累積することによる字幕ずれを防ぎます。最終動画のMediaConvert報告尺は、丸め後合計との差が50ms以内であることを検証します。
 
-### New Model (section 4.2)
+## 5. 縦長字幕の追加
 
-- `audioDurationSec`: per-page float measured by ffprobe after audio generation
-- Total duration: simple sum of all pages' `audioDurationSec`
-- Cumulative start time for SRT: sum of preceding pages' `audioDurationSec`
-- No lead-in/lead-out; timing is pure audio duration
-- Seconds-based (not milliseconds)
+旧方式には、描画後のコンテンツ境界に基づく字幕safe-areaという契約はありませんでした。現行では以下を追加しています。
 
----
+- `captionStyle`: `white-outline`、`yellow-outline`、`black-background`、`chalkboard`
+- `captionPlacement`: `bottom`または`safe-area`
+- `captionSafeAreaYPosition`: 工程1が実行時に決めるY座標
+- `verticalLayout`: `top`、`center`、`crop`
+- `padColor`: `white`、`navy`、`auto`
 
-## Pipeline Stage Mapping
+`chalkboard`は縦長・上寄せ・safe-areaの焼き込み字幕に限定し、濃緑の背景はMediaConvert字幕設定ではなくページPNGの余白として描画します。
 
-| Old Concept         | New Stage      | Description                                        |
-| ------------------- | -------------- | -------------------------------------------------- |
-| Slide rendering     | Stage 1: pages | Marp renders deck to per-page PNG images           |
-| Audio generation    | Stage 2: audio | Polly generates MP3, ffprobe measures duration     |
-| (none)              | Stage 3: captions | Generate captions.srt from cumulative timing    |
-| Composition build   | Stage 4: clips | FFmpeg creates per-page MP4 (image + audio)        |
-| (none)              | Stage 5: concat | FFmpeg concatenates all clips into final video   |
+## 6. 互換性と削除時の注意
 
----
+- 旧manifestを読む場合でも、無効なサンプルレートは`16000`へ正規化します。
+- 旧manifestにsafe-area座標がない場合は、MediaConvertの通常の下端字幕へフォールバックします。
+- 旧FFmpeg、ffprobe、pdftoppm、LibreOffice、Docker前提のコードや運用手順を新たなデプロイ経路へ戻してはいけません。
+- 過去の設計・障害記録はGit履歴と`設計指示書_動画生成パイプライン.md`に残しています。歴史的な記述と現行仕様が異なる場合は、現行契約と実装を優先します。
 
-## Files to Delete (during subsequent features)
+## 7. 移行後に確認する項目
 
-- `lambdas/composition-builder/`
-- `lambdas/teaser-generator/`
-- `lambdas/teaser-composition-builder/`
-- `infra/lib/composition-builder-construct.ts`
-- `infra/lib/teaser-generator-construct.ts`
-- `infra/lib/teaser-composition-builder-construct.ts`
-- `infra/lib/teaser-state-machine-construct.ts`
-- `packages/renderer-hyperframes/`
-- `packages/evaluation/`
-- `packages/renderer-contract-tests/`
-- `packages/core/src/teaser/`
-- `packages/core/src/audio/` (PCM utilities)
-- `packages/core/src/manifest/` (old manifest builder)
+1. `pnpm build`、`pnpm test`、`pnpm lint`、CDK synthが成功すること。
+2. 1ページ以上のPDFで、PNG、WAV、SRT、MP4が生成されること。
+3. `manifest.output`の幅・高さ・fpsとMediaConvertジョブ設定が一致すること。
+4. 焼き込み字幕ではSRT Caption Selectorと`BURN_IN` Caption Descriptionが存在すること。
+5. safe-areaを使う縦長上寄せでは、manifestの`captionSafeAreaYPosition`とMediaConvertの`YPosition`が一致すること。
+6. 実績費用の表示を追加する場合は、推定額と請求データ照合済み額を分けること。
+
+実機検証の数値と未実施の視覚確認は[設計指示書\_動画生成パイプライン.md](../設計指示書_動画生成パイプライン.md)に記録します。

@@ -15,6 +15,7 @@ dist/
 
 # CDK
 cdk.out/
+/.tmp-cdk/
 
 # IDE
 .idea/

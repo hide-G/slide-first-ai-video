@@ -16,12 +16,19 @@ import {
   S3Client,
   ListObjectsV2Command,
   GetObjectCommand,
+  HeadObjectCommand,
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { ulid } from "ulid";
-import { ManifestSchema, manifestKey } from "@slide-first/shared-types";
-import type { RenderProgress } from "@slide-first/shared-types";
+import {
+  ManifestSchema,
+  manifestKey,
+  pageImageKey,
+  audioKey,
+  captionsSrtKey,
+} from "@slide-first/shared-types";
+import type { Manifest, RenderProgress } from "@slide-first/shared-types";
 import {
   requireAuth,
   verifyProjectOwnership,
@@ -57,6 +64,198 @@ const stageMessage: Record<RenderProgress["stage"], string> = {
 
 function isRenderStage(value: string | undefined): value is RenderProgress["stage"] {
   return value === "pages" || value === "audio" || value === "captions" || value === "video";
+}
+
+function partialRenderRequiresPagesError(): ApiError {
+  return new ApiError(
+    409,
+    "部分再実行に必要な既存manifestを読み取れません。pagesから再実行してください。",
+    "PARTIAL_RENDER_REQUIRES_PAGES",
+  );
+}
+
+function getS3ErrorName(error: unknown): string | undefined {
+  return error &&
+    typeof error === "object" &&
+    typeof (error as { name?: unknown }).name === "string"
+    ? (error as { name: string }).name
+    : undefined;
+}
+
+function getS3ErrorStatusCode(error: unknown): number | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const metadata = (error as { $metadata?: { httpStatusCode?: unknown } }).$metadata;
+  return typeof metadata?.httpStatusCode === "number" ? metadata.httpStatusCode : undefined;
+}
+
+/** NoSuchBucketの404を、再利用成果物の欠損として誤認しない。 */
+function isMissingS3ObjectError(error: unknown): boolean {
+  const name = getS3ErrorName(error);
+  return name !== "NoSuchBucket" && (name === "NoSuchKey" || getS3ErrorStatusCode(error) === 404);
+}
+
+function manifestReadError(error: unknown): ApiError {
+  const name = getS3ErrorName(error);
+  const statusCode = getS3ErrorStatusCode(error);
+
+  if (isMissingS3ObjectError(error)) {
+    return partialRenderRequiresPagesError();
+  }
+
+  if (name === "AccessDenied" || statusCode === 403) {
+    return new ApiError(
+      500,
+      "既存manifestへのアクセス権を確認できません。管理者にお問い合わせください。",
+      "MANIFEST_READ_ACCESS_DENIED",
+    );
+  }
+
+  if (
+    statusCode === 429 ||
+    (statusCode !== undefined && statusCode >= 500) ||
+    name === "SlowDown" ||
+    name === "ServiceUnavailable" ||
+    name === "RequestTimeout" ||
+    name === "TimeoutError"
+  ) {
+    return new ApiError(
+      503,
+      "既存manifestを一時的に読み取れません。時間をおいて再試行してください。",
+      "MANIFEST_READ_UNAVAILABLE",
+    );
+  }
+
+  return new ApiError(
+    502,
+    "既存manifestの読取に失敗しました。時間をおいて再試行してください。",
+    "MANIFEST_READ_FAILED",
+  );
+}
+
+function partialArtifactCheckError(error: unknown): ApiError {
+  const name = getS3ErrorName(error);
+  const statusCode = getS3ErrorStatusCode(error);
+
+  if (isMissingS3ObjectError(error)) {
+    return partialRenderRequiresPagesError();
+  }
+
+  if (name === "AccessDenied" || statusCode === 403) {
+    return new ApiError(
+      500,
+      "再利用する成果物へのアクセス権を確認できません。管理者にお問い合わせください。",
+      "PARTIAL_RENDER_ARTIFACT_ACCESS_DENIED",
+    );
+  }
+
+  if (
+    statusCode === 429 ||
+    (statusCode !== undefined && statusCode >= 500) ||
+    name === "SlowDown" ||
+    name === "ServiceUnavailable" ||
+    name === "RequestTimeout" ||
+    name === "TimeoutError"
+  ) {
+    return new ApiError(
+      503,
+      "再利用する成果物を一時的に確認できません。時間をおいて再試行してください。",
+      "PARTIAL_RENDER_ARTIFACT_CHECK_UNAVAILABLE",
+    );
+  }
+
+  return new ApiError(
+    502,
+    "再利用する成果物の確認に失敗しました。時間をおいて再試行してください。",
+    "PARTIAL_RENDER_ARTIFACT_CHECK_FAILED",
+  );
+}
+
+function requiredPartialArtifactKeys(
+  manifest: Manifest,
+  startStage: Exclude<RenderProgress["stage"], "pages">,
+): string[] {
+  const keyParams = { userId: manifest.userId, projectId: manifest.projectId };
+  const imageKeys = manifest.pages.map((page) => pageImageKey(keyParams, page.pageNumber));
+
+  if (startStage === "audio") {
+    return imageKeys;
+  }
+
+  const audioKeys = manifest.pages.map((page) => audioKey(keyParams, page.pageNumber));
+  if (startStage === "captions") {
+    return [...imageKeys, ...audioKeys];
+  }
+
+  return [
+    ...imageKeys,
+    ...audioKeys,
+    ...(manifest.output.captions === "burn" ? [captionsSrtKey(keyParams)] : []),
+  ];
+}
+
+const PARTIAL_ARTIFACT_HEAD_BATCH_SIZE = 10;
+
+/** 前工程を省略する部分再実行で、後続工程が必要とする成果物を確認する。 */
+async function assertPartialRenderArtifactsExist(
+  manifest: Manifest,
+  startStage: Exclude<RenderProgress["stage"], "pages">,
+): Promise<void> {
+  const artifactKeys = requiredPartialArtifactKeys(manifest, startStage);
+
+  for (let offset = 0; offset < artifactKeys.length; offset += PARTIAL_ARTIFACT_HEAD_BATCH_SIZE) {
+    const batch = artifactKeys.slice(offset, offset + PARTIAL_ARTIFACT_HEAD_BATCH_SIZE);
+    await Promise.all(
+      batch.map(async (artifactKey) => {
+        try {
+          await s3Client.send(new HeadObjectCommand({ Bucket: BUCKET_NAME, Key: artifactKey }));
+        } catch (error) {
+          throw partialArtifactCheckError(error);
+        }
+      }),
+    );
+  }
+}
+
+async function readPartialRenderManifest(key: string): Promise<Manifest> {
+  let response;
+  try {
+    response = await s3Client.send(new GetObjectCommand({ Bucket: BUCKET_NAME, Key: key }));
+  } catch (error) {
+    throw manifestReadError(error);
+  }
+
+  if (!response.Body) {
+    throw partialRenderRequiresPagesError();
+  }
+
+  let body: string;
+  try {
+    body = await response.Body.transformToString();
+  } catch {
+    throw new ApiError(
+      503,
+      "既存manifestを一時的に読み取れません。時間をおいて再試行してください。",
+      "MANIFEST_READ_UNAVAILABLE",
+    );
+  }
+
+  if (!body.trim()) {
+    throw partialRenderRequiresPagesError();
+  }
+
+  let parsedJson: unknown;
+  try {
+    parsedJson = JSON.parse(body);
+  } catch {
+    throw partialRenderRequiresPagesError();
+  }
+
+  const parsedManifest = ManifestSchema.safeParse(parsedJson);
+  if (!parsedManifest.success) {
+    throw partialRenderRequiresPagesError();
+  }
+
+  return parsedManifest.data;
 }
 
 function createInitialProgress(
@@ -207,14 +406,25 @@ export async function handleStartRender(
   const renderId = ulid();
   const now = new Date().toISOString();
   const startStage = body.startFromStage ?? "pages";
+  const key = manifestKey({ userId, projectId });
+
+  // pages以外からの再実行では、直前の描画・音声状態を安全に引き継ぐ。
+  // safe-area座標は描画済みPNGに依存するため、DynamoDBの設定やクライアント入力から復元してはいけない。
+  let manifest;
+  if (startStage === "pages") {
+    manifest = buildManifestFromProject(project);
+  } else {
+    const previousManifest = await readPartialRenderManifest(key);
+    manifest = buildManifestFromProject(project, { startStage, previousManifest });
+    await assertPartialRenderArtifactsExist(manifest, startStage);
+  }
 
   // パイプラインは manifest.json だけを正本として読むため、開始前に S3 へ書き出す。
-  const manifest = buildManifestFromProject(project);
   manifest.progress = createInitialProgress(startStage, manifest.pages.length, now);
   await s3Client.send(
     new PutObjectCommand({
       Bucket: BUCKET_NAME,
-      Key: manifestKey({ userId, projectId }),
+      Key: key,
       Body: JSON.stringify(manifest, null, 2),
       ContentType: "application/json",
     }),
@@ -524,6 +734,8 @@ async function syncRenderStatus(render: RenderRecord): Promise<RenderRecord> {
     execution.status === "ABORTED"
   ) {
     const completedAt = execution.stopDate?.toISOString() ?? new Date().toISOString();
+    const failedStage =
+      manifestProgress?.stage ?? (await findCurrentStage(render.executionArn, render.currentStage));
     const failed = withProgress(
       {
         ...render,
@@ -532,6 +744,7 @@ async function syncRenderStatus(render: RenderRecord): Promise<RenderRecord> {
         error: RENDER_FAILED_ERROR,
       },
       manifestProgress,
+      failedStage,
     );
     return persistRenderState(failed);
   }

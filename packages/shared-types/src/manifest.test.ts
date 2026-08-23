@@ -146,14 +146,23 @@ describe("ManifestSchema", () => {
     expect(ManifestSchema.safeParse(manifest).success).toBe(false);
   });
 
-  it("定義済みの縦型レイアウトと余白色を受け入れる", () => {
+  it("定義済みの縦型レイアウト・余白色・字幕プリセットを受け入れる", () => {
     const manifest = validManifest();
-    manifest.output.verticalLayout = "top";
-    manifest.output.padColor = "navy";
+    manifest.output = {
+      ...manifest.output,
+      aspect: "9:16",
+      width: 1080,
+      height: 1920,
+      verticalLayout: "top",
+      padColor: "navy",
+      captionStyle: "chalkboard",
+      captionPlacement: "safe-area",
+      captionSafeAreaYPosition: 1182,
+    };
     expect(ManifestSchema.safeParse(manifest).success).toBe(true);
   });
 
-  it("未定義の縦型レイアウトと余白色を拒否する", () => {
+  it("未定義の縦型レイアウト・余白色・字幕プリセットを拒否する", () => {
     const invalidLayout = validManifest();
     (invalidLayout.output as Record<string, unknown>).verticalLayout = "bottom";
     expect(ManifestSchema.safeParse(invalidLayout).success).toBe(false);
@@ -161,6 +170,53 @@ describe("ManifestSchema", () => {
     const invalidColor = validManifest();
     (invalidColor.output as Record<string, unknown>).padColor = "#000000";
     expect(ManifestSchema.safeParse(invalidColor).success).toBe(false);
+
+    const invalidCaptionStyle = validManifest();
+    (invalidCaptionStyle.output as Record<string, unknown>).captionStyle = "green-background";
+    expect(ManifestSchema.safeParse(invalidCaptionStyle).success).toBe(false);
+
+    const invalidCaptionPlacement = validManifest();
+    (invalidCaptionPlacement.output as Record<string, unknown>).captionPlacement = "middle";
+    expect(ManifestSchema.safeParse(invalidCaptionPlacement).success).toBe(false);
+
+    const unsupportedSafeArea = validManifest();
+    unsupportedSafeArea.output.captionPlacement = "safe-area";
+    expect(ManifestSchema.safeParse(unsupportedSafeArea).success).toBe(false);
+
+    const unsupportedChalkboard = validManifest();
+    unsupportedChalkboard.output.captionStyle = "chalkboard";
+    unsupportedChalkboard.output.captionPlacement = "bottom";
+    expect(ManifestSchema.safeParse(unsupportedChalkboard).success).toBe(false);
+  });
+
+  it("焼き込み以外では字幕装飾を拒否し、未指定または null を受け入れる", () => {
+    for (const captions of ["srt", "none"] as const) {
+      const decorated = validManifest();
+      decorated.output = {
+        ...decorated.output,
+        aspect: "9:16",
+        width: 1080,
+        height: 1920,
+        captions,
+        verticalLayout: "top",
+        captionStyle: "chalkboard",
+        captionPlacement: "safe-area",
+      };
+      expect(ManifestSchema.safeParse(decorated).success).toBe(false);
+
+      const undecorated = validManifest();
+      undecorated.output = {
+        ...undecorated.output,
+        aspect: "9:16",
+        width: 1080,
+        height: 1920,
+        captions,
+        verticalLayout: "top",
+        captionStyle: null,
+        captionPlacement: null,
+      };
+      expect(ManifestSchema.safeParse(undecorated).success).toBe(true);
+    }
   });
 
   it("無効な基本値を拒否する", () => {

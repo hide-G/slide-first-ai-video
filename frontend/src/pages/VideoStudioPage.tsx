@@ -6,7 +6,7 @@ import { PageList } from "../components/PageList.js";
 import { UploadZone } from "../components/UploadZone.js";
 import { SsmlToolbar } from "../components/SsmlToolbar.js";
 import { SsmlCheatsheet } from "../components/SsmlCheatsheet.js";
-import { apiClient } from "../api/client.js";
+import { ApiError, apiClient } from "../api/client.js";
 import {
   extractPdfPageText,
   openPdfDocument,
@@ -17,6 +17,8 @@ import {
 import type {
   Artifact,
   AspectRatio,
+  CaptionPlacement,
+  CaptionStylePreset,
   DictionaryEntry,
   NarrationMode,
   NarrationPage,
@@ -76,6 +78,60 @@ function voiceLanguageCode(voiceId: string): string {
   return ["Joanna", "Matthew"].includes(voiceId) ? "en-US" : "ja-JP";
 }
 
+export interface CaptionPresentation {
+  isBurnInCaption: boolean;
+  supportsCaptionSafeArea: boolean;
+  effectiveCaptionPlacement: CaptionPlacement;
+  usesSafeAreaPlacement: boolean;
+  canUseChalkboard: boolean;
+  effectiveCaptionStyle: CaptionStylePreset;
+}
+
+/** 字幕設定の成立条件をUIプレビューと保存リクエストで共通利用する。 */
+export function resolveCaptionPresentation({
+  aspect,
+  verticalLayout,
+  subtitleMode,
+  narrationMode,
+  captionStyle,
+  captionPlacement,
+}: {
+  aspect: AspectRatio;
+  verticalLayout: VerticalLayout;
+  subtitleMode: SubtitleMode;
+  narrationMode: NarrationMode;
+  captionStyle: CaptionStylePreset;
+  captionPlacement: CaptionPlacement;
+}): CaptionPresentation {
+  const isVertical = aspect === "9:16" || aspect === "4:5";
+  const isBurnInCaption = narrationMode === "spoken" && subtitleMode === "burn";
+  const supportsCaptionSafeArea = isVertical && verticalLayout === "top";
+  const effectiveCaptionPlacement: CaptionPlacement =
+    isBurnInCaption && supportsCaptionSafeArea ? captionPlacement : "bottom";
+  const usesSafeAreaPlacement =
+    isBurnInCaption && supportsCaptionSafeArea && effectiveCaptionPlacement === "safe-area";
+  const canUseChalkboard = usesSafeAreaPlacement;
+  const effectiveCaptionStyle: CaptionStylePreset =
+    captionStyle === "chalkboard" && !canUseChalkboard ? "white-outline" : captionStyle;
+
+  return {
+    isBurnInCaption,
+    supportsCaptionSafeArea,
+    effectiveCaptionPlacement,
+    usesSafeAreaPlacement,
+    canUseChalkboard,
+    effectiveCaptionStyle,
+  };
+}
+
+/** 失敗工程はmanifestの最新進捗を優先し、存在しない場合だけレンダー記録へ戻す。 */
+export function resolveFailedRenderStage(
+  currentStage: RenderStageName | undefined,
+  progress: RenderProgress | undefined,
+): RenderStageName | null {
+  return progress?.stage ?? currentStage ?? null;
+}
+
 export function VideoStudioPage() {
   const { t } = useLanguage();
   const navigate = useNavigate();
@@ -105,7 +161,8 @@ export function VideoStudioPage() {
   const [engine, setEngine] = useState<"neural" | "standard">("neural");
   const [verticalLayout, setVerticalLayout] = useState<VerticalLayout>("top");
   const [verticalBg, setVerticalBg] = useState<PadColor>("white");
-  const [safeArea, setSafeArea] = useState(false);
+  const [captionStyle, setCaptionStyle] = useState<CaptionStylePreset>("white-outline");
+  const [captionPlacement, setCaptionPlacement] = useState<CaptionPlacement>("safe-area");
   const [narrationMode, setNarrationMode] = useState<NarrationMode>("spoken");
   const [silentPageDurationSec, setSilentPageDurationSec] = useState<3 | 5 | 8>(5);
 
@@ -124,6 +181,8 @@ export function VideoStudioPage() {
   const [progress, setProgress] = useState(0);
   const [renderStatus, setRenderStatus] = useState<RenderStatus | null>(null);
   const [renderProgress, setRenderProgress] = useState<RenderProgress | null>(null);
+  const [failedStage, setFailedStage] = useState<RenderStageName | null>(null);
+  const [requiresPagesRestart, setRequiresPagesRestart] = useState(false);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
 
   const pollTimerRef = useRef<number | null>(null);
@@ -134,6 +193,40 @@ export function VideoStudioPage() {
   const subtitleModeBeforeSilentRef = useRef<SubtitleMode>("burn");
   const isVertical = aspect === "9:16" || aspect === "4:5";
   const profile = ASPECT_INFO[aspect];
+  const {
+    supportsCaptionSafeArea,
+    effectiveCaptionPlacement,
+    usesSafeAreaPlacement,
+    canUseChalkboard,
+    effectiveCaptionStyle,
+  } = resolveCaptionPresentation({
+    aspect,
+    verticalLayout,
+    subtitleMode,
+    narrationMode,
+    captionStyle,
+    captionPlacement,
+  });
+  const previewSlideAreaPercent = usesSafeAreaPlacement
+    ? Math.min(100, (profile.width * 9 * 100) / (16 * profile.height))
+    : 100;
+  const previewCaptionTopPercent = previewSlideAreaPercent + (100 - previewSlideAreaPercent) * 0.42;
+  const usesChalkboardSafeArea = effectiveCaptionStyle === "chalkboard" && canUseChalkboard;
+  const previewBackground = usesChalkboardSafeArea
+    ? "#123d2b"
+    : isVertical && verticalBg === "navy"
+      ? "#0b1f3a"
+      : isVertical
+        ? "#f2f2f2"
+        : "#e0e0e0";
+  const captionPreviewStyle =
+    subtitleMode !== "burn" || effectiveCaptionStyle === "white-outline"
+      ? { color: "#ffffff", background: "transparent", textShadow: "0 1px 3px #000000" }
+      : effectiveCaptionStyle === "yellow-outline"
+        ? { color: "#ffe45c", background: "transparent", textShadow: "0 1px 3px #000000" }
+        : effectiveCaptionStyle === "black-background"
+          ? { color: "#ffffff", background: "rgba(0, 0, 0, 0.63)", textShadow: "none" }
+          : { color: "#ffffff", background: "transparent", textShadow: "none" };
 
   const persistRoute = useCallback(
     (nextProjectId: string, nextRenderId?: string) => {
@@ -207,6 +300,8 @@ export function VideoStudioPage() {
           applyRenderState(result.status, result.currentStage, result.progress);
 
           if (result.status === "COMPLETED") {
+            setFailedStage(null);
+            setRequiresPagesRestart(false);
             const artifactResult = await apiClient.getArtifacts(activeProjectId, activeRenderId);
             if (mountedRef.current) {
               setArtifacts(artifactResult.artifacts);
@@ -215,6 +310,9 @@ export function VideoStudioPage() {
           }
 
           if (result.status === "FAILED") {
+            const nextFailedStage = resolveFailedRenderStage(result.currentStage, result.progress);
+            setFailedStage(nextFailedStage);
+            setRequiresPagesRestart(nextFailedStage === null);
             setErrorMessage(
               result.error === "RENDER_FAILED"
                 ? "動画の生成に失敗しました。原稿と出力設定を確認して再実行してください。"
@@ -522,6 +620,8 @@ export function VideoStudioPage() {
 
     setErrorMessage(null);
     setNoticeMessage(null);
+    setFailedStage(null);
+    setRequiresPagesRestart(false);
     setIsStartingRender(true);
     setCurrentStep(3);
     setArtifacts([]);
@@ -539,6 +639,10 @@ export function VideoStudioPage() {
         captions: narrationMode === "none" ? "none" : subtitleMode,
         verticalLayout: isVertical ? verticalLayout : null,
         padColor: isVertical ? verticalBg : null,
+        captionStyle:
+          narrationMode === "spoken" && subtitleMode === "burn" ? effectiveCaptionStyle : null,
+        captionPlacement:
+          narrationMode === "spoken" && subtitleMode === "burn" ? effectiveCaptionPlacement : null,
         narrationMode,
         silentPageDurationSec,
       });
@@ -573,6 +677,45 @@ export function VideoStudioPage() {
     } catch (error) {
       setRenderStatus("FAILED");
       setErrorMessage(`動画の生成を開始できません: ${formatError(error)}`);
+    } finally {
+      setIsStartingRender(false);
+    }
+  }
+
+  async function handleRetryRender(startStage: RenderStageName) {
+    if (!projectId || isStartingRender) return;
+
+    setErrorMessage(null);
+    setNoticeMessage(null);
+    setFailedStage(null);
+    setRequiresPagesRestart(false);
+    setIsStartingRender(true);
+    setCurrentStep(3);
+    setArtifacts([]);
+    setRenderStatus("RUNNING");
+    setRenderProgress(null);
+    setStageStates(Array(STAGES.length).fill("wait"));
+    setProgress(0);
+
+    try {
+      const started = await apiClient.startRender(projectId, { startFromStage: startStage });
+      setRenderId(started.renderId);
+      persistRoute(projectId, started.renderId);
+      applyRenderState(started.status, startStage);
+    } catch (error) {
+      const mustRestartFromPages =
+        error instanceof ApiError &&
+        error.statusCode === 409 &&
+        error.errorResponse.error === "PARTIAL_RENDER_REQUIRES_PAGES";
+      setRenderStatus("FAILED");
+      setFailedStage(mustRestartFromPages ? null : startStage);
+      setRequiresPagesRestart(mustRestartFromPages);
+      applyRenderState("FAILED", startStage);
+      setErrorMessage(
+        mustRestartFromPages
+          ? t("video.partialRenderRequiresPages")
+          : `動画の再実行を開始できません: ${formatError(error)}`,
+      );
     } finally {
       setIsStartingRender(false);
     }
@@ -765,7 +908,16 @@ export function VideoStudioPage() {
                         name="aspect"
                         value={candidate}
                         checked={aspect === candidate}
-                        onChange={() => setAspect(candidate)}
+                        onChange={() => {
+                          const nextIsVertical = candidate === "9:16" || candidate === "4:5";
+                          setAspect(candidate);
+                          setCaptionPlacement(nextIsVertical ? "safe-area" : "bottom");
+                          if (!nextIsVertical) {
+                            setCaptionStyle((previous) =>
+                              previous === "chalkboard" ? "white-outline" : previous,
+                            );
+                          }
+                        }}
                       />
                       <span>
                         <strong>
@@ -794,9 +946,16 @@ export function VideoStudioPage() {
                         <select
                           id="v-layout"
                           value={verticalLayout}
-                          onChange={(event) =>
-                            setVerticalLayout(event.target.value as VerticalLayout)
-                          }
+                          onChange={(event) => {
+                            const nextLayout = event.target.value as VerticalLayout;
+                            setVerticalLayout(nextLayout);
+                            setCaptionPlacement(nextLayout === "top" ? "safe-area" : "bottom");
+                            if (nextLayout !== "top") {
+                              setCaptionStyle((previous) =>
+                                previous === "chalkboard" ? "white-outline" : previous,
+                              );
+                            }
+                          }}
                         >
                           <option value="top">{t("video.vLayout1")}</option>
                           <option value="center">{t("video.vLayout2")}</option>
@@ -816,14 +975,6 @@ export function VideoStudioPage() {
                         </select>
                       </div>
                     </div>
-                    <label className="checkbox-row">
-                      <input
-                        type="checkbox"
-                        checked={safeArea}
-                        onChange={(event) => setSafeArea(event.target.checked)}
-                      />
-                      <span>{t("video.safeArea")}</span>
-                    </label>
                   </div>
                 )}
 
@@ -882,7 +1033,60 @@ export function VideoStudioPage() {
                   <p className="hint">ナレーションなし動画では字幕も生成しません。</p>
                 ) : (
                   subtitleMode === "burn" && (
-                    <p className="hint">字幕はMediaConvertで映像に焼き込みます。</p>
+                    <>
+                      <p className="hint">{t("video.captionStyleHint")}</p>
+                      <div className="grid-2">
+                        <div className="field">
+                          <label htmlFor="caption-style">{t("video.captionStyle")}</label>
+                          <select
+                            id="caption-style"
+                            value={effectiveCaptionStyle}
+                            onChange={(event) =>
+                              setCaptionStyle(event.target.value as CaptionStylePreset)
+                            }
+                          >
+                            <option value="white-outline">
+                              {t("video.captionStyleWhiteOutline")}
+                            </option>
+                            <option value="yellow-outline">
+                              {t("video.captionStyleYellowOutline")}
+                            </option>
+                            <option value="black-background">
+                              {t("video.captionStyleBlackBackground")}
+                            </option>
+                            <option value="chalkboard" disabled={!canUseChalkboard}>
+                              {t("video.captionStyleChalkboard")}
+                            </option>
+                          </select>
+                        </div>
+                        <div className="field">
+                          <label htmlFor="caption-placement">{t("video.captionPlacement")}</label>
+                          <select
+                            id="caption-placement"
+                            value={effectiveCaptionPlacement}
+                            onChange={(event) => {
+                              const nextPlacement = event.target.value as CaptionPlacement;
+                              setCaptionPlacement(nextPlacement);
+                              if (nextPlacement !== "safe-area") {
+                                setCaptionStyle((previous) =>
+                                  previous === "chalkboard" ? "white-outline" : previous,
+                                );
+                              }
+                            }}
+                          >
+                            <option value="bottom">{t("video.captionPlacementBottom")}</option>
+                            {supportsCaptionSafeArea && (
+                              <option value="safe-area">
+                                {t("video.captionPlacementSafeArea")}
+                              </option>
+                            )}
+                          </select>
+                        </div>
+                      </div>
+                      {supportsCaptionSafeArea && (
+                        <p className="hint">{t("video.captionSafeAreaHint")}</p>
+                      )}
+                    </>
                   )
                 )}
               </div>
@@ -934,18 +1138,54 @@ export function VideoStudioPage() {
                 className="preview-frame"
                 style={{
                   aspectRatio: profile.css,
-                  background: "#e0e0e0",
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "center",
-                  alignItems: "center",
+                  background: previewBackground,
                   borderRadius: 4,
+                  overflow: "hidden",
+                  position: "relative",
                   width: "100%",
                 }}
               >
-                <div>{t("video.previewSlide")}</div>
+                <div
+                  data-testid="caption-preview-slide"
+                  style={{
+                    alignItems: "center",
+                    background: "#e0e0e0",
+                    borderBottom: usesSafeAreaPlacement
+                      ? "1px solid rgba(0, 0, 0, 0.18)"
+                      : undefined,
+                    display: "flex",
+                    height: `${previewSlideAreaPercent}%`,
+                    justifyContent: "center",
+                    left: 0,
+                    position: "absolute",
+                    right: 0,
+                    top: 0,
+                  }}
+                >
+                  <div>{t("video.previewSlide")}</div>
+                </div>
                 {narrationMode === "spoken" && subtitleMode !== "none" && (
-                  <p style={{ fontSize: "0.8em", marginTop: 8 }}>{t("video.previewCaption")}</p>
+                  <p
+                    data-testid="caption-preview"
+                    style={{
+                      borderRadius: 4,
+                      fontSize: "0.8em",
+                      fontWeight: 700,
+                      left: "10%",
+                      lineHeight: 1.4,
+                      margin: 0,
+                      padding: "0.45em 0.65em",
+                      position: "absolute",
+                      right: "10%",
+                      textAlign: "center",
+                      ...(usesSafeAreaPlacement
+                        ? { top: `${previewCaptionTopPercent}%` }
+                        : { bottom: "8%" }),
+                      ...captionPreviewStyle,
+                    }}
+                  >
+                    {t("video.previewCaption")}
+                  </p>
                 )}
               </div>
               <p className="preview-meta" style={{ textAlign: "center", marginTop: 8 }}>
@@ -1326,6 +1566,43 @@ export function VideoStudioPage() {
                       : t("video.jobWaiting")}
             </p>
           </div>
+
+          {renderStatus === "FAILED" && (
+            <div className="card">
+              <h3>{t("video.retryTitle")}</h3>
+              <p className="card-sub">
+                {requiresPagesRestart || !failedStage
+                  ? t("video.partialRenderRequiresPages")
+                  : t("video.retryFailedStageHint")}
+              </p>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+                {failedStage && !requiresPagesRestart && (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={isStartingRender}
+                    onClick={() => {
+                      void handleRetryRender(failedStage);
+                    }}
+                  >
+                    {isStartingRender ? t("video.retryStarting") : t("video.retryFailedStage")}
+                  </button>
+                )}
+                {(requiresPagesRestart || !failedStage) && (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={isStartingRender}
+                    onClick={() => {
+                      void handleRetryRender("pages");
+                    }}
+                  >
+                    {isStartingRender ? t("video.retryStarting") : t("video.retryFromPages")}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
           {renderStatus === "COMPLETED" && (
             <div className="card">

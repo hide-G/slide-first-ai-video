@@ -34,6 +34,19 @@ export type VerticalLayout = z.infer<typeof VerticalLayout>;
 export const PadColor = z.enum(["white", "navy", "auto"]);
 export type PadColor = z.infer<typeof PadColor>;
 
+/** 映像へ焼き込む字幕の固定スタイルプリセット。 */
+export const CaptionStylePreset = z.enum([
+  "white-outline",
+  "yellow-outline",
+  "black-background",
+  "chalkboard",
+]);
+export type CaptionStylePreset = z.infer<typeof CaptionStylePreset>;
+
+/** 字幕を通常の下端へ置くか、縦型の下部余白へ置くかを表す。 */
+export const CaptionPlacement = z.enum(["bottom", "safe-area"]);
+export type CaptionPlacement = z.infer<typeof CaptionPlacement>;
+
 export const SUPPORTED_FPS = [30, 60] as const;
 export type SupportedFps = (typeof SUPPORTED_FPS)[number];
 
@@ -70,62 +83,128 @@ export const VoiceSchema = z.object({
 });
 export type Voice = z.infer<typeof VoiceSchema>;
 
-export const OutputSchema = z
-  .object({
-    aspect: AspectRatio,
-    width: z.number().int().positive(),
-    height: z.number().int().positive(),
-    fps: z.number().int(),
-    captions: CaptionsOption,
-    narrationMode: NarrationMode.optional(),
-    silentPageDurationSec: z.number().int().min(1).max(30).optional(),
-    verticalLayout: VerticalLayout.nullable().optional(),
-    padColor: PadColor.nullable().optional(),
-  })
-  .superRefine((output, context) => {
-    if (output.narrationMode === "none" && output.captions !== "none") {
+const OutputFieldsSchema = z.object({
+  aspect: AspectRatio,
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  fps: z.number().int(),
+  captions: CaptionsOption,
+  narrationMode: NarrationMode.optional(),
+  silentPageDurationSec: z.number().int().min(1).max(30).optional(),
+  verticalLayout: VerticalLayout.nullable().optional(),
+  padColor: PadColor.nullable().optional(),
+  captionStyle: CaptionStylePreset.nullable().optional(),
+  captionPlacement: CaptionPlacement.nullable().optional(),
+  /** ページ画像の描画後に確定する、下部セーフエリア内の字幕Y座標。 */
+  captionSafeAreaYPosition: z.number().int().nonnegative().nullable().optional(),
+});
+type OutputFields = z.infer<typeof OutputFieldsSchema>;
+
+function validateOutputFields(output: OutputFields, context: z.RefinementCtx): void {
+  if (output.narrationMode === "none" && output.captions !== "none") {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["captions"],
+      message: "ナレーションなし動画では字幕を none にする必要があります",
+    });
+  }
+
+  const profile = getOutputProfile(output.aspect);
+
+  if (output.width !== profile.width) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["width"],
+      message: `${output.aspect} の幅は ${profile.width} である必要があります`,
+    });
+  }
+
+  if (output.height !== profile.height) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["height"],
+      message: `${output.aspect} の高さは ${profile.height} である必要があります`,
+    });
+  }
+
+  if (!(SUPPORTED_FPS as readonly number[]).includes(output.fps)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["fps"],
+      message: "fps は 30 または 60 である必要があります",
+    });
+  }
+
+  if (output.width % 2 !== 0 || output.height % 2 !== 0) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["width"],
+      message: "映像の幅と高さは偶数である必要があります",
+    });
+  }
+
+  const supportsCaptionSafeArea =
+    (output.aspect === "9:16" || output.aspect === "4:5") && output.verticalLayout === "top";
+  const usesBurnInCaptions = output.captions === "burn";
+  const hasCaptionDecoration =
+    (output.captionStyle !== null && output.captionStyle !== undefined) ||
+    (output.captionPlacement !== null && output.captionPlacement !== undefined);
+
+  if (!usesBurnInCaptions && hasCaptionDecoration) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["captionStyle"],
+      message: "字幕スタイルは焼き込み字幕でのみ指定できます",
+    });
+  }
+
+  if (output.captionPlacement === "safe-area" && !supportsCaptionSafeArea) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["captionPlacement"],
+      message: "下部セーフエリアは縦型の上寄せレイアウトでのみ使用できます",
+    });
+  }
+
+  if (
+    output.captionStyle === "chalkboard" &&
+    (!supportsCaptionSafeArea || output.captionPlacement !== "safe-area")
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["captionStyle"],
+      message: "黒板風スタイルは下部セーフエリアを使う縦型の上寄せレイアウトでのみ使用できます",
+    });
+  }
+
+  if (output.captionSafeAreaYPosition !== null && output.captionSafeAreaYPosition !== undefined) {
+    if (!usesBurnInCaptions || output.captionPlacement !== "safe-area") {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["captions"],
-        message: "ナレーションなし動画では字幕を none にする必要があります",
+        path: ["captionSafeAreaYPosition"],
+        message: "下部セーフエリアの字幕Y座標は焼き込み字幕のセーフエリア配置でのみ使用できます",
       });
-    }
-
-    const profile = getOutputProfile(output.aspect);
-
-    if (output.width !== profile.width) {
+    } else if (output.captionSafeAreaYPosition >= output.height) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["width"],
-        message: `${output.aspect} の幅は ${profile.width} である必要があります`,
+        path: ["captionSafeAreaYPosition"],
+        message: "下部セーフエリアの字幕Y座標は映像の高さより小さい必要があります",
       });
     }
+  }
+}
 
-    if (output.height !== profile.height) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["height"],
-        message: `${output.aspect} の高さは ${profile.height} である必要があります`,
-      });
-    }
-
-    if (!(SUPPORTED_FPS as readonly number[]).includes(output.fps)) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["fps"],
-        message: "fps は 30 または 60 である必要があります",
-      });
-    }
-
-    if (output.width % 2 !== 0 || output.height % 2 !== 0) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["width"],
-        message: "映像の幅と高さは偶数である必要があります",
-      });
-    }
-  });
+/** 実行時マニフェスト用。ページ描画後に確定する字幕Y座標を含む。 */
+export const OutputSchema = OutputFieldsSchema.superRefine(validateOutputFields);
 export type Output = z.infer<typeof OutputSchema>;
+
+/** 保存API用。実行時にだけ決まる字幕Y座標はクライアントから受け付けない。 */
+export const SaveOutputSchema = OutputFieldsSchema.omit({
+  captionSafeAreaYPosition: true,
+})
+  .strict()
+  .superRefine(validateOutputFields);
+export type SaveOutput = z.infer<typeof SaveOutputSchema>;
 
 export const LexiconEntrySchema = z.object({
   written: z.string().min(1),

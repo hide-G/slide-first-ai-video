@@ -232,6 +232,11 @@ async function handleInspectSource(event: InspectSourceEvent): Promise<InspectSo
 
 // --- stage: "pages" (pdf.js rasterization) ---
 
+interface RasterizedPage {
+  dataUrl: string;
+  contentBottomY: number;
+}
+
 async function handlePages(event: PagesEvent): Promise<PagesResult> {
   const { s3Bucket, s3Prefix, projectId, userId } = event;
   const keyParams: S3KeyParams = { userId, projectId };
@@ -243,6 +248,35 @@ async function handlePages(event: PagesEvent): Promise<PagesResult> {
   let browser: Awaited<ReturnType<typeof launchBrowser>> | null = null;
   try {
     // Update stage to running
+    const isBurnInCaption = manifest.output.captions === "burn";
+    const supportsCaptionSafeArea =
+      (manifest.output.aspect === "9:16" || manifest.output.aspect === "4:5") &&
+      manifest.output.verticalLayout === "top";
+    const captionPlacement =
+      isBurnInCaption && supportsCaptionSafeArea && manifest.output.captionPlacement === "safe-area"
+        ? "safe-area"
+        : "bottom";
+    const requestedCaptionStyle = manifest.output.captionStyle;
+    const captionStyle =
+      isBurnInCaption &&
+      (requestedCaptionStyle === "white-outline" ||
+        requestedCaptionStyle === "yellow-outline" ||
+        requestedCaptionStyle === "black-background" ||
+        requestedCaptionStyle === "chalkboard")
+        ? requestedCaptionStyle === "chalkboard" && captionPlacement !== "safe-area"
+          ? "white-outline"
+          : requestedCaptionStyle
+        : "white-outline";
+
+    // 古いmanifestや直接投入されたmanifestでも、非焼き込み出力に字幕帯を残さない。
+    if (isBurnInCaption) {
+      manifest.output.captionStyle = captionStyle;
+      manifest.output.captionPlacement = captionPlacement;
+    } else {
+      manifest.output.captionStyle = null;
+      manifest.output.captionPlacement = null;
+    }
+    manifest.output.captionSafeAreaYPosition = null;
     manifest.stages.pages = "running";
     updatePagesProgress(manifest, 0, manifest.pages.length, "PDFページを画像に変換しています。");
     await writeManifest(s3Bucket, mKey, manifest);
@@ -265,7 +299,7 @@ async function handlePages(event: PagesEvent): Promise<PagesResult> {
     await page.setContent("<html><body></body></html>", { waitUntil: "domcontentloaded" });
 
     // pdf.jsでPDF各ページを、出力プロファイルの固定キャンバスへラスタライズする。
-    const pngDataUrls: string[] = await page.evaluate(
+    const rasterizedPages: RasterizedPage[] = await page.evaluate(
       async (
         libSrc: string,
         workerSrc: string,
@@ -274,6 +308,12 @@ async function handlePages(event: PagesEvent): Promise<PagesResult> {
         targetHeight: number,
         verticalLayout: "top" | "center" | "crop",
         padColor: "white" | "navy" | "auto",
+        resolvedCaptionStyle:
+          | "white-outline"
+          | "yellow-outline"
+          | "black-background"
+          | "chalkboard",
+        resolvedCaptionPlacement: "bottom" | "safe-area",
       ) => {
         const libUrl = URL.createObjectURL(new Blob([libSrc], { type: "text/javascript" }));
         const workerUrl = URL.createObjectURL(new Blob([workerSrc], { type: "text/javascript" }));
@@ -283,15 +323,22 @@ async function handlePages(event: PagesEvent): Promise<PagesResult> {
           pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
           const bytes = Uint8Array.from(atob(dataBase64), (char) => char.charCodeAt(0));
           const doc = await pdfjs.getDocument({ data: bytes }).promise;
-          const results: string[] = [];
+          const results: Array<{ dataUrl: string; contentBottomY: number }> = [];
 
           for (let i = 1; i <= doc.numPages; i++) {
             const pdfPage = await doc.getPage(i);
             const viewportAt1 = pdfPage.getViewport({ scale: 1 });
             const useCrop = verticalLayout === "crop";
+            const reservesCaptionSafeArea =
+              resolvedCaptionPlacement === "safe-area" &&
+              verticalLayout === "top" &&
+              targetHeight > targetWidth;
+            const maxContentHeight = reservesCaptionSafeArea
+              ? Math.round(targetHeight * 0.68)
+              : targetHeight;
             const scale = useCrop
               ? Math.max(targetWidth / viewportAt1.width, targetHeight / viewportAt1.height)
-              : Math.min(targetWidth / viewportAt1.width, targetHeight / viewportAt1.height);
+              : Math.min(targetWidth / viewportAt1.width, maxContentHeight / viewportAt1.height);
             const viewport = pdfPage.getViewport({ scale });
 
             const sourceCanvas = document.createElement("canvas");
@@ -308,8 +355,17 @@ async function handlePages(event: PagesEvent): Promise<PagesResult> {
             targetCanvas.height = targetHeight;
             const targetContext = targetCanvas.getContext("2d")!;
 
+            const usesChalkboardSafeArea =
+              resolvedCaptionStyle === "chalkboard" &&
+              resolvedCaptionPlacement === "safe-area" &&
+              verticalLayout === "top" &&
+              !useCrop &&
+              targetHeight > targetWidth;
             let backgroundColor = "#ffffff";
-            if (padColor === "navy") {
+            if (usesChalkboardSafeArea) {
+              // スライドの下部余白を黒板風の濃緑にし、字幕の背景として使う。
+              backgroundColor = "#123d2b";
+            } else if (padColor === "navy") {
               backgroundColor = "#0b1f3a";
             } else if (padColor === "auto") {
               const pixel = sourceContext.getImageData(0, 0, 1, 1).data;
@@ -324,7 +380,10 @@ async function handlePages(event: PagesEvent): Promise<PagesResult> {
             const y =
               verticalLayout === "top" && !useCrop ? 0 : (targetHeight - sourceCanvas.height) / 2;
             targetContext.drawImage(sourceCanvas, x, y);
-            results.push(targetCanvas.toDataURL("image/png"));
+            results.push({
+              dataUrl: targetCanvas.toDataURL("image/png"),
+              contentBottomY: Math.round(y + sourceCanvas.height),
+            });
           }
 
           return results;
@@ -340,15 +399,29 @@ async function handlePages(event: PagesEvent): Promise<PagesResult> {
       manifest.output.height,
       manifest.output.verticalLayout ?? "center",
       manifest.output.padColor ?? "auto",
+      captionStyle,
+      captionPlacement,
     );
 
     await browser.close();
     browser = null;
 
+    // ページごとの実際の描画下端から、下部セーフエリアの字幕位置を確定する。
+    const pageCount = rasterizedPages.length;
+    if (captionPlacement === "safe-area" && pageCount > 0) {
+      const contentBottomY = Math.max(...rasterizedPages.map((page) => page.contentBottomY));
+      const usableBottomY = Math.round(manifest.output.height * 0.86);
+      const availableHeight = usableBottomY - contentBottomY;
+      const minimumCaptionBandHeight = Math.round(manifest.output.height * 0.06);
+      manifest.output.captionSafeAreaYPosition =
+        availableHeight >= minimumCaptionBandHeight
+          ? Math.round(contentBottomY + availableHeight * 0.55)
+          : null;
+    }
+
     // Upload page PNGs
-    const pageCount = pngDataUrls.length;
     for (let i = 0; i < pageCount; i++) {
-      const dataUrl = pngDataUrls[i];
+      const dataUrl = rasterizedPages[i].dataUrl;
       const base64Data = dataUrl.replace(/^data:image\/png;base64,/, "");
       const pngBuffer = Buffer.from(base64Data, "base64");
       await uploadObject(s3Bucket, pageImageKey(keyParams, i + 1), pngBuffer, "image/png");

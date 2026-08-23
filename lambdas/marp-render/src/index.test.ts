@@ -100,9 +100,9 @@ describe("marp-render handler", () => {
       // pdf.js evaluate（ページラスタライズ）
       if (typeof fn === "function" && fn.toString().includes("getDocument")) {
         return Promise.resolve([
-          "data:image/png;base64,AAAA",
-          "data:image/png;base64,BBBB",
-          "data:image/png;base64,CCCC",
+          { dataUrl: "data:image/png;base64,AAAA", contentBottomY: 608 },
+          { dataUrl: "data:image/png;base64,BBBB", contentBottomY: 608 },
+          { dataUrl: "data:image/png;base64,CCCC", contentBottomY: 608 },
         ]);
       }
       return Promise.resolve(undefined);
@@ -395,6 +395,8 @@ describe("marp-render handler", () => {
                         captions: "burn",
                         verticalLayout: "top",
                         padColor: "navy",
+                        captionStyle: "chalkboard",
+                        captionPlacement: "safe-area",
                       },
                       lexicon: [],
                       pages: [
@@ -458,7 +460,186 @@ describe("marp-render handler", () => {
         (call: unknown[]) =>
           typeof call[0] === "function" && call[0].toString().includes("getDocument"),
       );
-      expect(rasterizeCall?.slice(4)).toEqual([1080, 1920, "top", "navy"]);
+      expect(rasterizeCall?.slice(4)).toEqual([
+        1080,
+        1920,
+        "top",
+        "navy",
+        "chalkboard",
+        "safe-area",
+      ]);
+
+      const manifests = mockSend.mock.calls
+        .map((call: unknown[]) => (call[0] as { input?: { Body?: string } }).input?.Body)
+        .filter((body): body is string => typeof body === "string")
+        .map((body) => JSON.parse(body));
+      expect(manifests[manifests.length - 1].output.captionSafeAreaYPosition).toBe(1182);
+    });
+
+    function mockPagesManifest(
+      output: Record<string, unknown>,
+      rasterizedPages: Array<{ dataUrl: string; contentBottomY: number }>,
+    ): void {
+      const manifest = {
+        schemaVersion: 1,
+        projectId: "proj-1",
+        userId: "user-1",
+        contentLanguage: "ja-JP",
+        source: {
+          kind: "uploaded",
+          fileKey: "users/user-1/projects/proj-1/input/source.pdf",
+          pageCount: 3,
+        },
+        voice: {
+          id: "Takumi",
+          engine: "neural",
+          languageCode: "ja-JP",
+          sampleRate: "24000",
+        },
+        output,
+        lexicon: [],
+        pages: ["Hello", "World", "End"].map((text, index) => ({
+          pageNumber: index + 1,
+          imageKey: `pages/page-${String(index + 1).padStart(3, "0")}.png`,
+          script: { mode: "plain", text },
+          audioKey: `audio/page-${String(index + 1).padStart(3, "0")}.wav`,
+          audioDurationSec: 0,
+          frameAlignedDurationMs: 0,
+        })),
+        stages: {
+          pages: "pending",
+          audio: "pending",
+          captions: "pending",
+          video: "pending",
+        },
+      };
+
+      mockSend.mockImplementation((cmd: { type: string; input?: { Key?: string } }) => {
+        if (cmd.type === "get") {
+          if (cmd.input?.Key?.endsWith("manifest.json")) {
+            return Promise.resolve({
+              Body: { transformToString: () => Promise.resolve(JSON.stringify(manifest)) },
+            });
+          }
+          return Promise.resolve({
+            Body: {
+              transformToByteArray: () => Promise.resolve(new Uint8Array([0x25, 0x50, 0x44, 0x46])),
+            },
+          });
+        }
+        return Promise.resolve({});
+      });
+      mockPage.evaluate.mockImplementation((fn: (() => unknown) | string) => {
+        if (typeof fn === "function" && fn.toString().includes("getDocument")) {
+          return Promise.resolve(rasterizedPages);
+        }
+        return Promise.resolve(undefined);
+      });
+    }
+
+    it("最も下まで描画されたページを基準にセーフエリア字幕のY座標を決める", async () => {
+      mockPagesManifest(
+        {
+          aspect: "9:16",
+          width: 1080,
+          height: 1920,
+          fps: 60,
+          captions: "burn",
+          verticalLayout: "top",
+          padColor: "navy",
+          captionStyle: "chalkboard",
+          captionPlacement: "safe-area",
+        },
+        [
+          { dataUrl: "data:image/png;base64,AAAA", contentBottomY: 608 },
+          { dataUrl: "data:image/png;base64,BBBB", contentBottomY: 1000 },
+          { dataUrl: "data:image/png;base64,CCCC", contentBottomY: 800 },
+        ],
+      );
+
+      const { handler } = await import("./index.js");
+      await handler({
+        stage: "pages",
+        s3Bucket: "test-bucket",
+        s3Prefix: "users/user-1/projects/proj-1/",
+        projectId: "proj-1",
+        userId: "user-1",
+        renderId: "render-1",
+      });
+
+      const rasterizeCall = mockPage.evaluate.mock.calls.find(
+        (call: unknown[]) =>
+          typeof call[0] === "function" && call[0].toString().includes("getDocument"),
+      );
+      expect(rasterizeCall?.slice(4)).toEqual([
+        1080,
+        1920,
+        "top",
+        "navy",
+        "chalkboard",
+        "safe-area",
+      ]);
+
+      const manifests = mockSend.mock.calls
+        .map((call: unknown[]) => (call[0] as { input?: { Body?: string } }).input?.Body)
+        .filter((body): body is string => typeof body === "string")
+        .map((body) => JSON.parse(body));
+      expect(manifests[manifests.length - 1].output.captionSafeAreaYPosition).toBe(1358);
+    });
+
+    it("非焼き込みmanifestの字幕装飾を除去してからページを描画する", async () => {
+      mockPagesManifest(
+        {
+          aspect: "9:16",
+          width: 1080,
+          height: 1920,
+          fps: 30,
+          captions: "srt",
+          verticalLayout: "top",
+          padColor: "navy",
+          captionStyle: "chalkboard",
+          captionPlacement: "safe-area",
+          captionSafeAreaYPosition: 1182,
+        },
+        [
+          { dataUrl: "data:image/png;base64,AAAA", contentBottomY: 608 },
+          { dataUrl: "data:image/png;base64,BBBB", contentBottomY: 608 },
+          { dataUrl: "data:image/png;base64,CCCC", contentBottomY: 608 },
+        ],
+      );
+
+      const { handler } = await import("./index.js");
+      await handler({
+        stage: "pages",
+        s3Bucket: "test-bucket",
+        s3Prefix: "users/user-1/projects/proj-1/",
+        projectId: "proj-1",
+        userId: "user-1",
+        renderId: "render-1",
+      });
+
+      const rasterizeCall = mockPage.evaluate.mock.calls.find(
+        (call: unknown[]) =>
+          typeof call[0] === "function" && call[0].toString().includes("getDocument"),
+      );
+      expect(rasterizeCall?.slice(4)).toEqual([
+        1080,
+        1920,
+        "top",
+        "navy",
+        "white-outline",
+        "bottom",
+      ]);
+
+      const manifests = mockSend.mock.calls
+        .map((call: unknown[]) => (call[0] as { input?: { Body?: string } }).input?.Body)
+        .filter((body): body is string => typeof body === "string")
+        .map((body) => JSON.parse(body));
+      expect(manifests[manifests.length - 1].output).toMatchObject({
+        captionStyle: null,
+        captionPlacement: null,
+        captionSafeAreaYPosition: null,
+      });
     });
 
     it("sets stage to failed on error and closes browser", async () => {

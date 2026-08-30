@@ -429,6 +429,543 @@ describe("API Router", () => {
     expect(updateCall.input.ExpressionAttributeValues).not.toHaveProperty(":voice");
   });
 
+  it("英語ページではcontentLanguageと分離したen-USを生成Lambdaへ渡す", async () => {
+    mockDynamoSend.mockResolvedValueOnce({
+      Item: {
+        projectId: "proj-001",
+        userId: "user-123",
+        narrationLanguage: "auto",
+        source: {
+          kind: "uploaded",
+          fileKey: "users/user-123/projects/proj-001/input/source.pdf",
+          pageCount: 1,
+        },
+      },
+    });
+    mockLambdaSend.mockResolvedValueOnce({
+      Payload: Buffer.from(
+        JSON.stringify({
+          script: {
+            pageNumber: 1,
+            mode: "plain",
+            text: "This slide explains the MediaConvert workflow.",
+            languageCode: "en-US",
+          },
+        }),
+      ),
+    });
+
+    const result = await handler(
+      makeEvent("POST", "/projects/proj-001/narration", {
+        body: JSON.stringify({
+          pageNumber: 1,
+          pageText: "This slide explains the MediaConvert workflow.",
+        }),
+      }),
+      mockContext,
+    );
+
+    expect(result.statusCode).toBe(200);
+    expect(JSON.parse(result.body).script.languageCode).toBe("en-US");
+    const invocation = mockLambdaSend.mock.calls[0][0] as { input: { Payload: Uint8Array } };
+    const payload = JSON.parse(Buffer.from(invocation.input.Payload).toString("utf-8"));
+    expect(payload).toMatchObject({
+      action: "generateNarration",
+      pageNumber: 1,
+      languageCode: "en-US",
+    });
+    expect(payload).not.toHaveProperty("contentLanguage");
+  });
+
+  it("Autoでページ言語を判定できない場合は明示選択を要求する", async () => {
+    mockDynamoSend.mockResolvedValueOnce({
+      Item: {
+        projectId: "proj-001",
+        userId: "user-123",
+        narrationLanguage: "auto",
+        source: {
+          kind: "uploaded",
+          fileKey: "users/user-123/projects/proj-001/input/source.pdf",
+          pageCount: 1,
+        },
+      },
+    });
+
+    const result = await handler(
+      makeEvent("POST", "/projects/proj-001/narration", {
+        body: JSON.stringify({ pageNumber: 1, pageText: "図1" }),
+      }),
+      mockContext,
+    );
+
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body).error).toBe("NARRATION_LANGUAGE_UNDETERMINED");
+    expect(mockLambdaSend).not.toHaveBeenCalled();
+  });
+
+  it("ページごとの言語と音声プロファイルをナレーション保存時に保持する", async () => {
+    mockDynamoSend
+      .mockResolvedValueOnce({ Item: { projectId: "proj-001", userId: "user-123", status: "DRAFT" } })
+      .mockResolvedValueOnce({});
+
+    const result = await handler(
+      makeEvent("PUT", "/projects/proj-001/narration", {
+        body: JSON.stringify({
+          narrationLanguage: "auto",
+          scripts: [
+            {
+              pageNumber: 1,
+              mode: "plain",
+              text: "This is an English narration draft.",
+              languageCode: "en-US",
+            },
+          ],
+          voice: {
+            id: "Takumi",
+            engine: "neural",
+            languageCode: "ja-JP",
+            sampleRate: "16000",
+          },
+          voiceProfiles: {
+            "ja-JP": {
+              id: "Takumi",
+              engine: "neural",
+              languageCode: "ja-JP",
+              sampleRate: "16000",
+            },
+            "en-US": {
+              id: "Joanna",
+              engine: "neural",
+              languageCode: "en-US",
+              sampleRate: "16000",
+            },
+          },
+        }),
+      }),
+      mockContext,
+    );
+
+    expect(result.statusCode).toBe(200);
+    const update = mockDynamoSend.mock.calls
+      .map((call) => call[0] as { input?: { ExpressionAttributeValues?: Record<string, unknown> } })
+      .find((command) => command.input?.ExpressionAttributeValues?.[":voiceProfiles"]);
+    expect(update?.input?.ExpressionAttributeValues).toMatchObject({
+      ":narrationLanguage": "auto",
+      ":voiceProfiles": {
+        "en-US": { id: "Joanna", languageCode: "en-US" },
+      },
+      ":narration": [
+        expect.objectContaining({ pageNumber: 1, languageCode: "en-US" }),
+      ],
+    });
+  });
+
+  it("言語と一致しないVoiceIdをナレーション保存時に拒否する", async () => {
+    mockDynamoSend.mockResolvedValueOnce({
+      Item: { projectId: "proj-001", userId: "user-123", status: "DRAFT" },
+    });
+
+    const result = await handler(
+      makeEvent("PUT", "/projects/proj-001/narration", {
+        body: JSON.stringify({
+          narrationLanguage: "auto",
+          scripts: [
+            {
+              pageNumber: 1,
+              mode: "plain",
+              text: "This is an English narration draft.",
+              languageCode: "en-US",
+            },
+          ],
+          voice: {
+            id: "Takumi",
+            engine: "neural",
+            languageCode: "ja-JP",
+            sampleRate: "16000",
+          },
+          voiceProfiles: {
+            "en-US": {
+              id: "Takumi",
+              engine: "neural",
+              languageCode: "en-US",
+              sampleRate: "16000",
+            },
+          },
+        }),
+      }),
+      mockContext,
+    );
+
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body).message).toContain("利用できないPolly VoiceId");
+  });
+
+  it("保存時はクライアントの古いlanguageCodeではなく現在の原稿から言語を正規化する", async () => {
+    mockDynamoSend
+      .mockResolvedValueOnce({ Item: { projectId: "proj-001", userId: "user-123", status: "DRAFT" } })
+      .mockResolvedValueOnce({});
+
+    const result = await handler(
+      makeEvent("PUT", "/projects/proj-001/narration", {
+        body: JSON.stringify({
+          narrationLanguage: "auto",
+          scripts: [
+            {
+              pageNumber: 1,
+              mode: "plain",
+              text: "これは日本語のナレーション原稿です。",
+              languageCode: "en-US",
+            },
+          ],
+          voice: {
+            id: "Takumi",
+            engine: "neural",
+            languageCode: "ja-JP",
+            sampleRate: "16000",
+          },
+          voiceProfiles: {
+            "ja-JP": {
+              id: "Takumi",
+              engine: "neural",
+              languageCode: "ja-JP",
+              sampleRate: "16000",
+            },
+            "en-US": {
+              id: "Joanna",
+              engine: "neural",
+              languageCode: "en-US",
+              sampleRate: "16000",
+            },
+          },
+        }),
+      }),
+      mockContext,
+    );
+
+    expect(result.statusCode).toBe(200);
+    expect(JSON.parse(result.body).scripts[0].languageCode).toBe("ja-JP");
+    const update = mockDynamoSend.mock.calls
+      .map((call) => call[0] as { input?: { ExpressionAttributeValues?: Record<string, unknown> } })
+      .find((command) => command.input?.ExpressionAttributeValues?.[":narration"]);
+    expect(update?.input?.ExpressionAttributeValues?.[":narration"]).toEqual([
+      expect.objectContaining({ pageNumber: 1, languageCode: "ja-JP" }),
+    ]);
+  });
+
+  it.each([
+    ["プロジェクト既定", "plain", "This is an English narration draft.", "ja-JP", undefined],
+    [
+      "ページ上書き",
+      "ssml",
+      '<prosody rate="slow">This is an English narration draft.</prosody>',
+      "en-US",
+      "ja-JP",
+    ],
+    [
+      "SSML alias",
+      "ssml",
+      '<sub alias="This is an English narration draft.">これは日本語のナレーション原稿です。</sub>',
+      "ja-JP",
+      undefined,
+    ],
+  ] as const)(
+    "%sで日本語を明示して英語原稿を保存しようとすると拒否する",
+    async (_control, mode, text, narrationLanguage, languageOverride) => {
+      mockDynamoSend.mockResolvedValueOnce({
+        Item: { projectId: "proj-001", userId: "user-123", status: "DRAFT" },
+      });
+
+      const result = await handler(
+        makeEvent("PUT", "/projects/proj-001/narration", {
+          body: JSON.stringify({
+            narrationLanguage,
+            scripts: [
+              {
+                pageNumber: 1,
+                mode,
+                text,
+                ...(languageOverride ? { languageOverride } : {}),
+              },
+            ],
+          }),
+        }),
+        mockContext,
+      );
+
+      expect(result.statusCode).toBe(400);
+      expect(JSON.parse(result.body).error).toBe("NARRATION_LANGUAGE_MISMATCH");
+      expect(mockDynamoSend.mock.calls.some((call) => call[0]?.type === "Update")).toBe(false);
+    },
+  );
+
+  it("SSML内の日本語本文はタグを除いて検証し、保存できる", async () => {
+    mockDynamoSend
+      .mockResolvedValueOnce({
+        Item: { projectId: "proj-001", userId: "user-123", status: "DRAFT" },
+      })
+      .mockResolvedValueOnce({});
+
+    const result = await handler(
+      makeEvent("PUT", "/projects/proj-001/narration", {
+        body: JSON.stringify({
+          narrationLanguage: "ja-JP",
+          scripts: [
+            {
+              pageNumber: 1,
+              mode: "ssml",
+              text: '<prosody rate="slow">これは日本語のナレーション原稿です。</prosody>',
+            },
+          ],
+        }),
+      }),
+      mockContext,
+    );
+
+    expect(result.statusCode).toBe(200);
+    expect(JSON.parse(result.body).scripts[0].languageCode).toBe("ja-JP");
+  });
+
+  it("英語aliasを持つsubは日本語表記の本文を除外して英語原稿として保存できる", async () => {
+    mockDynamoSend
+      .mockResolvedValueOnce({
+        Item: { projectId: "proj-001", userId: "user-123", status: "DRAFT" },
+      })
+      .mockResolvedValueOnce({});
+
+    const result = await handler(
+      makeEvent("PUT", "/projects/proj-001/narration", {
+        body: JSON.stringify({
+          narrationLanguage: "en-US",
+          scripts: [
+            {
+              pageNumber: 1,
+              mode: "ssml",
+              text: "<sub alias=\"Amazon Web Services\">アマゾン・ウェブ・サービス</sub> provides cloud services.",
+            },
+          ],
+          voice: {
+            id: "Joanna",
+            engine: "neural",
+            languageCode: "en-US",
+            sampleRate: "16000",
+          },
+        }),
+      }),
+      mockContext,
+    );
+
+    expect(result.statusCode).toBe(200);
+    expect(JSON.parse(result.body).scripts[0].languageCode).toBe("en-US");
+  });
+
+  it("数値文字参照で日本語aliasを隠しても英語原稿として保存できない", async () => {
+    mockDynamoSend.mockResolvedValueOnce({
+      Item: { projectId: "proj-001", userId: "user-123", status: "DRAFT" },
+    });
+
+    const result = await handler(
+      makeEvent("PUT", "/projects/proj-001/narration", {
+        body: JSON.stringify({
+          narrationLanguage: "en-US",
+          scripts: [
+            {
+              pageNumber: 1,
+              mode: "ssml",
+              text: "<sub alias=\"&#x3053;&#x308C;&#x306f;&#x65e5;&#x672c;&#x8a9e;&#x3067;&#x3059;\">This is an English narration.</sub>",
+            },
+          ],
+        }),
+      }),
+      mockContext,
+    );
+
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body).error).toBe("NARRATION_LANGUAGE_MISMATCH");
+  });
+
+  it("AutoではSSML subの表示本文でなく英語aliasから言語を解決して保存する", async () => {
+    mockDynamoSend
+      .mockResolvedValueOnce({
+        Item: { projectId: "proj-001", userId: "user-123", status: "DRAFT" },
+      })
+      .mockResolvedValueOnce({});
+
+    const result = await handler(
+      makeEvent("PUT", "/projects/proj-001/narration", {
+        body: JSON.stringify({
+          narrationLanguage: "auto",
+          scripts: [
+            {
+              pageNumber: 1,
+              mode: "ssml",
+              text: '<sub alias="Amazon Web Services">アマゾン・ウェブ・サービス</sub> provides cloud services.',
+            },
+          ],
+          voice: {
+            id: "Joanna",
+            engine: "neural",
+            languageCode: "en-US",
+            sampleRate: "16000",
+          },
+        }),
+      }),
+      mockContext,
+    );
+
+    expect(result.statusCode).toBe(200);
+    expect(JSON.parse(result.body).scripts[0].languageCode).toBe("en-US");
+  });
+
+  it.each([
+    ["plain", "This English narration mentions AWS."],
+    ["ssml", "<prosody>This English narration mentions AWS.</prosody>"],
+  ] as const)(
+    "辞書subで日本語の読みを注入する%s原稿は英語として保存できない",
+    async (mode, text) => {
+      mockDynamoSend.mockResolvedValueOnce({
+        Item: { projectId: "proj-001", userId: "user-123", status: "DRAFT" },
+      });
+
+      const result = await handler(
+        makeEvent("PUT", "/projects/proj-001/narration", {
+          body: JSON.stringify({
+            narrationLanguage: "en-US",
+            scripts: [{ pageNumber: 1, mode, text }],
+            lexicon: [
+              {
+                written: "AWS",
+                reading: "これは日本語の説明です。",
+                method: "sub",
+              },
+            ],
+          }),
+        }),
+        mockContext,
+      );
+
+      expect(result.statusCode).toBe(400);
+      expect(JSON.parse(result.body).error).toBe("NARRATION_LANGUAGE_MISMATCH");
+      expect(mockDynamoSend.mock.calls.some((call) => call[0]?.type === "Update")).toBe(false);
+    },
+  );
+
+  it("辞書subの英語読みは英語原稿へ適用して保存できる", async () => {
+    mockDynamoSend
+      .mockResolvedValueOnce({
+        Item: { projectId: "proj-001", userId: "user-123", status: "DRAFT" },
+      })
+      .mockResolvedValueOnce({});
+
+    const result = await handler(
+      makeEvent("PUT", "/projects/proj-001/narration", {
+        body: JSON.stringify({
+          narrationLanguage: "en-US",
+          scripts: [
+            { pageNumber: 1, mode: "plain", text: "AWS enables cloud services for teams." },
+          ],
+          lexicon: [
+            { written: "AWS", reading: "Amazon Web Services", method: "sub" },
+          ],
+          voice: {
+            id: "Joanna",
+            engine: "neural",
+            languageCode: "en-US",
+            sampleRate: "16000",
+          },
+        }),
+      }),
+      mockContext,
+    );
+
+    expect(result.statusCode).toBe(200);
+  });
+
+  it("一致しない辞書subは別言語の読みでも原稿の保存を妨げない", async () => {
+    mockDynamoSend
+      .mockResolvedValueOnce({
+        Item: { projectId: "proj-001", userId: "user-123", status: "DRAFT" },
+      })
+      .mockResolvedValueOnce({});
+
+    const result = await handler(
+      makeEvent("PUT", "/projects/proj-001/narration", {
+        body: JSON.stringify({
+          narrationLanguage: "en-US",
+          scripts: [
+            { pageNumber: 1, mode: "plain", text: "This narration is entirely in English." },
+          ],
+          lexicon: [
+            { written: "AWS", reading: "これは日本語の説明です。", method: "sub" },
+          ],
+          voice: {
+            id: "Joanna",
+            engine: "neural",
+            languageCode: "en-US",
+            sampleRate: "16000",
+          },
+        }),
+      }),
+      mockContext,
+    );
+
+    expect(result.statusCode).toBe(200);
+  });
+
+  it("plain原稿のリテラル角括弧はXMLエスケープ後の可聴テキストとして保存できる", async () => {
+    mockDynamoSend
+      .mockResolvedValueOnce({
+        Item: { projectId: "proj-001", userId: "user-123", status: "DRAFT" },
+      })
+      .mockResolvedValueOnce({});
+
+    const result = await handler(
+      makeEvent("PUT", "/projects/proj-001/narration", {
+        body: JSON.stringify({
+          narrationLanguage: "en-US",
+          scripts: [
+            {
+              pageNumber: 1,
+              mode: "plain",
+              text: "This narration explains <code> tags in English.",
+            },
+          ],
+          voice: {
+            id: "Joanna",
+            engine: "neural",
+            languageCode: "en-US",
+            sampleRate: "16000",
+          },
+        }),
+      }),
+      mockContext,
+    );
+
+    expect(result.statusCode).toBe(200);
+  });
+
+  it.each([
+    ["CDATA", "<prosody>This is English. <![CDATA[これは日本語です。]]></prosody>"],
+    ["DOCTYPE", "<!DOCTYPE speak><prosody>This is English.</prosody>"],
+    ["ENTITY", '<!ENTITY narration "This is English."><prosody>English</prosody>'],
+  ] as const)("%sを含むSSMLは言語検証を回避できず明示的に拒否する", async (_kind, text) => {
+    mockDynamoSend.mockResolvedValueOnce({
+      Item: { projectId: "proj-001", userId: "user-123", status: "DRAFT" },
+    });
+
+    const result = await handler(
+      makeEvent("PUT", "/projects/proj-001/narration", {
+        body: JSON.stringify({
+          narrationLanguage: "en-US",
+          scripts: [{ pageNumber: 1, mode: "ssml", text }],
+        }),
+      }),
+      mockContext,
+    );
+
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body).error).toBe("NARRATION_SSML_UNSUPPORTED");
+  });
+
   it("routes POST /projects/{id}/renders (start render)", async () => {
     // レンダリング開始前に manifest.json をS3へ書き出すため、
     // source と narration が揃ったプロジェクトを2回返す（所有者確認と manifest 組み立て）
@@ -572,6 +1109,7 @@ describe("API Router", () => {
     const result = await handler(event, mockContext);
 
     expect(result.statusCode).toBe(201);
+    expect(JSON.parse(result.body).startFromStage).toBe("video");
     const manifestPut = s3MockSend.mock.calls
       .map((call: unknown[]) => call[0] as { input?: { Body?: string } })
       .find((command) => typeof command.input?.Body === "string");
@@ -720,6 +1258,89 @@ describe("API Router", () => {
       .map((command) => command.input?.Key)
       .filter((key): key is string => typeof key === "string");
   }
+
+  it("実効音声が変わった部分再実行はAPIでaudio開始へ降格する", async () => {
+    const previousProject = {
+      ...makePartialRenderProject(),
+      narration: [
+        {
+          pageNumber: 1,
+          mode: "plain",
+          text: "1ページ目の原稿です。",
+          languageCode: "ja-JP",
+        },
+      ],
+      voice: { id: "Takumi", engine: "neural", languageCode: "ja-JP", sampleRate: "16000" },
+      voiceProfiles: {
+        "ja-JP": {
+          id: "Takumi",
+          engine: "neural",
+          languageCode: "ja-JP",
+          sampleRate: "16000",
+        },
+        "en-US": {
+          id: "Joanna",
+          engine: "neural",
+          languageCode: "en-US",
+          sampleRate: "16000",
+        },
+      },
+    };
+    const readyProject = {
+      ...previousProject,
+      voiceProfiles: {
+        ...previousProject.voiceProfiles,
+        "ja-JP": {
+          id: "Kazuha",
+          engine: "neural",
+          languageCode: "ja-JP",
+          sampleRate: "16000",
+        },
+      },
+    };
+    const completedManifest = makeCompletedPartialManifest(previousProject);
+    const previousManifest = {
+      ...completedManifest,
+      voiceProfiles: previousProject.voiceProfiles,
+      pages: completedManifest.pages.map((page) => ({
+        ...page,
+        script: { ...page.script, languageCode: "ja-JP" },
+      })),
+    };
+
+    mockDynamoSend.mockResolvedValueOnce({ Item: readyProject });
+    const s3Module = await import("@aws-sdk/client-s3");
+    const s3MockSend = (s3Module as unknown as { __mockSend: ReturnType<typeof vi.fn> }).__mockSend;
+    mockPartialRenderS3(s3MockSend, previousManifest);
+
+    const result = await handler(
+      makeEvent("POST", "/projects/proj-001/renders", {
+        body: JSON.stringify({ startFromStage: "captions" }),
+      }),
+      mockContext,
+    );
+
+    expect(result.statusCode).toBe(201);
+    expect(JSON.parse(result.body).startFromStage).toBe("audio");
+    expect(headObjectKeys(s3MockSend)).toEqual([
+      "users/user-123/projects/proj-001/pages/page-001.png",
+    ]);
+    const manifestPut = s3MockSend.mock.calls
+      .map((call: unknown[]) => call[0] as { input?: { Body?: string } })
+      .find((command) => typeof command.input?.Body === "string");
+    expect(JSON.parse(manifestPut?.input?.Body ?? "{}").stages).toEqual({
+      pages: "done",
+      audio: "pending",
+      captions: "pending",
+      video: "pending",
+    });
+    const startExecution = mockSfnSend.mock.calls
+      .map((call) => call[0] as { input?: { input?: string; type?: string } })
+      .find((command) => command.type === "StartExecution");
+    expect(JSON.parse(startExecution?.input?.input ?? "{}")).toMatchObject({
+      startFromStage: "audio",
+    });
+  });
 
   function manifestWasWritten(s3MockSend: ReturnType<typeof vi.fn>): boolean {
     return s3MockSend.mock.calls

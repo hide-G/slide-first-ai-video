@@ -48,6 +48,8 @@ export async function handleCreateProject(
     title: body.title,
     kind: body.kind ?? "video",
     contentLanguage: body.contentLanguage,
+    // 新規プロジェクトはスライド本文から判定する。字幕用contentLanguageを流用しない。
+    narrationLanguage: body.narrationLanguage ?? "auto",
     status: "DRAFT",
     createdAt: now,
     updatedAt: now,

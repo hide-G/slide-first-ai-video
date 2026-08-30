@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./narration-language": {
+      "types": "./dist/narration-language.d.ts",
+      "default": "./dist/narration-language.js"
     }
   },
   "scripts": {

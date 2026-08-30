@@ -26,12 +26,17 @@ export interface ProjectRecord {
   title: string;
   kind?: "slide" | "video";
   contentLanguage?: string;
+  /** 字幕・MediaConvert向けcontentLanguageとは独立したナレーション設定。 */
+  narrationLanguage?: "auto" | "ja-JP" | "en-US";
   status: string;
   outline?: unknown;
   source?: unknown;
   output?: unknown;
   narration?: unknown;
+  /** 旧プロジェクトとの互換性を保つグローバル音声。 */
   voice?: unknown;
+  /** 言語ごとのPolly音声プロファイル。 */
+  voiceProfiles?: unknown;
   lexicon?: unknown;
   latestRender?: LatestRenderSummary;
   createdAt: string;

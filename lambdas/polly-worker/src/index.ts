@@ -26,17 +26,53 @@ import {
   PutObjectCommand,
   HeadObjectCommand,
 } from "@aws-sdk/client-s3";
-import type { Manifest, LexiconEntry } from "@slide-first/shared-types";
-import { audioKey } from "@slide-first/shared-types";
+import type { Manifest, Voice } from "@slide-first/shared-types";
+import { audioKey, isSupportedNarrationVoice } from "@slide-first/shared-types";
 import {
   computeScriptHash,
   calculatePcmDurationSec,
   createWavHeader,
   alignToFrameFromSec,
+  hasUnsupportedNarrationSsmlDeclaration,
+  isNarrationLanguageCode,
+  prepareNarrationSsmlContent,
 } from "@slide-first/core";
 
 const pollyClient = new PollyClient({});
 const s3Client = new S3Client({});
+
+/**
+ * ページの解決済み言語に対応する音声を選ぶ。
+ * languageCodeを持たない旧manifestだけはglobal voiceを使い、従来の挙動を維持する。
+ */
+function resolveVoiceForPage(manifest: Manifest, page: Manifest["pages"][number]): Voice {
+  const languageCode = page.script.languageCode;
+  if (!languageCode) return manifest.voice;
+  if (!isNarrationLanguageCode(languageCode)) {
+    throw new Error(`${page.pageNumber}ページ目のナレーション言語が不正です。`);
+  }
+
+  const profile = manifest.voiceProfiles?.[languageCode];
+  if (profile) {
+    if (profile.languageCode !== languageCode) {
+      throw new Error(
+        `${languageCode} の音声プロファイルと言語コードが一致していません。`,
+      );
+    }
+    if (!isSupportedNarrationVoice(profile, languageCode)) {
+      throw new Error(
+        `${languageCode} の音声プロファイルのVoiceIdまたはエンジンはサポートされていません。`,
+      );
+    }
+    return profile;
+  }
+
+  if (isSupportedNarrationVoice(manifest.voice, languageCode)) return manifest.voice;
+
+  throw new Error(
+    `${page.pageNumber}ページ目の ${languageCode} ナレーション用音声が設定されていません。`,
+  );
+}
 
 export interface AudioEvent {
   /** S3 bucket name (from state machine payload) */
@@ -95,7 +131,8 @@ export const handler = async (event: AudioEvent): Promise<AudioResult> => {
     // 3. 各ページの音声を生成する。無音動画ではPollyを呼ばず、同じWAV契約を満たす無音PCMを使う。
     for (const [pageIndex, page] of manifest.pages.entries()) {
       const s3Key = audioKey(keyParams, page.pageNumber);
-      const sampleRate = parseInt(manifest.voice.sampleRate, 10);
+      const pageVoice = isSilentVideo ? manifest.voice : resolveVoiceForPage(manifest, page);
+      const sampleRate = parseInt(pageVoice.sampleRate, 10);
 
       if (isSilentVideo) {
         const pcmBuffer = Buffer.alloc(sampleRate * silentPageDurationSec * 2);
@@ -123,16 +160,15 @@ export const handler = async (event: AudioEvent): Promise<AudioResult> => {
         continue;
       }
 
-      // For plain mode: XML-escape the text first, then apply lexicon
-      // For ssml mode: text is already valid SSML, apply lexicon directly
-      let processedText: string;
-      if (page.script.mode === "plain") {
-        const escapedText = escapeXml(page.script.text);
-        processedText = applyLexicon(escapedText, manifest.lexicon, true);
-      } else {
-        processedText = applyLexicon(page.script.text, manifest.lexicon, false);
+      if (hasUnsupportedNarrationSsmlDeclaration(page.script)) {
+        throw new Error(
+          `${page.pageNumber}ページ目のSSMLにはCDATA、DOCTYPE、ENTITY宣言を使用できません。`,
+        );
       }
-      const ssml = buildSpeakTag(processedText, page.script.mode);
+
+      // 保存APIと同じ共有処理で辞書を展開し、可聴本文とPolly入力の乖離を防ぐ。
+      const processedText = prepareNarrationSsmlContent(page.script, manifest.lexicon);
+      const ssml = `<speak>${processedText}</speak>`;
 
       // 音声オブジェクトに原稿ハッシュを記録する。
       const currentHash = computeScriptHash(page.script.text);
@@ -150,10 +186,10 @@ export const handler = async (event: AudioEvent): Promise<AudioResult> => {
           Text: ssml,
           TextType: "ssml",
           OutputFormat: "pcm",
-          VoiceId: manifest.voice.id as VoiceId,
-          Engine: manifest.voice.engine as Engine,
-          SampleRate: manifest.voice.sampleRate,
-          LanguageCode: manifest.voice.languageCode as LanguageCode,
+          VoiceId: pageVoice.id as VoiceId,
+          Engine: pageVoice.engine as Engine,
+          SampleRate: pageVoice.sampleRate,
+          LanguageCode: pageVoice.languageCode as LanguageCode,
         }),
       );
 
@@ -224,61 +260,6 @@ export const handler = async (event: AudioEvent): Promise<AudioResult> => {
     return { success: false, totalCharacters, error: message };
   }
 };
-
-/**
- * Apply lexicon substitutions to text.
- * Replaces written forms with SSML <sub> or <phoneme> tags.
- * When textIsEscaped is true, searches for the XML-escaped form of written entries.
- */
-function applyLexicon(text: string, lexicon: LexiconEntry[], textIsEscaped: boolean): string {
-  let result = text;
-  for (const entry of lexicon) {
-    // When text is pre-escaped, search for the escaped version of the written form
-    const searchForm = textIsEscaped ? escapeXml(entry.written) : entry.written;
-
-    if (entry.method === "sub") {
-      result = result.replaceAll(
-        searchForm,
-        `<sub alias="${escapeXml(entry.reading)}">${escapeXml(entry.written)}</sub>`,
-      );
-    } else if (entry.method === "phoneme") {
-      result = result.replaceAll(
-        searchForm,
-        `<phoneme alphabet="x-amazon-pron" ph="${escapeXml(entry.reading)}">${escapeXml(entry.written)}</phoneme>`,
-      );
-    } else if (entry.method === "spell") {
-      result = result.replaceAll(
-        searchForm,
-        `<say-as interpret-as="spell-out">${escapeXml(entry.written)}</say-as>`,
-      );
-    }
-  }
-  return result;
-}
-
-/**
- * Wrap text in <speak> tags.
- * If mode is 'ssml', text is already SSML content (just wrap).
- * If mode is 'plain', text must be XML-escaped before lexicon application
- * to avoid invalid SSML from characters like &, <, >.
- */
-function buildSpeakTag(text: string, mode: "plain" | "ssml"): string {
-  if (mode === "ssml") {
-    return `<speak>${text}</speak>`;
-  }
-  // For 'plain' mode: the text has already been XML-escaped and lexicon-applied
-  // by the caller (escapeForSsml + applyLexicon). Just wrap.
-  return `<speak>${text}</speak>`;
-}
-
-function escapeXml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
 
 async function objectExists(bucket: string, key: string): Promise<boolean> {
   try {

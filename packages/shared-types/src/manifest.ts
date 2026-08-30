@@ -8,6 +8,14 @@ export type SourceKind = z.infer<typeof SourceKind>;
 export const ScriptMode = z.enum(["plain", "ssml"]);
 export type ScriptMode = z.infer<typeof ScriptMode>;
 
+/** ナレーションとPolly音声で利用可能な言語コード。 */
+export const NarrationLanguageCode = z.enum(["ja-JP", "en-US"]);
+export type NarrationLanguageCode = z.infer<typeof NarrationLanguageCode>;
+
+/** プロジェクト全体のナレーション言語設定。auto はページ本文から判定する。 */
+export const NarrationLanguageSetting = z.enum(["auto", "ja-JP", "en-US"]);
+export type NarrationLanguageSetting = z.infer<typeof NarrationLanguageSetting>;
+
 export const LexiconMethod = z.enum(["sub", "phoneme", "spell"]);
 export type LexiconMethod = z.infer<typeof LexiconMethod>;
 
@@ -82,6 +90,89 @@ export const VoiceSchema = z.object({
   sampleRate: z.string().min(1),
 });
 export type Voice = z.infer<typeof VoiceSchema>;
+
+/**
+ * Video Studioで許可するAmazon Polly音声とエンジンの組合せ。
+ * 公式のStandard/Neural音声一覧に基づき、言語不一致のVoiceIdを保存前に拒否する。
+ */
+export const SUPPORTED_NARRATION_VOICE_ENGINES = {
+  "ja-JP": {
+    Mizuki: ["standard"],
+    Takumi: ["standard", "neural"],
+    Kazuha: ["neural"],
+    Tomoko: ["neural"],
+  },
+  "en-US": {
+    Ivy: ["standard", "neural"],
+    Joanna: ["standard", "neural"],
+    Kendra: ["standard", "neural"],
+    Kimberly: ["standard", "neural"],
+    Salli: ["standard", "neural"],
+    Joey: ["standard", "neural"],
+    Kevin: ["standard", "neural"],
+    Danielle: ["neural"],
+    Gregory: ["neural"],
+    Justin: ["neural"],
+    Matthew: ["neural"],
+    Ruth: ["neural"],
+    Stephen: ["neural"],
+  },
+} as const satisfies Record<NarrationLanguageCode, Record<string, readonly string[]>>;
+
+/** VoiceId・エンジン・言語コードがVideo StudioでサポートするPolly音声かを検証する。 */
+export function isSupportedNarrationVoice(
+  value: unknown,
+  expectedLanguageCode?: NarrationLanguageCode,
+): boolean {
+  if (!value || typeof value !== "object") return false;
+
+  const voice = value as Record<string, unknown>;
+  const languageCode = voice.languageCode;
+  if (languageCode !== "ja-JP" && languageCode !== "en-US") return false;
+  if (expectedLanguageCode && languageCode !== expectedLanguageCode) return false;
+  if (typeof voice.id !== "string" || typeof voice.engine !== "string") return false;
+
+  const voiceEngines = (
+    SUPPORTED_NARRATION_VOICE_ENGINES as Record<
+      NarrationLanguageCode,
+      Record<string, readonly string[]>
+    >
+  )[languageCode][voice.id];
+  return voiceEngines?.includes(voice.engine) ?? false;
+}
+
+const VoiceProfilesFieldsSchema = z
+  .object({
+    "ja-JP": VoiceSchema,
+    "en-US": VoiceSchema,
+  })
+  .partial();
+
+/** 言語ごとのPolly音声設定。キー、VoiceId、エンジンは言語ごとに検証する。 */
+export const VoiceProfilesSchema = VoiceProfilesFieldsSchema.superRefine((profiles, context) => {
+  for (const languageCode of ["ja-JP", "en-US"] as const) {
+    const voice = profiles[languageCode];
+    if (!voice) continue;
+
+    if (voice.languageCode !== languageCode) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [languageCode, "languageCode"],
+        message: `${languageCode} の音声プロファイルには ${languageCode} を設定してください`,
+      });
+      continue;
+    }
+
+    if (!isSupportedNarrationVoice(voice, languageCode)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [languageCode],
+        message: `${languageCode} で利用できないPolly VoiceIdまたはエンジンです`,
+      });
+    }
+  }
+});
+export type VoiceProfiles = z.infer<typeof VoiceProfilesSchema>;
 
 const OutputFieldsSchema = z.object({
   aspect: AspectRatio,
@@ -216,6 +307,10 @@ export type LexiconEntry = z.infer<typeof LexiconEntrySchema>;
 export const ScriptSchema = z.object({
   mode: ScriptMode,
   text: z.string(),
+  /** ページ単位でプロジェクトの言語設定を明示的に上書きする値。 */
+  languageOverride: NarrationLanguageCode.optional(),
+  /** 生成・保存時に解決済みの読み上げ言語。旧manifestとの互換性のため任意。 */
+  languageCode: NarrationLanguageCode.optional(),
 });
 export type Script = z.infer<typeof ScriptSchema>;
 
@@ -280,8 +375,13 @@ export const ManifestSchema = z.object({
   projectId: z.string().min(1),
   userId: z.string().min(1),
   contentLanguage: z.string().min(1),
+  /** ナレーション専用の設定。字幕・MediaConvert向けcontentLanguageとは独立する。 */
+  narrationLanguage: NarrationLanguageSetting.optional(),
   source: SourceSchema,
+  /** 旧manifestとの互換用グローバル音声。 */
   voice: VoiceSchema,
+  /** ページごとの解決済み言語に対応する音声設定。 */
+  voiceProfiles: VoiceProfilesSchema.optional(),
   output: OutputSchema,
   lexicon: z.array(LexiconEntrySchema),
   pages: z.array(PageSchema),

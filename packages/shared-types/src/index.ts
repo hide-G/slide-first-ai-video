@@ -2,6 +2,8 @@
 export {
   SourceKind,
   ScriptMode,
+  NarrationLanguageCode,
+  NarrationLanguageSetting,
   LexiconMethod,
   StageStatus,
   RenderStageName,
@@ -18,6 +20,9 @@ export {
   CostActualStatus,
   SourceSchema,
   VoiceSchema,
+  SUPPORTED_NARRATION_VOICE_ENGINES,
+  isSupportedNarrationVoice,
+  VoiceProfilesSchema,
   OutputSchema,
   SaveOutputSchema,
   LexiconEntrySchema,
@@ -34,6 +39,9 @@ export {
 export type {
   Source,
   Voice,
+  VoiceProfiles,
+  NarrationLanguageCode as NarrationLanguageCodeValue,
+  NarrationLanguageSetting as NarrationLanguageSettingValue,
   Output,
   SaveOutput,
   LexiconEntry,

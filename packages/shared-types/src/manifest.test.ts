@@ -250,3 +250,82 @@ describe("ManifestSchema", () => {
     expect(ManifestSchema.safeParse(invalidVersion).success).toBe(false);
   });
 });
+
+
+describe("ナレーション言語付きmanifest", () => {
+  it("ページごとの解決済み言語と音声プロファイルを受け入れる", () => {
+    const manifest = {
+      ...validManifest(),
+      narrationLanguage: "auto",
+      voiceProfiles: {
+        "ja-JP": {
+          id: "Takumi",
+          engine: "neural",
+          languageCode: "ja-JP",
+          sampleRate: "16000",
+        },
+        "en-US": {
+          id: "Joanna",
+          engine: "neural",
+          languageCode: "en-US",
+          sampleRate: "16000",
+        },
+      },
+      pages: validManifest().pages.map((page, index) => ({
+        ...page,
+        script: {
+          ...page.script,
+          ...(index === 0
+            ? { languageCode: "ja-JP", languageOverride: "ja-JP" }
+            : { languageCode: "en-US" }),
+        },
+      })),
+    };
+
+    expect(ManifestSchema.safeParse(manifest).success).toBe(true);
+  });
+
+  it("音声プロファイルのキーと言語コードの不一致を拒否する", () => {
+    const manifest = {
+      ...validManifest(),
+      voiceProfiles: {
+        "en-US": {
+          id: "Joanna",
+          engine: "neural",
+          languageCode: "ja-JP",
+          sampleRate: "16000",
+        },
+      },
+    };
+
+    expect(ManifestSchema.safeParse(manifest).success).toBe(false);
+  });
+
+  it("言語に対応しないVoiceIdまたはエンジンを拒否する", () => {
+    const wrongLanguageVoice = {
+      ...validManifest(),
+      voiceProfiles: {
+        "en-US": {
+          id: "Takumi",
+          engine: "neural",
+          languageCode: "en-US",
+          sampleRate: "16000",
+        },
+      },
+    };
+    const wrongEngine = {
+      ...validManifest(),
+      voiceProfiles: {
+        "en-US": {
+          id: "Matthew",
+          engine: "standard",
+          languageCode: "en-US",
+          sampleRate: "16000",
+        },
+      },
+    };
+
+    expect(ManifestSchema.safeParse(wrongLanguageVoice).success).toBe(false);
+    expect(ManifestSchema.safeParse(wrongEngine).success).toBe(false);
+  });
+});

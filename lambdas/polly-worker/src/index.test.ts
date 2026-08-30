@@ -23,6 +23,7 @@ vi.mock("@aws-sdk/client-s3", () => {
 });
 
 import type { Manifest } from "@slide-first/shared-types";
+import { prepareNarrationSsmlContent } from "@slide-first/core";
 
 const { __mockSend: mockS3Send } = (await import("@aws-sdk/client-s3")) as unknown as {
   __mockSend: ReturnType<typeof vi.fn>;
@@ -73,28 +74,29 @@ const sampleManifest: Manifest = {
   stages: { pages: "done", audio: "pending", captions: "pending", video: "pending" },
 };
 
-describe("Stage 2: Audio handler", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+beforeEach(() => {
+  vi.clearAllMocks();
 
-    mockS3Send.mockImplementation((cmd: { type: string; input?: { Key?: string } }) => {
-      if (cmd.type === "get") {
-        return Promise.resolve({
-          Body: { transformToString: () => Promise.resolve(JSON.stringify(sampleManifest)) },
-        });
-      }
-      if (cmd.type === "head") {
-        return Promise.reject(new Error("NotFound"));
-      }
-      return Promise.resolve({});
-    });
-
-    // Return a fake PCM buffer (48000 bytes = 1 second at 24000Hz, 16bit, mono)
-    mockPollySend.mockResolvedValue({
-      AudioStream: Buffer.alloc(48000),
-      RequestCharacters: 42,
-    });
+  mockS3Send.mockImplementation((cmd: { type: string; input?: { Key?: string } }) => {
+    if (cmd.type === "get") {
+      return Promise.resolve({
+        Body: { transformToString: () => Promise.resolve(JSON.stringify(sampleManifest)) },
+      });
+    }
+    if (cmd.type === "head") {
+      return Promise.reject(new Error("NotFound"));
+    }
+    return Promise.resolve({});
   });
+
+  // 24 kHz・16 bit・モノラルで1秒分の疑似PCMバッファを返す。
+  mockPollySend.mockResolvedValue({
+    AudioStream: Buffer.alloc(48000),
+    RequestCharacters: 42,
+  });
+});
+
+describe("Stage 2: Audio handler", () => {
 
   it("calls Polly SynthesizeSpeech with pcm format", async () => {
     const { handler } = await import("./index.js");
@@ -135,6 +137,43 @@ describe("Stage 2: Audio handler", () => {
     // AWS should be replaced with sub alias
     expect(firstCall.input.Text).toContain("<sub alias=");
     expect(firstCall.input.Text).toContain("エーダブリューエス");
+    expect(firstCall.input.Text).toBe(
+      `<speak>${prepareNarrationSsmlContent(sampleManifest.pages[0].script, sampleManifest.lexicon)}</speak>`,
+    );
+  });
+
+  it.each([
+    ["CDATA", "<prosody>This is English. <![CDATA[これは日本語です。]]></prosody>"],
+    ["DOCTYPE", "<!DOCTYPE speak><prosody>This is English.</prosody>"],
+    ["ENTITY", '<!ENTITY narration "This is English."><prosody>English</prosody>'],
+  ] as const)("保存済みの%sを含むSSMLをPollyへ送信せず失敗にする", async (kind, text) => {
+    const invalidManifest = JSON.parse(JSON.stringify(sampleManifest)) as Manifest;
+    invalidManifest.pages[0].script = { mode: "ssml", text };
+
+    mockS3Send.mockImplementation((cmd: { type: string; input?: { Key?: string } }) => {
+      if (cmd.type === "get") {
+        return Promise.resolve({
+          Body: { transformToString: () => Promise.resolve(JSON.stringify(invalidManifest)) },
+        });
+      }
+      if (cmd.type === "head") {
+        return Promise.reject(new Error("NotFound"));
+      }
+      return Promise.resolve({});
+    });
+
+    const { handler } = await import("./index.js");
+    const result = await handler({
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
+      renderId: "render-1",
+    });
+
+    expect(result).toMatchObject({ success: false, totalCharacters: 0 });
+    expect(result.error).toContain(kind);
+    expect(mockPollySend).not.toHaveBeenCalled();
   });
 
   it("ページ単位の音声進捗と音声長をmanifestへ保存する", async () => {
@@ -278,7 +317,7 @@ describe("Stage 2: Audio handler", () => {
         {
           pageNumber: 1,
           imageKey: "pages/page-001.png",
-          script: { mode: "plain" as const, text: "A & B < C" },
+          script: { mode: "plain" as const, text: "A & B <code> C" },
           audioKey: "audio/page-001.wav",
           audioDurationSec: 0,
           frameAlignedDurationMs: 0,
@@ -311,7 +350,155 @@ describe("Stage 2: Audio handler", () => {
     // Should contain escaped XML entities, not raw & or <
     expect(firstCall.input.Text).toContain("&amp;");
     expect(firstCall.input.Text).toContain("&lt;");
+    expect(firstCall.input.Text).toContain("&lt;code&gt;");
     expect(firstCall.input.Text).not.toMatch(/A & B/);
     expect(firstCall.input.Text).toContain("<speak>");
+  });
+});
+
+
+describe("ページ別の音声プロファイル", () => {
+  function mockManifest(manifest: Manifest): void {
+    mockS3Send.mockImplementation((cmd: { type: string }) => {
+      if (cmd.type === "get") {
+        return Promise.resolve({
+          Body: { transformToString: () => Promise.resolve(JSON.stringify(manifest)) },
+        });
+      }
+      if (cmd.type === "head") {
+        return Promise.reject(new Error("NotFound"));
+      }
+      return Promise.resolve({});
+    });
+  }
+
+  it("ページの解決済み英語言語コードに対応する英語音声を使う", async () => {
+    const multilingualManifest: Manifest = {
+      ...sampleManifest,
+      voiceProfiles: {
+        "ja-JP": {
+          id: "Takumi",
+          engine: "neural",
+          languageCode: "ja-JP",
+          sampleRate: "24000",
+        },
+        "en-US": {
+          id: "Joanna",
+          engine: "neural",
+          languageCode: "en-US",
+          sampleRate: "24000",
+        },
+      },
+      pages: [
+        {
+          ...sampleManifest.pages[0],
+          script: { mode: "plain", text: "日本語の説明です。", languageCode: "ja-JP" },
+        },
+        {
+          ...sampleManifest.pages[1],
+          script: {
+            mode: "plain",
+            text: "This is an English explanation.",
+            languageCode: "en-US",
+          },
+        },
+      ],
+    };
+    mockManifest(multilingualManifest);
+
+    const { handler } = await import("./index.js");
+    const result = await handler({
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
+      renderId: "render-1",
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockPollySend.mock.calls[0][0].input).toMatchObject({
+      VoiceId: "Takumi",
+      LanguageCode: "ja-JP",
+    });
+    expect(mockPollySend.mock.calls[1][0].input).toMatchObject({
+      VoiceId: "Joanna",
+      LanguageCode: "en-US",
+    });
+  });
+
+  it("ページ言語と一致しない音声プロファイルを使わずに失敗する", async () => {
+    const invalidManifest: Manifest = {
+      ...sampleManifest,
+      source: { ...sampleManifest.source, pageCount: 1 },
+      voiceProfiles: {
+        "en-US": {
+          id: "Takumi",
+          engine: "neural",
+          languageCode: "ja-JP",
+          sampleRate: "24000",
+        },
+      },
+      pages: [
+        {
+          ...sampleManifest.pages[0],
+          script: {
+            mode: "plain",
+            text: "This is an English explanation.",
+            languageCode: "en-US",
+          },
+        },
+      ],
+    };
+    mockManifest(invalidManifest);
+
+    const { handler } = await import("./index.js");
+    const result = await handler({
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
+      renderId: "render-1",
+    });
+
+    expect(result).toMatchObject({ success: false, error: expect.stringContaining("一致") });
+    expect(mockPollySend).not.toHaveBeenCalled();
+  });
+
+  it("言語コードだけが一致する不正なVoiceIdを使わずに失敗する", async () => {
+    const invalidManifest: Manifest = {
+      ...sampleManifest,
+      source: { ...sampleManifest.source, pageCount: 1 },
+      voiceProfiles: {
+        "en-US": {
+          id: "Takumi",
+          engine: "neural",
+          languageCode: "en-US",
+          sampleRate: "24000",
+        },
+      },
+      pages: [
+        {
+          ...sampleManifest.pages[0],
+          script: {
+            mode: "plain",
+            text: "This is an English explanation.",
+            languageCode: "en-US",
+          },
+        },
+      ],
+    };
+    mockManifest(invalidManifest);
+
+    const { handler } = await import("./index.js");
+    const result = await handler({
+      s3Bucket: "test-bucket",
+      s3Prefix: "users/user-1/projects/proj-1/",
+      projectId: "proj-1",
+      userId: "user-1",
+      renderId: "render-1",
+    });
+
+    expect(result).toMatchObject({ success: false, error: expect.stringContaining("サポート") });
+    expect(mockPollySend).not.toHaveBeenCalled();
   });
 });

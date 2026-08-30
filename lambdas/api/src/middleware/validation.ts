@@ -1,11 +1,19 @@
 /** リクエストボディをZodで検証するミドルウェア。 */
 
 import { z } from "zod";
-import { SaveOutputSchema as SharedSaveOutputSchema } from "@slide-first/shared-types";
+import {
+  SaveOutputSchema as SharedSaveOutputSchema,
+  VoiceProfilesSchema,
+} from "@slide-first/shared-types";
+
+const NarrationLanguageCodeSchema = z.enum(["ja-JP", "en-US"]);
+const NarrationLanguageSettingSchema = z.enum(["auto", "ja-JP", "en-US"]);
 
 export const CreateProjectSchema = z.object({
   title: z.string().min(1).max(200),
   contentLanguage: z.string().min(1).max(10).optional(),
+  /** 字幕・MediaConvertのcontentLanguageとは分離したナレーション専用設定。 */
+  narrationLanguage: NarrationLanguageSettingSchema.optional(),
   kind: z.enum(["slide", "video"]).optional(),
 });
 
@@ -53,16 +61,23 @@ export const SaveOutputSchema = SharedSaveOutputSchema;
 export const GenerateNarrationSchema = z.object({
   pageNumber: z.number().int().positive(),
   pageText: z.string().trim().min(1).max(12000),
+  /** 画面上で未保存のプロジェクト設定も生成時に反映する。 */
+  narrationLanguage: NarrationLanguageSettingSchema.optional(),
+  /** ページ単位でAutoまたはプロジェクト設定を上書きする。 */
+  languageOverride: NarrationLanguageCodeSchema.optional(),
+});
+
+const SaveNarrationScriptSchema = z.object({
+  pageNumber: z.number().int().positive(),
+  mode: z.enum(["plain", "ssml"]),
+  text: z.string(),
+  languageOverride: NarrationLanguageCodeSchema.optional(),
+  /** クライアントの参考値。保存時は現在の原稿・設定からサーバーが再解決する。 */
+  languageCode: NarrationLanguageCodeSchema.optional(),
 });
 
 export const SaveNarrationSchema = z.object({
-  scripts: z.array(
-    z.object({
-      pageNumber: z.number().int().positive(),
-      mode: z.enum(["plain", "ssml"]),
-      text: z.string(),
-    }),
-  ),
+  scripts: z.array(SaveNarrationScriptSchema),
   lexicon: z
     .array(
       z.object({
@@ -80,6 +95,9 @@ export const SaveNarrationSchema = z.object({
       sampleRate: z.string().min(1),
     })
     .optional(),
+  /** 言語ごとの音声。旧グローバルvoiceは後方互換のため残す。 */
+  voiceProfiles: VoiceProfilesSchema.optional(),
+  narrationLanguage: NarrationLanguageSettingSchema.optional(),
 });
 
 export const StartRenderSchema = z.object({
@@ -100,14 +118,14 @@ export type StartRenderInput = z.infer<typeof StartRenderSchema>;
 /** 検証済みのリクエストボディを返す。 */
 export function validateBody<T>(schema: z.ZodType<T>, body: string | null): T {
   if (!body) {
-    throw new ValidationError("Request body is required");
+    throw new ValidationError("リクエスト本文がありません。");
   }
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(body);
   } catch {
-    throw new ValidationError("Invalid JSON in request body");
+    throw new ValidationError("リクエスト本文のJSON形式が不正です。");
   }
 
   const result = schema.safeParse(parsed);
@@ -115,7 +133,7 @@ export function validateBody<T>(schema: z.ZodType<T>, body: string | null): T {
     const messages = result.error.errors.map(
       (error) => `${error.path.join(".")}: ${error.message}`,
     );
-    throw new ValidationError(`Validation failed: ${messages.join(", ")}`);
+    throw new ValidationError(`入力値が不正です: ${messages.join(", ")}`);
   }
 
   return result.data;

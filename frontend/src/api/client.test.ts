@@ -338,13 +338,30 @@ describe("apiClient", () => {
       json: () => Promise.resolve({}),
     });
     const narration = {
-      scripts: [{ pageNumber: 1, mode: "plain" as const, text: "原稿" }],
+      narrationLanguage: "auto" as const,
+      scripts: [
+        { pageNumber: 1, mode: "plain" as const, text: "原稿", languageCode: "ja-JP" as const },
+      ],
       lexicon: [{ written: "AWS", reading: "エーダブリューエス", method: "sub" as const }],
       voice: {
         id: "Takumi",
         engine: "neural" as const,
-        languageCode: "ja-JP",
+        languageCode: "ja-JP" as const,
         sampleRate: "16000" as const,
+      },
+      voiceProfiles: {
+        "ja-JP": {
+          id: "Takumi",
+          engine: "neural" as const,
+          languageCode: "ja-JP" as const,
+          sampleRate: "16000" as const,
+        },
+        "en-US": {
+          id: "Joanna",
+          engine: "neural" as const,
+          languageCode: "en-US" as const,
+          sampleRate: "16000" as const,
+        },
       },
     };
 

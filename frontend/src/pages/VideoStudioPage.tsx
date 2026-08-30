@@ -1,4 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  detectNarrationLanguage,
+  extractAudibleNarrationText,
+  resolveNarrationLanguage,
+} from "@slide-first/core/narration-language";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useLanguage } from "../i18n/LanguageContext.js";
 import { StepWizard } from "../components/StepWizard.js";
@@ -20,8 +25,12 @@ import type {
   CaptionPlacement,
   CaptionStylePreset,
   DictionaryEntry,
+  NarrationLanguageCode,
+  NarrationLanguageSetting,
   NarrationMode,
   NarrationPage,
+  SaveNarrationRequest,
+  VoiceProfiles,
   RenderProgress,
   RenderStageName,
   RenderStatus,
@@ -74,8 +83,81 @@ function formatError(error: unknown): string {
   return "処理に失敗しました。時間をおいて再試行してください。";
 }
 
-function voiceLanguageCode(voiceId: string): string {
-  return ["Joanna", "Matthew"].includes(voiceId) ? "en-US" : "ja-JP";
+const NARRATION_LANGUAGE_LABELS: Record<NarrationLanguageCode, string> = {
+  "ja-JP": "日本語",
+  "en-US": "英語",
+};
+
+type NarrationVoiceEngine = "neural" | "standard";
+
+interface VoiceOption {
+  id: string;
+  engines: readonly NarrationVoiceEngine[];
+}
+
+const VOICE_OPTIONS: Record<NarrationLanguageCode, readonly VoiceOption[]> = {
+  "ja-JP": [
+    { id: "Takumi", engines: ["neural", "standard"] },
+    { id: "Kazuha", engines: ["neural"] },
+    { id: "Tomoko", engines: ["neural"] },
+  ],
+  "en-US": [
+    { id: "Joanna", engines: ["neural", "standard"] },
+    { id: "Matthew", engines: ["neural"] },
+  ],
+};
+
+/** 選択中のPolly VoiceIdで利用可能なエンジンだけをUIへ出す。 */
+export function resolveVoiceEngineOptions(
+  languageCode: NarrationLanguageCode,
+  voiceId: string,
+): readonly NarrationVoiceEngine[] {
+  return VOICE_OPTIONS[languageCode].find((option) => option.id === voiceId)?.engines ?? [];
+}
+
+function narrationLanguageLabel(languageCode: NarrationLanguageCode): string {
+  return NARRATION_LANGUAGE_LABELS[languageCode];
+}
+
+/** 現在のページで実行されるAI原稿生成の言語をボタンに明示する。 */
+export function narrationDraftButtonLabel(
+  languageCode: NarrationLanguageCode | null,
+  isGenerating: boolean,
+): string {
+  if (isGenerating) return "AI案を作成しています...";
+  if (!languageCode) return "このページの言語を選択してAIナレーション案を挿入";
+  return `このページに${narrationLanguageLabel(languageCode)}のAIナレーション案を挿入`;
+}
+
+/** 保存APIへ渡す辞書と、画面内の可聴テキスト判定を同じ契約にそろえる。 */
+function toNarrationLexicon(dictionary: readonly DictionaryEntry[]) {
+  return dictionary
+    .filter((entry) => entry.word.trim() && entry.reading.trim())
+    .map((entry) => ({
+      written: entry.word.trim(),
+      reading: entry.reading.trim(),
+      method: entry.method,
+    }));
+}
+
+/**
+ * 表示と保存では、実際にPollyが読む現在の原稿を優先して言語を解決する。
+ * 原稿が空の場合だけ、AI案の生成前にPDF本文を補助入力として使う。
+ */
+export function resolvePageNarrationLanguage(
+  page: Pick<NarrationPage, "mode" | "script" | "sourceText" | "languageOverride">,
+  narrationLanguage: NarrationLanguageSetting,
+  dictionary: readonly DictionaryEntry[] = [],
+): NarrationLanguageCode | null {
+  const usesScript = page.script.trim().length > 0;
+  const script = {
+    mode: usesScript ? page.mode : "plain",
+    text: usesScript ? page.script : (page.sourceText ?? ""),
+  };
+  const audibleText = extractAudibleNarrationText(script, toNarrationLexicon(dictionary));
+  return audibleText === null
+    ? null
+    : resolveNarrationLanguage(narrationLanguage, audibleText, page.languageOverride);
 }
 
 export interface CaptionPresentation {
@@ -157,8 +239,11 @@ export function VideoStudioPage() {
   const [aspect, setAspect] = useState<AspectRatio>("16:9");
   const [fps, setFps] = useState<30 | 60>(30);
   const [subtitleMode, setSubtitleMode] = useState<SubtitleMode>("burn");
-  const [voiceId, setVoiceId] = useState("Takumi");
-  const [engine, setEngine] = useState<"neural" | "standard">("neural");
+  const [narrationLanguage, setNarrationLanguage] = useState<NarrationLanguageSetting>("auto");
+  const [japaneseVoiceId, setJapaneseVoiceId] = useState("Takumi");
+  const [japaneseEngine, setJapaneseEngine] = useState<"neural" | "standard">("neural");
+  const [englishVoiceId, setEnglishVoiceId] = useState("Joanna");
+  const [englishEngine, setEnglishEngine] = useState<"neural" | "standard">("neural");
   const [verticalLayout, setVerticalLayout] = useState<VerticalLayout>("top");
   const [verticalBg, setVerticalBg] = useState<PadColor>("white");
   const [captionStyle, setCaptionStyle] = useState<CaptionStylePreset>("white-outline");
@@ -422,6 +507,7 @@ export function VideoStudioPage() {
           const created = await apiClient.createProject({
             title: file.name.replace(/\.pdf$/i, "") || "動画プロジェクト",
             contentLanguage: "ja-JP",
+            narrationLanguage,
             kind: "video",
           });
           activeProjectId = created.project.projectId;
@@ -472,6 +558,7 @@ export function VideoStudioPage() {
             pageIndex,
             mode: "plain" as const,
             script: extractedTexts[pageIndex] ?? "",
+            sourceText: extractedTexts[pageIndex] ?? "",
             origin: "pdf-extracted" as const,
           })),
         );
@@ -493,7 +580,7 @@ export function VideoStudioPage() {
         }
       }
     },
-    [disposePdfDocument, persistRoute, projectId, showPagePreview],
+    [disposePdfDocument, narrationLanguage, persistRoute, projectId, showPagePreview],
   );
 
   function updateNarrationScript(text: string) {
@@ -510,6 +597,37 @@ export function VideoStudioPage() {
     setNarrationPages((previous) =>
       previous.map((page, index) => (index === selectedNarrPage ? { ...page, mode } : page)),
     );
+  }
+
+  function updateProjectNarrationLanguage(value: NarrationLanguageSetting) {
+    setNarrationLanguage(value);
+    setNarrationDraftFeedback(null);
+  }
+
+  function updateNarrationLanguageOverride(value: string) {
+    const languageOverride = value === "" ? undefined : (value as NarrationLanguageCode);
+    setNarrationDraftFeedback(null);
+    setNarrationPages((previous) =>
+      previous.map((page, index) =>
+        index === selectedNarrPage ? { ...page, languageOverride } : page,
+      ),
+    );
+  }
+
+  function updateJapaneseVoiceId(value: string) {
+    const engines = resolveVoiceEngineOptions("ja-JP", value);
+    setJapaneseVoiceId(value);
+    if (!engines.includes(japaneseEngine)) {
+      setJapaneseEngine(engines[0] ?? "neural");
+    }
+  }
+
+  function updateEnglishVoiceId(value: string) {
+    const engines = resolveVoiceEngineOptions("en-US", value);
+    setEnglishVoiceId(value);
+    if (!engines.includes(englishEngine)) {
+      setEnglishEngine(engines[0] ?? "neural");
+    }
   }
 
   function selectNarrationMode(mode: NarrationMode) {
@@ -560,6 +678,10 @@ export function VideoStudioPage() {
       const generated = await apiClient.generateNarration(projectId, {
         pageNumber: selectedNarrPage + 1,
         pageText: pageText.slice(0, 12000),
+        narrationLanguage,
+        ...(currentPage.languageOverride
+          ? { languageOverride: currentPage.languageOverride }
+          : {}),
       });
       setNarrationPages((previous) =>
         previous.map((page, index) =>
@@ -574,7 +696,7 @@ export function VideoStudioPage() {
         ),
       );
       setSsmlMode(generated.script.mode === "ssml");
-      const message = `${selectedNarrPage + 1}ページ目にAIナレーション案を挿入しました。内容を確認・編集してから動画を生成してください。`;
+      const message = `${selectedNarrPage + 1}ページ目に${narrationLanguageLabel(generated.script.languageCode)}のAIナレーション案を挿入しました。内容を確認・編集してから動画を生成してください。`;
       setNarrationDraftFeedback({ type: "success", message });
       setNoticeMessage(message);
     } catch (error) {
@@ -600,6 +722,73 @@ export function VideoStudioPage() {
     setDictionary((previous) => previous.filter((_, rowIndex) => rowIndex !== index));
   }
 
+  function buildNarrationScriptsToSave(): SaveNarrationRequest["scripts"] {
+    if (narrationMode !== "spoken") return [];
+    if (narrationPages.length !== pageCount) {
+      throw new Error("ページごとの読み上げ原稿を読み込めていません。PDFを確認してから再実行してください。");
+    }
+
+    const emptyPage = narrationPages.find((page) => !page.script.trim());
+    if (emptyPage) {
+      throw new Error(
+        `${emptyPage.pageIndex + 1}ページ目の読み上げ原稿を入力するか、ページごとのAI案を作成してください。ナレーションなし動画を選ぶこともできます。`,
+      );
+    }
+
+    return narrationPages.map((page) => {
+      const languageCode = resolvePageNarrationLanguage(page, narrationLanguage, dictionary);
+      if (!languageCode) {
+        throw new Error(
+          `${page.pageIndex + 1}ページ目のナレーション言語を判定できません。プロジェクトまたはページ単位で日本語・英語を選択してください。`,
+        );
+      }
+
+      return {
+        pageNumber: page.pageIndex + 1,
+        mode: page.mode,
+        text: page.script,
+        ...(page.languageOverride ? { languageOverride: page.languageOverride } : {}),
+        languageCode,
+      };
+    });
+  }
+
+  function buildOutputUpdateRequest() {
+    return {
+      aspect,
+      width: profile.width,
+      height: profile.height,
+      fps,
+      captions: narrationMode === "none" ? "none" : subtitleMode,
+      verticalLayout: isVertical ? verticalLayout : null,
+      padColor: isVertical ? verticalBg : null,
+      captionStyle:
+        narrationMode === "spoken" && subtitleMode === "burn" ? effectiveCaptionStyle : null,
+      captionPlacement:
+        narrationMode === "spoken" && subtitleMode === "burn" ? effectiveCaptionPlacement : null,
+      narrationMode,
+      silentPageDurationSec,
+    };
+  }
+
+  async function persistRenderSettings(
+    activeProjectId: string,
+    scriptsToSave: SaveNarrationRequest["scripts"],
+  ): Promise<void> {
+    await apiClient.updateOutput(activeProjectId, buildOutputUpdateRequest());
+
+    if (narrationMode === "spoken") {
+      await apiClient.updateNarration(activeProjectId, {
+        scripts: scriptsToSave,
+        lexicon: toNarrationLexicon(dictionary),
+        // 旧manifestとの互換用は日本語既定音声を残し、ページ単位ではvoiceProfilesを使う。
+        voice: voiceProfiles["ja-JP"],
+        voiceProfiles,
+        narrationLanguage,
+      });
+    }
+  }
+
   async function handleGenerate() {
     if (!projectId || !sourceReady || pageCount < 1) {
       setErrorMessage("先にPDFをアップロードしてください。");
@@ -607,12 +796,52 @@ export function VideoStudioPage() {
       return;
     }
 
-    if (narrationMode === "spoken") {
-      const emptyPage = narrationPages.find((page) => !page.script.trim());
-      if (emptyPage) {
-        setErrorMessage(
-          `${emptyPage.pageIndex + 1}ページ目の読み上げ原稿を入力するか、ページごとのAI案を作成してください。ナレーションなし動画を選ぶこともできます。`,
-        );
+    let scriptsToSave: SaveNarrationRequest["scripts"];
+    try {
+      scriptsToSave = buildNarrationScriptsToSave();
+    } catch (error) {
+      setErrorMessage(formatError(error));
+      setCurrentStep(2);
+      return;
+    }
+
+    setErrorMessage(null);
+    setNoticeMessage(null);
+    setFailedStage(null);
+    setRequiresPagesRestart(false);
+    setIsStartingRender(true);
+    setCurrentStep(3);
+    setArtifacts([]);
+    setRenderStatus("RUNNING");
+    setRenderProgress(null);
+    setStageStates(Array(STAGES.length).fill("wait"));
+    setProgress(0);
+
+    try {
+      await persistRenderSettings(projectId, scriptsToSave);
+
+      const started = await apiClient.startRender(projectId);
+      const actualStartStage = started.startFromStage ?? "pages";
+      setRenderId(started.renderId);
+      persistRoute(projectId, started.renderId);
+      applyRenderState(started.status, actualStartStage);
+    } catch (error) {
+      setRenderStatus("FAILED");
+      setErrorMessage(`動画の生成を開始できません: ${formatError(error)}`);
+    } finally {
+      setIsStartingRender(false);
+    }
+  }
+
+  async function handleRetryRender(startStage: RenderStageName) {
+    if (!projectId || isStartingRender) return;
+
+    let scriptsToSave: SaveNarrationRequest["scripts"] | undefined;
+    if (sourceReady && pageCount > 0) {
+      try {
+        scriptsToSave = buildNarrationScriptsToSave();
+      } catch (error) {
+        setErrorMessage(formatError(error));
         setCurrentStep(2);
         return;
       }
@@ -631,77 +860,19 @@ export function VideoStudioPage() {
     setProgress(0);
 
     try {
-      await apiClient.updateOutput(projectId, {
-        aspect,
-        width: profile.width,
-        height: profile.height,
-        fps,
-        captions: narrationMode === "none" ? "none" : subtitleMode,
-        verticalLayout: isVertical ? verticalLayout : null,
-        padColor: isVertical ? verticalBg : null,
-        captionStyle:
-          narrationMode === "spoken" && subtitleMode === "burn" ? effectiveCaptionStyle : null,
-        captionPlacement:
-          narrationMode === "spoken" && subtitleMode === "burn" ? effectiveCaptionPlacement : null,
-        narrationMode,
-        silentPageDurationSec,
-      });
-
-      if (narrationMode === "spoken") {
-        await apiClient.updateNarration(projectId, {
-          scripts: narrationPages.map((page) => ({
-            pageNumber: page.pageIndex + 1,
-            mode: page.mode,
-            text: page.script,
-          })),
-          lexicon: dictionary
-            .filter((entry) => entry.word.trim() && entry.reading.trim())
-            .map((entry) => ({
-              written: entry.word.trim(),
-              reading: entry.reading.trim(),
-              method: entry.method,
-            })),
-          voice: {
-            id: voiceId,
-            engine,
-            languageCode: voiceLanguageCode(voiceId),
-            sampleRate: "16000",
-          },
-        });
+      // 編集画面で変更した原稿・言語・音声を、部分再実行の前にDynamoDBへ保存する。
+      if (scriptsToSave) {
+        await persistRenderSettings(projectId, scriptsToSave);
       }
 
-      const started = await apiClient.startRender(projectId);
-      setRenderId(started.renderId);
-      persistRoute(projectId, started.renderId);
-      applyRenderState(started.status, "pages");
-    } catch (error) {
-      setRenderStatus("FAILED");
-      setErrorMessage(`動画の生成を開始できません: ${formatError(error)}`);
-    } finally {
-      setIsStartingRender(false);
-    }
-  }
-
-  async function handleRetryRender(startStage: RenderStageName) {
-    if (!projectId || isStartingRender) return;
-
-    setErrorMessage(null);
-    setNoticeMessage(null);
-    setFailedStage(null);
-    setRequiresPagesRestart(false);
-    setIsStartingRender(true);
-    setCurrentStep(3);
-    setArtifacts([]);
-    setRenderStatus("RUNNING");
-    setRenderProgress(null);
-    setStageStates(Array(STAGES.length).fill("wait"));
-    setProgress(0);
-
-    try {
       const started = await apiClient.startRender(projectId, { startFromStage: startStage });
+      const actualStartStage = started.startFromStage ?? startStage;
+      if (actualStartStage !== startStage) {
+        setNoticeMessage("保存済みの設定に合わせて、再利用できる工程から再実行しています。");
+      }
       setRenderId(started.renderId);
       persistRoute(projectId, started.renderId);
-      applyRenderState(started.status, startStage);
+      applyRenderState(started.status, actualStartStage);
     } catch (error) {
       const mustRestartFromPages =
         error instanceof ApiError &&
@@ -736,6 +907,63 @@ export function VideoStudioPage() {
   }
 
   const currentNarrationPage = narrationPages[selectedNarrPage];
+  const currentNarrationLanguageText = useMemo(() => {
+    if (!currentNarrationPage) return "";
+
+    const usesScript = currentNarrationPage.script.trim().length > 0;
+    return (
+      extractAudibleNarrationText(
+        {
+          mode: usesScript ? currentNarrationPage.mode : "plain",
+          text: usesScript ? currentNarrationPage.script : (currentNarrationPage.sourceText ?? ""),
+        },
+        toNarrationLexicon(dictionary),
+      ) ?? ""
+    );
+  }, [currentNarrationPage, dictionary]);
+  const currentLanguageDetection = useMemo(
+    () => detectNarrationLanguage(currentNarrationLanguageText),
+    [currentNarrationLanguageText],
+  );
+  const currentNarrationLanguage = useMemo(
+    () =>
+      currentNarrationPage
+        ? resolvePageNarrationLanguage(currentNarrationPage, narrationLanguage, dictionary)
+        : null,
+    [currentNarrationPage, dictionary, narrationLanguage],
+  );
+  const voiceProfiles = useMemo<VoiceProfiles>(
+    () => ({
+      "ja-JP": {
+        id: japaneseVoiceId,
+        engine: japaneseEngine,
+        languageCode: "ja-JP",
+        sampleRate: "16000",
+      },
+      "en-US": {
+        id: englishVoiceId,
+        engine: englishEngine,
+        languageCode: "en-US",
+        sampleRate: "16000",
+      },
+    }),
+    [englishEngine, englishVoiceId, japaneseEngine, japaneseVoiceId],
+  );
+  const activeVoiceLanguage = currentNarrationLanguage ?? "ja-JP";
+  const activeVoice = voiceProfiles[activeVoiceLanguage];
+  const voiceId = activeVoice.id;
+  const engine = activeVoice.engine;
+  const narrationLanguageStatus = currentNarrationPage?.languageOverride
+    ? `ページ上書き: ${narrationLanguageLabel(currentNarrationPage.languageOverride)}`
+    : narrationLanguage === "auto"
+      ? currentNarrationLanguage
+        ? `原稿の自動判定: ${narrationLanguageLabel(currentNarrationLanguage)}（日本語文字 ${currentLanguageDetection.japaneseCharacterCount}、英字 ${currentLanguageDetection.latinCharacterCount}）`
+        : "原稿の自動判定: 不確定。日本語または英語を選択してください。"
+      : `プロジェクト設定: ${narrationLanguageLabel(narrationLanguage)}`;
+  const narrationButtonLabel = narrationDraftButtonLabel(
+    currentNarrationLanguage,
+    isGeneratingNarration,
+  );
   const charCount = useMemo(
     () => (currentNarrationPage?.script ?? "").replace(/<[^>]*>/g, "").length,
     [currentNarrationPage],
@@ -1093,32 +1321,72 @@ export function VideoStudioPage() {
 
               <div className="card">
                 <h2>{t("video.voiceTitle")}</h2>
+                <p className="card-sub">
+                  ページごとの解決済み言語に合わせてPolly音声を選びます。混在するスライドでも言語と音声を一致させます。
+                </p>
                 <div className="grid-2">
                   <div className="field">
-                    <label htmlFor="voice-id">{t("video.voiceId")}</label>
+                    <label htmlFor="ja-voice-id">日本語（ja-JP）の音声</label>
                     <select
-                      id="voice-id"
-                      value={voiceId}
+                      id="ja-voice-id"
+                      value={japaneseVoiceId}
                       disabled={narrationMode === "none"}
-                      onChange={(event) => setVoiceId(event.target.value)}
+                      onChange={(event) => updateJapaneseVoiceId(event.target.value)}
                     >
-                      <option value="Takumi">Takumi (ja-JP)</option>
-                      <option value="Kazuha">Kazuha (ja-JP)</option>
-                      <option value="Tomoko">Tomoko (ja-JP)</option>
-                      <option value="Joanna">Joanna (en-US)</option>
-                      <option value="Matthew">Matthew (en-US)</option>
+                      {VOICE_OPTIONS["ja-JP"].map((voice) => (
+                        <option key={voice.id} value={voice.id}>
+                          {voice.id} (ja-JP)
+                        </option>
+                      ))}
                     </select>
                   </div>
                   <div className="field">
-                    <label htmlFor="voice-engine">{t("video.engine")}</label>
+                    <label htmlFor="ja-voice-engine">日本語音声エンジン</label>
                     <select
-                      id="voice-engine"
-                      value={engine}
+                      id="ja-voice-engine"
+                      value={japaneseEngine}
                       disabled={narrationMode === "none"}
-                      onChange={(event) => setEngine(event.target.value as "neural" | "standard")}
+                      onChange={(event) =>
+                        setJapaneseEngine(event.target.value as NarrationVoiceEngine)
+                      }
                     >
-                      <option value="neural">neural</option>
-                      <option value="standard">standard</option>
+                      {resolveVoiceEngineOptions("ja-JP", japaneseVoiceId).map((engine) => (
+                        <option key={engine} value={engine}>
+                          {engine}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label htmlFor="en-voice-id">英語（en-US）の音声</label>
+                    <select
+                      id="en-voice-id"
+                      value={englishVoiceId}
+                      disabled={narrationMode === "none"}
+                      onChange={(event) => updateEnglishVoiceId(event.target.value)}
+                    >
+                      {VOICE_OPTIONS["en-US"].map((voice) => (
+                        <option key={voice.id} value={voice.id}>
+                          {voice.id} (en-US)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label htmlFor="en-voice-engine">英語音声エンジン</label>
+                    <select
+                      id="en-voice-engine"
+                      value={englishEngine}
+                      disabled={narrationMode === "none"}
+                      onChange={(event) =>
+                        setEnglishEngine(event.target.value as NarrationVoiceEngine)
+                      }
+                    >
+                      {resolveVoiceEngineOptions("en-US", englishVoiceId).map((engine) => (
+                        <option key={engine} value={engine}>
+                          {engine}
+                        </option>
+                      ))}
                     </select>
                   </div>
                   <div className="field">
@@ -1126,7 +1394,9 @@ export function VideoStudioPage() {
                     <select id="sample-rate" value="16000" disabled>
                       <option value="16000">16000 Hz</option>
                     </select>
-                    <span className="hint">PCM/WAV互換の16000 Hzを使用します。</span>
+                    <span className="hint">
+                      現在のページでは {narrationLanguageLabel(activeVoiceLanguage)}音声の {voiceId} / {engine} を使用します。
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1221,6 +1491,23 @@ export function VideoStudioPage() {
             <p className="card-sub">
               原稿を作るか、ナレーションなし動画を選択します。AI案は必要なページだけに挿入できます。
             </p>
+            <div className="field" style={{ maxWidth: 420 }}>
+              <label htmlFor="narration-language">AIナレーションの既定言語</label>
+              <select
+                id="narration-language"
+                value={narrationLanguage}
+                onChange={(event) =>
+                  updateProjectNarrationLanguage(event.target.value as NarrationLanguageSetting)
+                }
+              >
+                <option value="auto">Auto（ページ本文から自動判定）</option>
+                <option value="ja-JP">日本語（ja-JP）</option>
+                <option value="en-US">英語（en-US）</option>
+              </select>
+              <span className="hint">
+                Autoで判定できないページは、既定の日本語へ戻さず明示的な選択を求めます。
+              </span>
+            </div>
             <fieldset
               className="option-cards"
               style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}
@@ -1320,14 +1607,12 @@ export function VideoStudioPage() {
                   <button
                     type="button"
                     className="btn btn-ghost btn-sm"
-                    disabled={isGeneratingNarration}
+                    disabled={isGeneratingNarration || !currentNarrationLanguage}
                     onClick={() => {
                       void handleGenerateNarrationDraft();
                     }}
                   >
-                    {isGeneratingNarration
-                      ? "AI案を作成しています..."
-                      : "このページにAIナレーション案を挿入"}
+                    {narrationButtonLabel}
                   </button>
                 </div>
                 {narrationDraftFeedback && (
@@ -1338,6 +1623,31 @@ export function VideoStudioPage() {
                     {narrationDraftFeedback.message}
                   </p>
                 )}
+                <div className="grid-2" style={{ marginTop: 12 }}>
+                  <div className="field">
+                    <label htmlFor="page-language-override">このページのナレーション言語</label>
+                    <select
+                      id="page-language-override"
+                      value={currentNarrationPage?.languageOverride ?? ""}
+                      onChange={(event) => updateNarrationLanguageOverride(event.target.value)}
+                    >
+                      <option value="">プロジェクト既定を使用</option>
+                      <option value="ja-JP">日本語（ja-JP）</option>
+                      <option value="en-US">英語（en-US）</option>
+                    </select>
+                  </div>
+                  <div className="field">
+                    <span className="hint">判定・適用結果</span>
+                    <p
+                      className={
+                        currentNarrationLanguage ? "note" : "note note-warn"
+                      }
+                      style={{ margin: "0.35rem 0 0" }}
+                    >
+                      {narrationLanguageStatus}
+                    </p>
+                  </div>
+                </div>
                 {currentNarrationPage?.origin === "pdf-extracted" && (
                   <p className="hint">
                     PDFから抽出した初期原稿です。AI案を実行すると、このページの原稿を置き換えます。

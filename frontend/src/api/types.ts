@@ -9,8 +9,19 @@ export type CaptionStylePreset =
   | "chalkboard";
 export type CaptionPlacement = "bottom" | "safe-area";
 export type NarrationMode = "spoken" | "none";
+export type NarrationLanguageCode = "ja-JP" | "en-US";
+export type NarrationLanguageSetting = "auto" | NarrationLanguageCode;
 export type RenderStatus = "RUNNING" | "COMPLETED" | "FAILED";
 export type RenderStageName = "pages" | "audio" | "captions" | "video";
+
+export interface VoiceProfile {
+  id: string;
+  engine: "neural" | "standard";
+  languageCode: NarrationLanguageCode;
+  sampleRate: "16000";
+}
+
+export type VoiceProfiles = Record<NarrationLanguageCode, VoiceProfile>;
 
 export interface RenderProgress {
   stage: RenderStageName;
@@ -39,6 +50,7 @@ export interface Project {
   userId?: string;
   title: string;
   kind?: "slide" | "video";
+  narrationLanguage?: NarrationLanguageSetting;
   status: string;
   output?: string;
   estimatedCost?: number;
@@ -78,6 +90,10 @@ export interface NarrationPage {
   pageIndex: number;
   mode: "plain" | "ssml";
   script: string;
+  /** PDFから抽出した元の本文。原稿欄が空の場合のみAuto判定の補助に使う。 */
+  sourceText?: string;
+  /** プロジェクト設定を上書きするページ単位の言語。 */
+  languageOverride?: NarrationLanguageCode;
   /** 原稿の由来。抽出文とAI案はユーザー編集前に置換できる。 */
   origin?: "pdf-extracted" | "ai" | "user";
 }
@@ -106,6 +122,7 @@ export interface Artifact {
 export interface CreateProjectRequest {
   title: string;
   contentLanguage?: string;
+  narrationLanguage?: NarrationLanguageSetting;
   kind?: "slide" | "video";
 }
 
@@ -174,23 +191,26 @@ export interface SaveNarrationRequest {
     pageNumber: number;
     mode: "plain" | "ssml";
     text: string;
+    languageOverride?: NarrationLanguageCode;
+    languageCode: NarrationLanguageCode;
   }>;
   lexicon: Array<{
     written: string;
     reading: string;
     method: "sub" | "phoneme" | "spell";
   }>;
-  voice: {
-    id: string;
-    engine: "neural" | "standard";
-    languageCode: string;
-    sampleRate: "16000";
-  };
+  /** 旧プロジェクトとの互換性を保つグローバル音声。 */
+  voice: VoiceProfile;
+  /** ページごとの解決済み言語でPollyを選べるようにする。 */
+  voiceProfiles: VoiceProfiles;
+  narrationLanguage: NarrationLanguageSetting;
 }
 
 export interface GenerateNarrationRequest {
   pageNumber: number;
   pageText: string;
+  narrationLanguage: NarrationLanguageSetting;
+  languageOverride?: NarrationLanguageCode;
 }
 
 export interface StartRenderRequest {
@@ -201,6 +221,8 @@ export interface StartRenderResponse {
   renderId: string;
   status: RenderStatus;
   startedAt: string;
+  /** APIが部分再実行の互換性に応じて実際に開始した工程。 */
+  startFromStage: RenderStageName;
   executionArn?: string;
 }
 

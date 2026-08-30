@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectRecord } from "../db/projects.js";
-import { buildManifestFromProject } from "./build-manifest.js";
+import {
+  buildManifestFromProject,
+  buildPartialRenderManifestFromProject,
+} from "./build-manifest.js";
 
 function makeProject(output: unknown): ProjectRecord {
   return {
@@ -225,5 +228,175 @@ describe("buildManifestFromProject の部分再実行", () => {
         previousManifest: makeCompletedManifest(),
       }),
     ).toThrow("pagesから再実行してください");
+  });
+});
+
+
+describe("buildManifestFromProject のナレーション言語", () => {
+  it("保存済みのページ言語と音声プロファイルをmanifestへ渡す", () => {
+    const project = makeProject({
+      aspect: "16:9",
+      fps: 30,
+      captions: "burn",
+      verticalLayout: null,
+      padColor: null,
+    });
+    project.narrationLanguage = "auto";
+    project.narration = [
+      {
+        pageNumber: 1,
+        mode: "plain",
+        text: "This page explains the MediaConvert workflow.",
+        languageCode: "en-US",
+      },
+    ];
+    project.voiceProfiles = {
+      "ja-JP": {
+        id: "Takumi",
+        engine: "neural",
+        languageCode: "ja-JP",
+        sampleRate: "16000",
+      },
+      "en-US": {
+        id: "Joanna",
+        engine: "neural",
+        languageCode: "en-US",
+        sampleRate: "16000",
+      },
+    };
+
+    const manifest = buildManifestFromProject(project);
+
+    expect(manifest.narrationLanguage).toBe("auto");
+    expect(manifest.pages[0].script).toMatchObject({ languageCode: "en-US" });
+    expect(manifest.voiceProfiles?.["en-US"]).toMatchObject({
+      id: "Joanna",
+      languageCode: "en-US",
+    });
+  });
+
+  it("旧manifestの言語コード未保存原稿でもglobal voiceが一致すれば部分再実行できる", () => {
+    const output = {
+      aspect: "16:9",
+      fps: 30,
+      captions: "burn",
+      verticalLayout: null,
+      padColor: null,
+    };
+    const project = makeProject(output);
+    const previous = buildManifestFromProject(project);
+    previous.pages[0].script.languageCode = undefined;
+    previous.stages = { pages: "done", audio: "done", captions: "done", video: "done" };
+    previous.pages[0].audioDurationSec = 3;
+    previous.pages[0].frameAlignedDurationMs = 3000;
+
+    expect(() =>
+      buildManifestFromProject(project, { startStage: "captions", previousManifest: previous }),
+    ).not.toThrow();
+  });
+});
+
+
+describe("buildManifestFromProject の実効音声による部分再実行互換性", () => {
+  const output = {
+    aspect: "16:9",
+    fps: 30,
+    captions: "burn",
+    verticalLayout: null,
+    padColor: null,
+  };
+
+  function makeJapaneseNarrationProject(): ProjectRecord {
+    const project = makeProject(output);
+    project.narrationLanguage = "auto";
+    project.narration = [
+      {
+        pageNumber: 1,
+        mode: "plain",
+        text: "日本語のナレーション原稿です。",
+        languageCode: "ja-JP",
+      },
+    ];
+    project.voiceProfiles = {
+      "ja-JP": {
+        id: "Takumi",
+        engine: "neural",
+        languageCode: "ja-JP",
+        sampleRate: "16000",
+      },
+      "en-US": {
+        id: "Joanna",
+        engine: "neural",
+        languageCode: "en-US",
+        sampleRate: "16000",
+      },
+    };
+    return project;
+  }
+
+  function makeCompletedNarrationManifest(project: ProjectRecord) {
+    const manifest = buildManifestFromProject(project);
+    manifest.pages = manifest.pages.map((page) => ({
+      ...page,
+      audioDurationSec: 3,
+      frameAlignedDurationMs: 3000,
+    }));
+    manifest.stages = { pages: "done", audio: "done", captions: "done", video: "done" };
+    return manifest;
+  }
+
+  it("未使用の英語音声プロファイル変更では字幕から部分再実行できる", () => {
+    const project = makeJapaneseNarrationProject();
+    const previousManifest = makeCompletedNarrationManifest(project);
+    project.voiceProfiles = {
+      ...project.voiceProfiles,
+      "en-US": {
+        id: "Matthew",
+        engine: "neural",
+        languageCode: "en-US",
+        sampleRate: "16000",
+      },
+    };
+
+    expect(() =>
+      buildManifestFromProject(project, { startStage: "captions", previousManifest }),
+    ).not.toThrow();
+  });
+
+  it("実効言語が同じならプロジェクト既定の変更では動画から部分再実行できる", () => {
+    const project = makeJapaneseNarrationProject();
+    const previousManifest = makeCompletedNarrationManifest(project);
+    project.narrationLanguage = "ja-JP";
+
+    expect(() =>
+      buildManifestFromProject(project, { startStage: "video", previousManifest }),
+    ).not.toThrow();
+  });
+
+  it("使用中の日本語音声プロファイルを変更した場合はaudioから部分再実行する", () => {
+    const project = makeJapaneseNarrationProject();
+    const previousManifest = makeCompletedNarrationManifest(project);
+    project.voiceProfiles = {
+      ...project.voiceProfiles,
+      "ja-JP": {
+        id: "Kazuha",
+        engine: "neural",
+        languageCode: "ja-JP",
+        sampleRate: "16000",
+      },
+    };
+
+    const partial = buildPartialRenderManifestFromProject(project, {
+      startStage: "captions",
+      previousManifest,
+    });
+
+    expect(partial.startStage).toBe("audio");
+    expect(partial.manifest.stages).toEqual({
+      pages: "done",
+      audio: "pending",
+      captions: "pending",
+      video: "pending",
+    });
   });
 });

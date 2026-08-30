@@ -28,7 +28,11 @@ vi.mock("./bedrock-client.js", () => ({
   callBedrockConverse: vi.fn(),
 }));
 
-import { handler, type SlideGeneratorEvent } from "./index.js";
+import {
+  handler,
+  type GenerateNarrationEvent,
+  type SlideGeneratorEvent,
+} from "./index.js";
 import { callBedrockConverse } from "./bedrock-client.js";
 
 const MOCK_BEDROCK_RESPONSE = `---
@@ -215,5 +219,243 @@ marp: true
       expect.any(String),
       expect.objectContaining({ maxTokens: 8000 }),
     );
+  });
+});
+
+
+describe("ナレーション原稿の言語制御", () => {
+  const narrationEvent: GenerateNarrationEvent = {
+    action: "generateNarration",
+    projectId: "proj-123",
+    userId: "user-456",
+    pageNumber: 1,
+    pageText: "Amazon MediaConvert creates adaptive bitrate video outputs for multiple devices.",
+    languageCode: "en-US",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.BEDROCK_MODEL_ID = "anthropic.claude-3-sonnet-20240229-v1:0";
+  });
+
+  it("指定した英語だけを要求し、解決済み言語を返す", async () => {
+    (callBedrockConverse as ReturnType<typeof vi.fn>).mockResolvedValue({
+      content: "This slide explains how MediaConvert prepares video outputs for each device.",
+      inputTokens: 40,
+      outputTokens: 20,
+    });
+
+    const result = await handler(narrationEvent);
+
+    expect(result).toMatchObject({
+      script: {
+        pageNumber: 1,
+        mode: "plain",
+        languageCode: "en-US",
+      },
+    });
+    expect(callBedrockConverse).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.stringContaining("Output language: English (en-US) only."),
+      expect.objectContaining({ maxTokens: 600 }),
+    );
+  });
+
+  it("初回の言語が不一致なら訂正プロンプトで1回だけ再試行する", async () => {
+    (callBedrockConverse as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        content: "このスライドではMediaConvertの出力設定を説明します。",
+        inputTokens: 40,
+        outputTokens: 20,
+      })
+      .mockResolvedValueOnce({
+        content: "This slide explains the MediaConvert output settings.",
+        inputTokens: 45,
+        outputTokens: 25,
+      });
+
+    const result = await handler(narrationEvent);
+
+    expect(result).toMatchObject({ script: { languageCode: "en-US" } });
+    expect(result.inputTokens).toBe(85);
+    expect(result.outputTokens).toBe(45);
+    expect(callBedrockConverse).toHaveBeenCalledTimes(2);
+    expect(callBedrockConverse).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.stringContaining("前回の応答は指定言語の検証を通りませんでした。"),
+      expect.any(Object),
+    );
+  });
+
+  it("再試行後も言語が不一致なら専用エラーで失敗する", async () => {
+    (callBedrockConverse as ReturnType<typeof vi.fn>).mockResolvedValue({
+      content: "このスライドではMediaConvertの出力設定を説明します。",
+      inputTokens: 40,
+      outputTokens: 20,
+    });
+
+    await expect(handler(narrationEvent)).rejects.toMatchObject({
+      name: "NARRATION_LANGUAGE_MISMATCH",
+    });
+    expect(callBedrockConverse).toHaveBeenCalledTimes(2);
+  });
+});
+
+
+describe("ナレーション原稿の厳密な言語検証", () => {
+  const englishNarrationEvent: GenerateNarrationEvent = {
+    action: "generateNarration",
+    projectId: "proj-123",
+    userId: "user-456",
+    pageNumber: 1,
+    pageText: "Amazon MediaConvert creates adaptive bitrate video outputs for multiple devices.",
+    languageCode: "en-US",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.BEDROCK_MODEL_ID = "anthropic.claude-3-sonnet-20240229-v1:0";
+  });
+
+  it("英語原稿へ日本語が混在した初回応答を訂正して再試行する", async () => {
+    (callBedrockConverse as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        content:
+          "This slide explains the MediaConvert workflow for multiple devices. 日本語の注記です。",
+        inputTokens: 40,
+        outputTokens: 20,
+      })
+      .mockResolvedValueOnce({
+        content: "This slide explains the MediaConvert workflow for multiple devices.",
+        inputTokens: 45,
+        outputTokens: 25,
+      });
+
+    const result = await handler(englishNarrationEvent);
+
+    expect(result).toMatchObject({ script: { languageCode: "en-US" } });
+    expect(callBedrockConverse).toHaveBeenCalledTimes(2);
+  });
+
+  it("マークアップ内の日本語が混在した英語原稿を訂正して再試行する", async () => {
+    (callBedrockConverse as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        content:
+          "This slide explains the MediaConvert workflow for multiple devices. <日本語の注記です。>",
+        inputTokens: 40,
+        outputTokens: 20,
+      })
+      .mockResolvedValueOnce({
+        content: "This slide explains the MediaConvert workflow for multiple devices.",
+        inputTokens: 45,
+        outputTokens: 25,
+      });
+
+    const result = await handler(englishNarrationEvent);
+
+    expect(result).toMatchObject({ script: { languageCode: "en-US" } });
+    expect(callBedrockConverse).toHaveBeenCalledTimes(2);
+  });
+
+  it("AWS製品名を含む日本語原稿は再試行せずに受理する", async () => {
+    (callBedrockConverse as ReturnType<typeof vi.fn>).mockResolvedValue({
+      content: "Amazon EC2 は、クラウド上で仮想サーバーを提供します。",
+      inputTokens: 40,
+      outputTokens: 20,
+    });
+
+    const result = await handler({ ...englishNarrationEvent, languageCode: "ja-JP" });
+
+    expect(result).toMatchObject({ script: { languageCode: "ja-JP" } });
+    expect(callBedrockConverse).toHaveBeenCalledTimes(1);
+  });
+
+  it("漢字だけの中国語が混在した日本語原稿を訂正して再試行する", async () => {
+    (callBedrockConverse as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        content: "これは日本語です。這是中文說明。",
+        inputTokens: 40,
+        outputTokens: 20,
+      })
+      .mockResolvedValueOnce({
+        content: "このスライドではMediaConvertの処理内容を説明します。",
+        inputTokens: 45,
+        outputTokens: 25,
+      });
+
+    const result = await handler({ ...englishNarrationEvent, languageCode: "ja-JP" });
+
+    expect(result).toMatchObject({ script: { languageCode: "ja-JP" } });
+    expect(callBedrockConverse).toHaveBeenCalledTimes(2);
+  });
+
+  it("句読点なしで連結した中国語を含む日本語原稿を訂正して再試行する", async () => {
+    (callBedrockConverse as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        content: "これは日本語のナレーションです本次报告介绍人工智能技术",
+        inputTokens: 40,
+        outputTokens: 20,
+      })
+      .mockResolvedValueOnce({
+        content: "このスライドではMediaConvertの処理内容を説明します。",
+        inputTokens: 45,
+        outputTokens: 25,
+      });
+
+    const result = await handler({ ...englishNarrationEvent, languageCode: "ja-JP" });
+
+    expect(result).toMatchObject({ script: { languageCode: "ja-JP" } });
+    expect(callBedrockConverse).toHaveBeenCalledTimes(2);
+  });
+
+  it("将来と与えるを含む自然な日本語原稿は再試行せずに受理する", async () => {
+    (callBedrockConverse as ReturnType<typeof vi.fn>).mockResolvedValue({
+      content: "将来の計画を説明し、利用者に価値を与える仕組みを紹介します。",
+      inputTokens: 40,
+      outputTokens: 20,
+    });
+
+    const result = await handler({ ...englishNarrationEvent, languageCode: "ja-JP" });
+
+    expect(result).toMatchObject({ script: { languageCode: "ja-JP" } });
+    expect(callBedrockConverse).toHaveBeenCalledTimes(1);
+  });
+
+  it("英語優勢の混在原稿を日本語指定では訂正して再試行する", async () => {
+    (callBedrockConverse as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        content: "This English sentence has some words. 日本語の文章を説明します。",
+        inputTokens: 40,
+        outputTokens: 20,
+      })
+      .mockResolvedValueOnce({
+        content: "このスライドではMediaConvertの処理内容を説明します。",
+        inputTokens: 45,
+        outputTokens: 25,
+      });
+
+    const result = await handler({ ...englishNarrationEvent, languageCode: "ja-JP" });
+
+    expect(result).toMatchObject({ script: { languageCode: "ja-JP" } });
+    expect(callBedrockConverse).toHaveBeenCalledTimes(2);
+  });
+
+  it("第三言語が混在した英語指定の初回応答を訂正して再試行する", async () => {
+    (callBedrockConverse as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        content: "Русский текст abc",
+        inputTokens: 40,
+        outputTokens: 20,
+      })
+      .mockResolvedValueOnce({
+        content: "This slide explains the MediaConvert workflow for multiple devices.",
+        inputTokens: 45,
+        outputTokens: 25,
+      });
+
+    const result = await handler(englishNarrationEvent);
+
+    expect(result).toMatchObject({ script: { languageCode: "en-US" } });
+    expect(callBedrockConverse).toHaveBeenCalledTimes(2);
   });
 });

@@ -38,3 +38,25 @@ export { alignToFrame, alignToFrameFromSec } from "./frame-alignment.js";
 
 // WAV / PCM utilities
 export { calculatePcmDurationSec, createWavHeader } from "./wav.js";
+
+// Narration language detection and resolution
+export {
+  NARRATION_LANGUAGE_CODES,
+  NARRATION_LANGUAGE_SETTINGS,
+  isNarrationLanguageCode,
+  isNarrationLanguageSetting,
+  detectNarrationLanguage,
+  resolveNarrationLanguage,
+  isNarrationTextInLanguage,
+  hasUnsupportedNarrationSsmlDeclaration,
+  prepareNarrationSsmlContent,
+  extractAudibleNarrationText,
+} from "./narration-language.js";
+export type {
+  NarrationLanguageCode,
+  NarrationLanguageSetting,
+  NarrationLanguageDetection,
+  NarrationTextLanguageValidationOptions,
+  NarrationScriptInput,
+  NarrationLexiconEntry,
+} from "./narration-language.js";

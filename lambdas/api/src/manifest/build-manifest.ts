@@ -7,6 +7,7 @@
 
 import {
   ManifestSchema,
+  isSupportedNarrationVoice,
   pageImageKey,
   audioKey,
   getOutputProfile,
@@ -20,7 +21,15 @@ import type {
   PadColor,
   CaptionStylePreset,
   CaptionPlacement,
+  Voice,
+  VoiceProfiles,
 } from "@slide-first/shared-types";
+import {
+  isNarrationLanguageCode,
+  isNarrationLanguageSetting,
+  type NarrationLanguageCode,
+  type NarrationLanguageSetting,
+} from "@slide-first/core";
 import type { ProjectRecord } from "../db/projects.js";
 import { ApiError } from "../middleware/index.js";
 
@@ -31,21 +40,73 @@ const DEFAULT_SILENT_PAGE_DURATION_SEC = 5;
 const MIN_SILENT_PAGE_DURATION_SEC = 1;
 const MAX_SILENT_PAGE_DURATION_SEC = 30;
 
-const DEFAULT_VOICE = {
+const DEFAULT_VOICE: Voice = {
   id: "Takumi",
   engine: "neural",
   languageCode: "ja-JP",
   sampleRate: DEFAULT_SAMPLE_RATE,
-} as const;
+};
+
+const DEFAULT_VOICE_PROFILES: Record<NarrationLanguageCode, Voice> = {
+  "ja-JP": DEFAULT_VOICE,
+  "en-US": {
+    id: "Joanna",
+    engine: "neural",
+    languageCode: "en-US",
+    sampleRate: DEFAULT_SAMPLE_RATE,
+  },
+};
 
 interface NarrationScript {
   pageNumber?: number;
   mode?: string;
   text?: string;
+  languageOverride?: unknown;
+  languageCode?: unknown;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
+function resolveVoice(value: unknown, fallback: Voice): Voice {
+  const voiceInput = asRecord(value);
+  return {
+    id: typeof voiceInput.id === "string" ? voiceInput.id : fallback.id,
+    engine: typeof voiceInput.engine === "string" ? voiceInput.engine : fallback.engine,
+    languageCode:
+      typeof voiceInput.languageCode === "string" ? voiceInput.languageCode : fallback.languageCode,
+    sampleRate: resolveSampleRate(voiceInput.sampleRate),
+  };
+}
+
+function resolveVoiceProfiles(value: unknown): VoiceProfiles | undefined {
+  const profilesInput = asRecord(value);
+  const profiles: VoiceProfiles = {};
+
+  for (const languageCode of ["ja-JP", "en-US"] as const) {
+    const profileInput = profilesInput[languageCode];
+    if (!profileInput || typeof profileInput !== "object") continue;
+
+    const profile = resolveVoice(profileInput, DEFAULT_VOICE_PROFILES[languageCode]);
+    if (isSupportedNarrationVoice(profile, languageCode)) {
+      profiles[languageCode] = profile;
+    }
+  }
+
+  return Object.keys(profiles).length > 0 ? profiles : undefined;
+}
+
+function resolveNarrationLanguageSetting(value: unknown): NarrationLanguageSetting {
+  return isNarrationLanguageSetting(value) ? value : "auto";
+}
+
+/** 旧プロジェクトはglobal voiceを使い、未設定なら従来の日本語既定値に合わせる。 */
+function resolveScriptLanguageCode(script: NarrationScript, voice: Voice): NarrationLanguageCode {
+  if (isNarrationLanguageCode(script.languageCode)) return script.languageCode;
+  if (isNarrationLanguageCode(script.languageOverride)) return script.languageOverride;
+  if (isNarrationLanguageCode(voice.languageCode)) return voice.languageCode;
+  return "ja-JP";
 }
 
 /** PCMで使えない値が入っていたら既定値へ寄せる。 */
@@ -142,6 +203,12 @@ export interface PartialRenderManifestInput {
   previousManifest: Manifest;
 }
 
+/** 部分再実行で実際に開始する工程と、引き継ぎ済みmanifest。 */
+export interface PartialRenderManifestResult {
+  manifest: Manifest;
+  startStage: PartialRenderStartStage;
+}
+
 /**
  * DynamoDBの保存状態から新しい実行用manifestを組み立てる。
  * 部分再実行では、互換性を確認済みの既存manifestから必要な実行時状態だけを引き継ぐ。
@@ -180,16 +247,9 @@ export function buildManifestFromProject(
     );
   }
 
-  const voiceInput = asRecord(project.voice);
-  const voice = {
-    id: typeof voiceInput.id === "string" ? voiceInput.id : DEFAULT_VOICE.id,
-    engine: typeof voiceInput.engine === "string" ? voiceInput.engine : DEFAULT_VOICE.engine,
-    languageCode:
-      typeof voiceInput.languageCode === "string"
-        ? voiceInput.languageCode
-        : DEFAULT_VOICE.languageCode,
-    sampleRate: resolveSampleRate(voiceInput.sampleRate),
-  };
+  const voice = resolveVoice(project.voice, DEFAULT_VOICE);
+  const voiceProfiles = resolveVoiceProfiles(project.voiceProfiles);
+  const narrationLanguage = resolveNarrationLanguageSetting(project.narrationLanguage);
 
   const aspect = resolveAspect(outputInput.aspect);
   const profile = getOutputProfile(aspect);
@@ -233,12 +293,17 @@ export function buildManifestFromProject(
   const pages = Array.from({ length: pageCount }, (_, index) => {
     const pageNumber = index + 1;
     const script = scripts[index] ?? {};
+    const languageCode = resolveScriptLanguageCode(script, voice);
     return {
       pageNumber,
       imageKey: pageImageKey(keyParams, pageNumber),
       script: {
         mode: script.mode === "ssml" ? ("ssml" as const) : ("plain" as const),
         text: typeof script.text === "string" ? script.text : "",
+        ...(isNarrationLanguageCode(script.languageOverride)
+          ? { languageOverride: script.languageOverride }
+          : {}),
+        languageCode,
       },
       audioKey: audioKey(keyParams, pageNumber),
       audioDurationSec: 0,
@@ -262,6 +327,7 @@ export function buildManifestFromProject(
     projectId,
     userId,
     contentLanguage: project.contentLanguage ?? "ja-JP",
+    narrationLanguage,
     source: {
       kind: sourceKind as "generated" | "uploaded",
       fileKey,
@@ -269,6 +335,7 @@ export function buildManifestFromProject(
       ...(fileName ? { fileName } : {}),
     },
     voice,
+    ...(voiceProfiles ? { voiceProfiles } : {}),
     output,
     lexicon,
     pages,
@@ -287,13 +354,9 @@ export function buildManifestFromProject(
     },
   }) as Manifest;
 
-  return partialRender
-    ? mergePartialRenderRuntimeState(
-        freshManifest,
-        partialRender.previousManifest,
-        partialRender.startStage,
-      )
-    : freshManifest;
+  if (!partialRender) return freshManifest;
+
+  return buildPartialRenderManifestFromProject(project, partialRender).manifest;
 }
 
 /**
@@ -358,15 +421,40 @@ function hasCompatiblePageRenderInputs(fresh: Manifest, previous: Manifest): boo
   );
 }
 
-/** 音声を再利用する場合は、音声に影響する原稿・音声・辞書も同一でなければならない。 */
+function hasSameVoice(left: Voice, right: Voice): boolean {
+  return (
+    left.id === right.id &&
+    left.engine === right.engine &&
+    left.languageCode === right.languageCode &&
+    left.sampleRate === right.sampleRate
+  );
+}
+
+/**
+ * Polly workerと同じ優先順位で、ページの音声合成に実際に使われる音声を解決する。
+ * 言語コードを持たない旧manifestではglobal voiceを使用する。
+ */
+function resolveEffectiveVoiceForPage(
+  manifest: Manifest,
+  page: Manifest["pages"][number],
+): Voice | undefined {
+  const languageCode = page.script.languageCode;
+  if (!languageCode) return manifest.voice;
+  if (!isNarrationLanguageCode(languageCode)) return undefined;
+
+  const profile = manifest.voiceProfiles?.[languageCode];
+  if (profile) {
+    return isSupportedNarrationVoice(profile, languageCode) ? profile : undefined;
+  }
+
+  return isSupportedNarrationVoice(manifest.voice, languageCode) ? manifest.voice : undefined;
+}
+
+/** 音声を再利用する場合は、各ページで実際に使われる原稿・音声・辞書も同一でなければならない。 */
 function hasCompatibleNarrationInputs(fresh: Manifest, previous: Manifest): boolean {
   return (
     hasCompatiblePageRenderInputs(fresh, previous) &&
     fresh.contentLanguage === previous.contentLanguage &&
-    fresh.voice.id === previous.voice.id &&
-    fresh.voice.engine === previous.voice.engine &&
-    fresh.voice.languageCode === previous.voice.languageCode &&
-    fresh.voice.sampleRate === previous.voice.sampleRate &&
     fresh.lexicon.length === previous.lexicon.length &&
     fresh.lexicon.every(
       (entry, index) =>
@@ -374,11 +462,20 @@ function hasCompatibleNarrationInputs(fresh: Manifest, previous: Manifest): bool
         entry.reading === previous.lexicon[index]?.reading &&
         entry.method === previous.lexicon[index]?.method,
     ) &&
-    fresh.pages.every(
-      (page, index) =>
-        page.script.mode === previous.pages[index]?.script.mode &&
-        page.script.text === previous.pages[index]?.script.text,
-    )
+    fresh.pages.every((page, index) => {
+      const previousPage = previous.pages[index];
+      if (
+        !previousPage ||
+        page.script.mode !== previousPage.script.mode ||
+        page.script.text !== previousPage.script.text
+      ) {
+        return false;
+      }
+
+      const freshVoice = resolveEffectiveVoiceForPage(fresh, page);
+      const previousVoice = resolveEffectiveVoiceForPage(previous, previousPage);
+      return Boolean(freshVoice && previousVoice && hasSameVoice(freshVoice, previousVoice));
+    })
   );
 }
 
@@ -389,6 +486,57 @@ function hasMeasuredAudio(previous: Manifest): boolean {
       page.frameAlignedDurationMs > 0 &&
       page.frameAlignedDurationMs >= page.audioDurationSec * 1000,
   );
+}
+
+/**
+ * 要求工程より前の成果物が再利用できない場合は、必要最小の工程まで安全に戻す。
+ * ページ描画に影響する変更だけは画像を再利用できないためpagesからの再実行を要求する。
+ */
+function resolvePartialRenderStartStage(
+  fresh: Manifest,
+  previous: Manifest,
+  requestedStartStage: PartialRenderStartStage,
+): PartialRenderStartStage {
+  if (previous.stages.pages !== "done" || !hasCompatiblePageRenderInputs(fresh, previous)) {
+    return throwPartialRenderRequiresPages();
+  }
+
+  if (requestedStartStage === "audio") return "audio";
+
+  const canReuseAudio =
+    previous.stages.audio === "done" &&
+    hasMeasuredAudio(previous) &&
+    hasCompatibleNarrationInputs(fresh, previous);
+  if (!canReuseAudio) return "audio";
+
+  if (requestedStartStage === "captions") return "captions";
+
+  return previous.stages.captions === "done" ? "video" : "captions";
+}
+
+/**
+ * 部分再実行に必要な最小工程を決定し、現在のプロジェクト設定で新しいmanifestを組み立てる。
+ * たとえば実効音声が変わった場合は、ページPNGを保ったままaudioから再実行する。
+ */
+export function buildPartialRenderManifestFromProject(
+  project: ProjectRecord,
+  partialRender: PartialRenderManifestInput,
+): PartialRenderManifestResult {
+  const freshManifest = buildManifestFromProject(project);
+  const startStage = resolvePartialRenderStartStage(
+    freshManifest,
+    partialRender.previousManifest,
+    partialRender.startStage,
+  );
+
+  return {
+    manifest: mergePartialRenderRuntimeState(
+      freshManifest,
+      partialRender.previousManifest,
+      startStage,
+    ),
+    startStage,
+  };
 }
 
 function throwPartialRenderRequiresPages(): never {

@@ -41,7 +41,10 @@ import {
 } from "../middleware/index.js";
 import { createRender, getRender, updateRenderStatus, updateProject } from "../db/index.js";
 import type { RenderRecord } from "../db/index.js";
-import { buildManifestFromProject } from "../manifest/build-manifest.js";
+import {
+  buildManifestFromProject,
+  buildPartialRenderManifestFromProject,
+} from "../manifest/build-manifest.js";
 
 const sfnClient = new SFNClient({});
 const s3Client = new S3Client({});
@@ -413,7 +416,7 @@ export async function handleStartRender(
 
   const renderId = ulid();
   const now = new Date().toISOString();
-  const startStage = body.startFromStage ?? "pages";
+  let startStage: RenderProgress["stage"] = body.startFromStage ?? "pages";
   const key = manifestKey({ userId, projectId });
 
   // pages以外からの再実行では、直前の描画・音声状態を安全に引き継ぐ。
@@ -423,8 +426,13 @@ export async function handleStartRender(
     manifest = buildManifestFromProject(project);
   } else {
     const previousManifest = await readPartialRenderManifest(key);
-    manifest = buildManifestFromProject(project, { startStage, previousManifest });
-    await assertPartialRenderArtifactsExist(manifest, startStage);
+    const partialRender = buildPartialRenderManifestFromProject(project, {
+      startStage,
+      previousManifest,
+    });
+    manifest = partialRender.manifest;
+    startStage = partialRender.startStage;
+    await assertPartialRenderArtifactsExist(manifest, partialRender.startStage);
   }
 
   // パイプラインは manifest.json だけを正本として読むため、開始前に S3 へ書き出す。
@@ -480,6 +488,7 @@ export async function handleStartRender(
     renderId,
     status: "RUNNING",
     startedAt: now,
+    startFromStage: startStage,
     executionArn: executionResult.executionArn,
   });
 }

@@ -111,6 +111,7 @@ export const apiClient = {
     return request<CreateProjectResponse>("POST", "/v1/projects", {
       title: data.title,
       ...(data.contentLanguage ? { contentLanguage: data.contentLanguage } : {}),
+      ...(data.narrationLanguage ? { narrationLanguage: data.narrationLanguage } : {}),
       ...(data.kind ? { kind: data.kind } : {}),
     });
   },

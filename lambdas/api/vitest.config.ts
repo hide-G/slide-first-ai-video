@@ -13,5 +13,9 @@ export default defineConfig({
   test: {
     globals: false,
     environment: "node",
+    env: {
+      // 生成Lambdaを呼び出す経路を本番と同じ契約で検証する。
+      SLIDE_GENERATOR_ARN: "arn:aws:lambda:us-east-1:123456789012:function:slide-generator-test",
+    },
   },
 });

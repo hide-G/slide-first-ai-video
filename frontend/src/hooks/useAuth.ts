@@ -1,5 +1,5 @@
 /**
- * Authentication hook using AWS Amplify.
+ * AWS Amplify を使った認証フック。
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -8,6 +8,11 @@ import {
   signOut as amplifySignOut,
   getCurrentUser,
   fetchAuthSession,
+  resetPassword as amplifyResetPassword,
+  confirmResetPassword as amplifyConfirmResetPassword,
+  signUp as amplifySignUp,
+  confirmSignUp as amplifyConfirmSignUp,
+  resendSignUpCode as amplifyResendSignUpCode,
 } from "aws-amplify/auth";
 
 export interface AuthState {
@@ -21,6 +26,20 @@ export interface UseAuthReturn extends AuthState {
   signIn: (username: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   getIdToken: () => Promise<string | null>;
+  /** パスワードリセット用の確認コード送信を要求する。 */
+  requestPasswordReset: (username: string) => Promise<void>;
+  /** 確認コードと新しいパスワードでリセットを確定する。 */
+  confirmPasswordReset: (
+    username: string,
+    confirmationCode: string,
+    newPassword: string,
+  ) => Promise<void>;
+  /** 新規アカウントを登録する（確認コードがメール送信される）。 */
+  signUp: (username: string, password: string) => Promise<void>;
+  /** 新規登録の確認コードを検証してアカウントを有効化する。 */
+  confirmSignUp: (username: string, confirmationCode: string) => Promise<void>;
+  /** 新規登録の確認コードを再送する。 */
+  resendSignUpCode: (username: string) => Promise<void>;
 }
 
 export function useAuth(): UseAuthReturn {
@@ -78,10 +97,45 @@ export function useAuth(): UseAuthReturn {
     }
   }, []);
 
+  const requestPasswordReset = useCallback(async (username: string) => {
+    await amplifyResetPassword({ username });
+  }, []);
+
+  const confirmPasswordReset = useCallback(
+    async (username: string, confirmationCode: string, newPassword: string) => {
+      await amplifyConfirmResetPassword({ username, confirmationCode, newPassword });
+    },
+    [],
+  );
+
+  const signUp = useCallback(async (username: string, password: string) => {
+    await amplifySignUp({
+      username,
+      password,
+      options: { userAttributes: { email: username } },
+    });
+  }, []);
+
+  const confirmSignUp = useCallback(
+    async (username: string, confirmationCode: string) => {
+      await amplifyConfirmSignUp({ username, confirmationCode });
+    },
+    [],
+  );
+
+  const resendSignUpCode = useCallback(async (username: string) => {
+    await amplifyResendSignUpCode({ username });
+  }, []);
+
   return {
     ...state,
     signIn,
     signOut,
     getIdToken,
+    requestPasswordReset,
+    confirmPasswordReset,
+    signUp,
+    confirmSignUp,
+    resendSignUpCode,
   };
 }

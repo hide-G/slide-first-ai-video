@@ -16,6 +16,11 @@ vi.mock("aws-amplify/auth", () => ({
   signOut: vi.fn(),
   getCurrentUser: vi.fn().mockRejectedValue(new Error("Not authenticated")),
   fetchAuthSession: vi.fn().mockResolvedValue({ tokens: {} }),
+  resetPassword: vi.fn().mockResolvedValue(undefined),
+  confirmResetPassword: vi.fn().mockResolvedValue(undefined),
+  signUp: vi.fn().mockResolvedValue(undefined),
+  confirmSignUp: vi.fn().mockResolvedValue(undefined),
+  resendSignUpCode: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { LanguageProvider } from "../i18n/LanguageContext.js";
@@ -85,16 +90,50 @@ describe("LoginPage", () => {
     expect(container.textContent).toContain("Show password");
   });
 
-  it("has SSO button", async () => {
-    await renderLogin();
-
-    expect(container.textContent).toContain("シングルサインオンでログイン");
-  });
-
   it("has forgot password and signup links", async () => {
     await renderLogin();
 
     expect(container.textContent).toContain("パスワードを忘れた場合");
     expect(container.textContent).toContain("アカウントを新規作成");
+  });
+
+  it("switches to the password reset form when forgot link is clicked", async () => {
+    await renderLogin();
+
+    const forgotButton = Array.from(container.querySelectorAll("button")).find(
+      (btn) => btn.textContent === "パスワードを忘れた場合",
+    );
+    expect(forgotButton).not.toBeNull();
+
+    await act(async () => {
+      forgotButton!.click();
+    });
+
+    expect(container.textContent).toContain("パスワードの再設定");
+    expect(container.textContent).toContain("確認コードを送る");
+    // ログインに戻る導線があること
+    expect(container.textContent).toContain("ログインに戻る");
+  });
+
+  it("switches to the sign up form when signup link is clicked", async () => {
+    await renderLogin();
+
+    const signupButton = Array.from(container.querySelectorAll("button")).find(
+      (btn) => btn.textContent === "アカウントを新規作成",
+    );
+    expect(signupButton).not.toBeNull();
+
+    await act(async () => {
+      signupButton!.click();
+    });
+
+    expect(container.textContent).toContain("メールアドレスとパスワードを入力します");
+    expect(container.textContent).toContain("アカウントを作成する");
+  });
+
+  it("does not render the fake SSO button", async () => {
+    await renderLogin();
+
+    expect(container.textContent).not.toContain("シングルサインオンでログイン");
   });
 });

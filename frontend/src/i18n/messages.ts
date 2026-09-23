@@ -42,6 +42,40 @@ const jaMessages = {
   "login.sso": "シングルサインオンでログイン",
   "login.forgot": "パスワードを忘れた場合",
   "login.signup": "アカウントを新規作成",
+  // password reset
+  "login.resetTitle": "パスワードの再設定",
+  "login.resetSub": "登録済みのメールアドレスに確認コードを送ります。",
+  "login.resetSend": "確認コードを送る",
+  "login.resetConfirmTitle": "新しいパスワードを設定",
+  "login.resetConfirmSub": "メールに届いた確認コードと、新しいパスワードを入力します。",
+  "login.code": "確認コード",
+  "login.newPassword": "新しいパスワード",
+  "login.resetConfirm": "パスワードを再設定する",
+  "login.resetDone": "パスワードを再設定しました。新しいパスワードでログインしてください。",
+  "login.passwordHint": "8文字以上。大文字・小文字・数字を含めてください。",
+  // sign up
+  "login.signupTitle": "アカウントを新規作成",
+  "login.signupSub": "メールアドレスとパスワードを入力します。確認コードをメールで送ります。",
+  "login.signupSubmit": "アカウントを作成する",
+  "login.signupConfirmTitle": "メールアドレスの確認",
+  "login.signupConfirmSub": "メールに届いた確認コードを入力してください。",
+  "login.signupConfirm": "アカウントを有効化する",
+  "login.signupDone": "アカウントを有効化しました。ログインしてください。",
+  "login.resendCode": "確認コードを再送する",
+  "login.resendDone": "確認コードを再送しました。",
+  // navigation
+  "login.backToSignIn": "ログインに戻る",
+  // error messages
+  "login.errGeneric": "処理に失敗しました。時間をおいて再度お試しください。",
+  "login.errIncorrect": "メールアドレスまたはパスワードが正しくありません。",
+  "login.errUserNotFound": "このメールアドレスのアカウントが見つかりません。",
+  "login.errCodeMismatch": "確認コードが正しくありません。",
+  "login.errCodeExpired": "確認コードの有効期限が切れています。もう一度送信してください。",
+  "login.errInvalidPassword":
+    "パスワードは8文字以上で、大文字・小文字・数字を含める必要があります。",
+  "login.errUserExists": "このメールアドレスは既に登録されています。",
+  "login.errLimitExceeded": "試行回数が上限に達しました。しばらくしてからお試しください。",
+  "login.errNotConfirmed": "アカウントが未確認です。メールの確認コードで有効化してください。",
 
   // home
   "home.heading": "何をつくりますか",
@@ -357,6 +391,40 @@ const enMessages: MessageCatalog = {
   "login.sso": "Sign in with single sign-on",
   "login.forgot": "Forgot your password",
   "login.signup": "Create an account",
+  // password reset
+  "login.resetTitle": "Reset your password",
+  "login.resetSub": "We will send a confirmation code to your registered email address.",
+  "login.resetSend": "Send confirmation code",
+  "login.resetConfirmTitle": "Set a new password",
+  "login.resetConfirmSub": "Enter the confirmation code from your email and a new password.",
+  "login.code": "Confirmation code",
+  "login.newPassword": "New password",
+  "login.resetConfirm": "Reset password",
+  "login.resetDone": "Your password has been reset. Sign in with your new password.",
+  "login.passwordHint": "At least 8 characters, with uppercase, lowercase and a digit.",
+  // sign up
+  "login.signupTitle": "Create an account",
+  "login.signupSub": "Enter your email and a password. We will email you a confirmation code.",
+  "login.signupSubmit": "Create account",
+  "login.signupConfirmTitle": "Verify your email",
+  "login.signupConfirmSub": "Enter the confirmation code sent to your email.",
+  "login.signupConfirm": "Activate account",
+  "login.signupDone": "Your account is now active. Please sign in.",
+  "login.resendCode": "Resend confirmation code",
+  "login.resendDone": "A new confirmation code has been sent.",
+  // navigation
+  "login.backToSignIn": "Back to sign in",
+  // error messages
+  "login.errGeneric": "Something went wrong. Please try again later.",
+  "login.errIncorrect": "Incorrect email or password.",
+  "login.errUserNotFound": "No account was found for this email address.",
+  "login.errCodeMismatch": "The confirmation code is incorrect.",
+  "login.errCodeExpired": "The confirmation code has expired. Please request a new one.",
+  "login.errInvalidPassword":
+    "Password must be at least 8 characters and include uppercase, lowercase and a digit.",
+  "login.errUserExists": "This email address is already registered.",
+  "login.errLimitExceeded": "Too many attempts. Please try again later.",
+  "login.errNotConfirmed": "This account is not verified. Use the emailed code to activate it.",
 
   // home
   "home.heading": "What would you like to make",
